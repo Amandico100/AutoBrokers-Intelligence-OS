@@ -17,17 +17,19 @@ do observer (que consome). Toda outra integração (atendimento, observer, QCM) 
       ......................................................... ignora — anti-laço robô↔robô (mutação 5)
    4. "ATIVAR 123456" ...................... `verificacao.consumir_codigo` — responde só se ela mandar (C1)
    5. número NÃO verificado ............... SILÊNCIO total: nenhuma resposta, nenhuma linha de conteúdo (mutação 1)
-   6. membro de 2+ corretoras ............. a conversa ativa decide; sem ela, pergunta UMA vez qual (mutação 6)
+   6. membro de 2+ corretoras ............. a conversa ativa decide; sem ela, pergunta UMA vez qual (mutação 6) —
+      a pergunta pendente mora no BANCO (`atalho.estado`, cifrada), não no Redis: Redis fora, a escolha vale (P3);
+      enquanto ela espera, as falas seguintes se juntam à guardada e NÃO geram outra pergunta (P2)
    7. teto 💭 200 mensagens/dia/membro .... uma frase no 200º, depois silêncio
+   8. texto maior que 💭 8.000 caracteres .. cortado ANTES do turno, com um aviso curto (P5)
 Depois: `turno.rodar` (o CORE da corretora DELE). Banco ilegível em 3/5/6/7 → CALA (fail-closed).
+TODA mensagem que sai passa por `envio.enviar` — o cinto único da SAÍDA: anti-laço e o teto de envios do dia (P2).
 
 ⛔ Nenhum telefone inteiro em log (só `mascarar`), nenhum conteúdo em log.
 """
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
 import os
 import re
@@ -37,13 +39,18 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 ENV_LIGADO = "ATALHO_WHATSAPP_LIGADO"
-#: 💭 quanto tempo a pergunta "qual corretora?" (e a fala que a provocou) fica guardada no Redis
+#: 💭 quanto tempo a pergunta "qual corretora?" (e a fala que a provocou) fica pendente — UMA pergunta por janela
 VALIDADE_DA_ESCOLHA_S = 15 * 60
-_PREFIXO_REDIS = "atalho:"
+#: 💭 o maior texto do corretor que vira turno do chat (o resto é cortado, com aviso — custo de modelo)
+LIMITE_DO_TEXTO = 8000
+#: 💭 o maior texto guardado enquanto se espera a escolha da corretora
+LIMITE_DA_FALA_GUARDADA = 4000
 
 FRASE_DO_TETO = ("Por hoje chegamos ao limite de mensagens por aqui. Amanhã eu continuo — "
                  "se for urgente, use o chat no painel do AutoBrokers.")
 FRASE_ESCOLHIDA = "Certo, seguimos pela {corretora}. Pode mandar o que precisa."
+FRASE_TEXTO_LONGO = ("Sua mensagem é muito longa para o WhatsApp: li só o começo dela. "
+                     "Para textos grandes, mande em arquivo ou use o chat no painel.")
 _TROCAR = re.compile(r"^\s*trocar(\s+de)?\s+corretora\s*[.!]?\s*$", re.IGNORECASE)
 
 #: contagem das mensagens que chegaram com o atalho desligado (só para o log — nada é gravado)
@@ -118,11 +125,22 @@ def filtrar(envelope: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
 
     if not isinstance(envelope, dict):
         return None, "payload_invalido"
-    chave = ((envelope.get("data") or {}).get("key") or {}) if isinstance(envelope.get("data"), dict) else {}
+    dados = envelope.get("data")
+    chave = dados.get("key") if isinstance(dados, dict) else None
+    if chave is None:
+        chave = {}
+    if not isinstance(chave, dict):        # P4 (red team): `key` como lista/texto → ignorado, nunca um 500
+        return None, "payload_invalido"
     jid = str(chave.get("remoteJid") or "")
     if chave.get("fromMe") or jid.endswith(("@g.us", "@broadcast", "@newsletter", "@call")):
         return None, "from_me_ou_grupo"
-    normalizado = normalize_evolution_inbound(envelope)
+    try:
+        normalizado = normalize_evolution_inbound(envelope)
+    except Exception as erro:  # noqa: BLE001 — formato que o normalizador não conhece: ignorado
+        logger.warning("[ATALHO] envelope ilegível (%s) — ignorado", type(erro).__name__)
+        return None, "payload_invalido"
+    if not isinstance(normalizado, dict):
+        return None, "payload_invalido"
     if normalizado.get("skip"):
         return None, str(normalizado.get("skip_reason") or "skip")
     if normalizado.get("from_me") or normalizado.get("is_group"):
@@ -159,46 +177,17 @@ def _pergunta(membros: List[Dict[str, str]]) -> str:
             + "\n\nResponda com o número. Para mudar depois, mande \"trocar corretora\".")
 
 
-def _chave(telefone: str) -> str:
-    return _PREFIXO_REDIS + "escolha:" + hashlib.sha256(("atalho:" + telefone).encode("utf-8")).hexdigest()[:32]
+def _pendente(estado: Dict[str, Any]) -> bool:
+    """Há uma pergunta "qual corretora?" feita há menos de 💭 15 min?"""
+    from datetime import datetime, timezone
 
-
-async def _redis():
     try:
-        from app.core.redis import get_async_redis_client
-
-        return await get_async_redis_client()
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[ATALHO] Redis indisponível (%s)", type(erro).__name__)
-        return None
-
-
-async def _ler_escolha(telefone: str) -> Optional[Dict[str, Any]]:
-    r = await _redis()
-    if r is None:
-        return None
-    try:
-        bruto = await r.get(_chave(telefone))
-        if isinstance(bruto, bytes):
-            bruto = bruto.decode("utf-8")
-        valor = json.loads(bruto) if bruto else None
-        return valor if isinstance(valor, dict) else None
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[ATALHO] escolha ilegível no Redis (%s)", type(erro).__name__)
-        return None
-
-
-async def _guardar_escolha(telefone: str, valor: Optional[Dict[str, Any]]) -> None:
-    r = await _redis()
-    if r is None:
-        return
-    try:
-        if valor is None:
-            await r.delete(_chave(telefone))
-        else:
-            await r.set(_chave(telefone), json.dumps(valor, ensure_ascii=False), ex=VALIDADE_DA_ESCOLHA_S)
-    except Exception as erro:  # noqa: BLE001
-        logger.warning("[ATALHO] escolha não guardada no Redis (%s)", type(erro).__name__)
+        quando = datetime.fromisoformat(str(estado.get("perguntou_em") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if quando.tzinfo is None:
+        quando = quando.replace(tzinfo=timezone.utc)
+    return 0 <= (datetime.now(timezone.utc) - quando).total_seconds() <= VALIDADE_DA_ESCOLHA_S
 
 
 def _conversa_mais_recente(db: Any, membros: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
@@ -216,33 +205,43 @@ def _conversa_mais_recente(db: Any, membros: List[Dict[str, str]]) -> Optional[D
 
 async def _qual_corretora(db: Any, integracao: Dict[str, Any], telefone: str, membros: List[Dict[str, str]],
                           normalizado: Dict[str, Any]) -> Tuple[Optional[Dict[str, str]], Optional[str], bool]:
-    """`(membro, fala_guardada, so_escolheu)` — ou `(None, None, False)` quando a pergunta foi feita agora.
+    """`(membro, fala_guardada, so_escolheu)` — ou `(None, None, False)` quando a pergunta foi feita (agora ou antes).
 
     `so_escolheu` = a mensagem ERA a resposta ("2") e não havia fala guardada: confirma e abre a conversa.
-    🔴 A ESCOLHA vale pela conversa ativa (o banco: dura 12 h, sobrevive ao Redis). O Redis só guarda o transitório:
-    "perguntei" e a fala que provocou a pergunta (CLAUDE.md §6 — Redis é transitório)."""
-    from app.services.atalho import envio
+    🔴 A ESCOLHA vale pela conversa ativa (dura 12 h). A PERGUNTA pendente e a fala que a provocou moram no banco
+    (`atalho.estado`, cifradas — P3: sem Redis a escolha funciona). Pergunta pendente: a resposta clara escolhe; qualquer
+    outra fala se JUNTA à guardada e não gera nova pergunta (P2 — "qual corretora?" vai UMA vez por janela).
+    Banco ilegível → levanta (o turno cala)."""
+    from app.services.atalho import envio, estado as EST
 
     texto = str(normalizado.get("text") or "").strip()
     trocar = bool(_TROCAR.match(texto))
-    guardada = await _ler_escolha(telefone)
-    if guardada and texto and not trocar:
-        escolhido = _escolha(texto, membros)
+    guardado = await asyncio.to_thread(EST.ler, db, telefone)
+    pendente = _pendente(guardado)
+    if pendente and not trocar:
+        escolhido = _escolha(texto, membros) if texto else None
         if escolhido:
-            await _guardar_escolha(telefone, None)
-            fala = str(guardada.get("fala") or "") or None
+            await asyncio.to_thread(EST.guardar, db, telefone, None)
+            fala = str(guardado.get("fala") or "") or None
             return escolhido, fala, fala is None
+        if texto:   # a fala seguinte espera junto (uma pergunta só)
+            junto = "\n".join(x for x in (str(guardado.get("fala") or ""), texto) if x)[:LIMITE_DA_FALA_GUARDADA]
+            await asyncio.to_thread(EST.guardar, db, telefone, {**guardado, "fala": junto})
+        return None, None, False
     if not trocar:
         recente = await asyncio.to_thread(_conversa_mais_recente, db, membros)
         if recente:
             return recente, None, False
         escolhido = _escolha(texto, membros) if texto else None
-        if escolhido:   # sem Redis (ou a pergunta venceu) e a resposta é clara: vale
+        if escolhido:   # a pergunta venceu e a resposta é clara: vale
             return escolhido, None, True
     # a pergunta; a fala de TEXTO fica guardada para seguir depois da escolha (mídia: pede-se de novo)
+    from datetime import datetime, timezone
+
     fala = texto if (texto and not trocar and not normalizado.get("media")) else ""
-    await _guardar_escolha(telefone, {"perguntou": True, "fala": fala[:4000]})
-    await envio.enviar_texto(integracao, telefone, _pergunta(membros))
+    await asyncio.to_thread(EST.guardar, db, telefone, {"perguntou_em": datetime.now(timezone.utc).isoformat(),
+                                                        "fala": fala[:LIMITE_DA_FALA_GUARDADA]})
+    await envio.enviar_texto(integracao, telefone, _pergunta(membros), db=db)
     return None, None, False
 
 
@@ -258,6 +257,21 @@ def _trava(telefone: str) -> asyncio.Lock:
                 _TRAVAS.pop(k, None)
         trava = _TRAVAS[chave] = asyncio.Lock()
     return trava
+
+
+def _cortar(normalizado: Dict[str, Any]) -> bool:
+    """P5 (red team): o texto (e a legenda da mídia) do corretor acima de 💭 8.000 caracteres é cortado ANTES de virar
+    turno do chat. True = cortou (o turno manda o aviso curto)."""
+    cortou = False
+    texto = normalizado.get("text")
+    if isinstance(texto, str) and len(texto) > LIMITE_DO_TEXTO:
+        normalizado["text"] = texto[:LIMITE_DO_TEXTO]
+        cortou = True
+    midia = normalizado.get("media")
+    if isinstance(midia, dict) and isinstance(midia.get("caption"), str) and len(midia["caption"]) > LIMITE_DO_TEXTO:
+        midia["caption"] = midia["caption"][:LIMITE_DO_TEXTO]
+        cortou = True
+    return cortou
 
 
 async def turno_do_atalho(db: Any, integracao: Dict[str, Any], envelope: Dict[str, Any]) -> Dict[str, Any]:
@@ -279,12 +293,14 @@ async def turno_do_atalho(db: Any, integracao: Dict[str, Any], envelope: Dict[st
             logger.warning("[ATALHO] mensagem de uma instância do produto (%s) ignorada — anti-laço", _mascarar(tel))
             return {"status": "ignorado", "motivo": "anti_laco"}
 
+        cortado = _cortar(normalizado)
+
         async with _trava(tel):
             texto = str(normalizado.get("text") or "")
             if verificacao.codigo_da_ativacao(texto):
                 r = await verificacao.consumir_codigo(db, telefone_remetente_e164=tel, texto=texto)
                 if r.responder and r.mensagem:
-                    await envio.enviar_texto(integracao, tel, r.mensagem)
+                    await envio.enviar_texto(integracao, tel, r.mensagem, db=db)
                 return {"status": "ativacao", "motivo": r.motivo or "ok", "respondeu": bool(r.responder)}
 
             membros = await asyncio.to_thread(verificacao.membros_verificados_por_telefone, db, tel)
@@ -311,7 +327,7 @@ async def turno_do_atalho(db: Any, integracao: Dict[str, Any], envelope: Dict[st
                                                        membro["user_id"], agente)
                     await asyncio.to_thread(turno.gravar_pergunta, db, conversa, membro["company_id"],
                                             texto or "[Mensagem]", [], f"teto-{os.urandom(8).hex()}")
-                await envio.enviar_texto(integracao, tel, FRASE_DO_TETO)
+                await envio.enviar_texto(integracao, tel, FRASE_DO_TETO, db=db)
                 return {"status": "teto", "company_id": membro["company_id"]}
 
             if so_escolheu:
@@ -322,9 +338,11 @@ async def turno_do_atalho(db: Any, integracao: Dict[str, Any], envelope: Dict[st
                                                        membro["user_id"], agente)
                     await asyncio.to_thread(turno.tocar_conversa, db, conversa["id"], membro["company_id"])
                 await envio.enviar_texto(integracao, tel, FRASE_ESCOLHIDA.format(
-                    corretora=membro.get("nome_da_corretora") or "sua corretora"))
+                    corretora=membro.get("nome_da_corretora") or "sua corretora"), db=db)
                 return {"status": "escolheu_a_corretora", "company_id": membro["company_id"]}
 
+            if cortado:
+                await envio.enviar_texto(integracao, tel, FRASE_TEXTO_LONGO, db=db)
             r = await turno.rodar(db, integracao, tel, membro, normalizado, texto=fala_guardada)
             return {"status": r.status, "company_id": r.company_id, "user_id": r.user_id,
                     "conversation_id": r.conversation_id, "enviadas": r.enviadas}
@@ -334,4 +352,4 @@ async def turno_do_atalho(db: Any, integracao: Dict[str, Any], envelope: Dict[st
 
 
 __all__ = ("ENV_LIGADO", "ligado", "eh_do_assistente", "numero_do_produto", "filtrar", "turno_do_atalho",
-           "FRASE_DO_TETO", "FRASE_ESCOLHIDA")
+           "FRASE_DO_TETO", "FRASE_ESCOLHIDA", "FRASE_TEXTO_LONGO", "LIMITE_DO_TEXTO", "VALIDADE_DA_ESCOLHA_S")
