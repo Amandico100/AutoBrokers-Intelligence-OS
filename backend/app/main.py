@@ -49,6 +49,72 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# =============================================================================
+# 🔴 SPEC-132-A B7 — O AQUECIMENTO NO ARRANQUE
+# =============================================================================
+# 📊 14/10/2026 (produção, corretora de ensaio): a 1ª mensagem de uma conversa
+# nova levou 4,4 s até os CABEÇALHOS — o processo frio carregava, no caminho do
+# corretor, o Presidio (spaCy pt + en), o BM25 local da busca (fastembed) e o
+# pool do checkpointer. Aquecer é fazer isso ANTES de alguém perguntar.
+def aquecimento_ligado() -> bool:
+    """`AQUECER_NO_ARRANQUE=0` desliga (padrão: ligado)."""
+    return str(os.getenv("AQUECER_NO_ARRANQUE", "1")).strip().lower() not in (
+        "0", "false", "no", "off", "nao", "não")
+
+
+async def aquecer_no_arranque() -> dict:
+    """Carrega em 2º plano o que o 1º turno pagaria. Devolve `{etapa: segundos | None}`.
+
+    ⛔ Nunca levanta: uma etapa que falha vira log e `None` — o 1º turno aquece
+    sozinho, como antes. ⛔ Nenhum dado de corretora é lido aqui.
+    """
+    import asyncio
+    import time
+
+    tempos: dict = {}
+
+    async def _etapa(nome, fazer):
+        inicio = time.monotonic()
+        try:
+            await fazer()
+            tempos[nome] = round(time.monotonic() - inicio, 1)
+            logger.info("[AQUECIMENTO] %s pronto em %.1f s", nome, tempos[nome])
+        except Exception as falha:  # noqa: BLE001 — aquecer nunca derruba o app
+            tempos[nome] = None
+            logger.warning("[AQUECIMENTO] %s falhou (%s) — o 1º turno aquece sozinho",
+                           nome, type(falha).__name__)
+
+    def _presidio():
+        from app.services.presidio_service import get_presidio_service
+
+        servico = get_presidio_service()
+        # 📊 a 1ª análise também é fria (o pipeline do spaCy carrega por partes).
+        servico.analyze_and_anonymize("aquecimento do analisador", action="mask")
+
+    def _busca():
+        from app.services.search_service import get_search_service
+
+        get_search_service()
+
+    async def _checkpointer():
+        from app.agents import graph as _grafo
+
+        await _grafo.get_async_postgres_checkpointer()
+        if _grafo._async_postgres_pool is None:
+            # O pool não abriu (banco fora no arranque): o 1º turno TENTA de novo,
+            # em vez de herdar o "já tentei" e cair no MemorySaver para sempre.
+            _grafo._checkpointer_init_attempted = False
+
+    inicio_total = time.monotonic()
+    await asyncio.gather(
+        _etapa("presidio", lambda: asyncio.to_thread(_presidio)),
+        _etapa("busca", lambda: asyncio.to_thread(_busca)),
+        _etapa("checkpointer", _checkpointer),
+    )
+    logger.info("[AQUECIMENTO] concluído em %.1f s: %s", time.monotonic() - inicio_total, tempos)
+    return tempos
+
+
 # Lifespan manager for startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -97,6 +163,16 @@ async def lifespan(app: FastAPI):
     logger.info("[STARTUP] ✅ Poço de threads explícito: %d (EXECUTOR_THREADS)",
                 app.state.executor_threads)
 
+    # 2.6 🔴 SPEC-132-A B7 — O AQUECIMENTO, em 2º plano (depois do poço: as
+    #     cargas síncronas vão para as threads dele). ⛔ Não segura o arranque e
+    #     não derruba o app: cada etapa falha sozinha, com log de tempo.
+    app.state.aquecimento = None
+    if aquecimento_ligado():
+        app.state.aquecimento = _asyncio.create_task(aquecer_no_arranque())
+        logger.info("[STARTUP] aquecimento em 2º plano (desligue com AQUECER_NO_ARRANQUE=0)")
+    else:
+        logger.info("[STARTUP] aquecimento DESLIGADO (AQUECER_NO_ARRANQUE=0)")
+
     # 3. Iniciar scheduler do WhatsApp Buffer
     logger.info("[STARTUP] Starting WhatsApp Buffer Scheduler...")
     start_buffer_scheduler()
@@ -135,6 +211,11 @@ async def lifespan(app: FastAPI):
             logger.error("[STARTUP] Smith Worker não iniciou: %s", type(_e).__name__)
 
     yield
+
+    # SPEC-132-A — o aquecimento que ainda corria não vira "task destruída pendente".
+    _aquecendo = getattr(app.state, "aquecimento", None)
+    if _aquecendo is not None and not _aquecendo.done():
+        _aquecendo.cancel()
 
     # SPEC-055 — encerrar o worker antes do resto, para liberar leases
     _worker = getattr(app.state, "smith_worker", None)
