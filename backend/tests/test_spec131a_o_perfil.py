@@ -386,11 +386,14 @@ def test_toda_suposicao_sai_marcada(monkeypatch):
 
 
 # =====================================================================================================================
-# 4. A PLACA SUPRE NA RENOVAÇÃO — e não na cotação (a linha de controle)
+# 4. A PLACA SUPRE NA RENOVAÇÃO (e, desde a SPEC-132-B, na COTAÇÃO) — e não no pedido sem serviço (a linha de controle)
 # =====================================================================================================================
-def test_a_placa_supre_fipe_ano_e_combustivel_na_renovacao_e_nao_na_cotacao():
+def test_a_placa_supre_fipe_ano_e_combustivel_na_renovacao_e_o_pedido_sem_servico_continua_exigindo():
     """F6 (§9.3 — a verdade da F5 venceu): o combustível VOLTA a ser suprido pela placa na renovação, porque os 7 códigos
-    da tela foram medidos e o montador traduz o rótulo da FIPE como a tela (a F5 o tirou: só o Flex tinha código)."""
+    da tela foram medidos e o montador traduz o rótulo da FIPE como a tela (a F5 o tirou: só o Flex tinha código).
+    §9.3 de novo (SPEC-132-B, B4): este teste se chamava "…e_nao_na_cotacao" — verdade vencida: a SPEC-132-B C4 pôs a
+    cotação no conjunto (`SERVICOS_EM_QUE_A_PLACA_SUPRE`). A linha de controle que ficou é o pedido SEM serviço (o
+    legado), que continua exigindo os três; a asserção não afrouxou."""
     apolice, ficha = FIO.ficha_sintetica("AUTO")
     perfil = F2T._perfil_auto()
     perfil["veiculo"] = {}                                    # sem FIPE, ano e combustível
@@ -398,7 +401,9 @@ def test_a_placa_supre_fipe_ano_e_combustivel_na_renovacao_e_nao_na_cotacao():
     supridos = {"veiculo.fipe", "veiculo.ano_fabricacao", "veiculo.combustivel"}
     assert not supridos & set(pedido.faltando(origem="auxiliar", servico="renovacao"))
     assert not supridos & set(M.o_que_falta(pedido))         # a madrugada usa a MESMA conta da porta
-    # CONTROLE: a cotação (mesma origem `auxiliar`, sem o serviço) continua exigindo os três
+    # e a cotação (SPEC-132-B C4) também é suprida pela MESMA placa
+    assert not supridos & set(pedido.faltando(origem="auxiliar", servico="cotacao"))
+    # CONTROLE: o pedido sem o serviço (mesma origem `auxiliar`, o legado) continua exigindo os três
     assert supridos <= set(pedido.faltando(origem="auxiliar"))
     assert supridos <= pedido.assumindo_pela_placa(servico="renovacao").assumidos
     # e o canal (D-133A-03) segue como era — fora desta fatia (ver o relatório)
