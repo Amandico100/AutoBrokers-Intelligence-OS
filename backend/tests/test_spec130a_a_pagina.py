@@ -505,6 +505,8 @@ def test_o_route_e_o_script_usam_o_mesmo_parametro_do_fechar():
 from app.services.artifacts import proposta_apresentacao as AP  # noqa: E402
 
 CONTRATO = json.loads((BACKEND / "tests" / "fixtures" / "proposta" / "modelo_contrato.json").read_text(encoding="utf-8"))
+#: o "hoje" das páginas abertas no navegador: o instante em que o contrato foi gerado (antes da validade dele)
+RELOGIO_DO_CONTRATO = CONTRATO["gerado_em"]
 NB = " "
 
 
@@ -753,6 +755,11 @@ def _abrir(navegador, doc: str, largura: int = 390, js: bool = True, esquema: st
     ctx = navegador.new_context(viewport={"width": largura, "height": 844 if largura < 600 else 900}, device_scale_factor=2,
                                 java_script_enabled=js, color_scheme=esquema)
     pg = ctx.new_page()
+    # 🔴 §9.3 (SPEC-132-B, B4): o RELÓGIO do navegador é o do CONTRATO (`gerado_em`), não o do dia em que o teste roda.
+    #    A página compara a validade (`validade_ate`) com `new Date()` (RT-8: preço vencido troca os botões); com o
+    #    relógio real, o contrato de 13/10/2026 venceu e os guardas do "Quero fechar" passaram a medir a página
+    #    VENCIDA. O que eles afirmam não mudou — só o "hoje" deixou de depender da data da bateria.
+    pg.clock.set_fixed_time(RELOGIO_DO_CONTRATO)
     erros: list = []
     pg.on("console", lambda m: erros.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
     pg.on("pageerror", lambda e: erros.append(f"pageerror: {e}"))
