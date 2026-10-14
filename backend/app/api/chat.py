@@ -787,12 +787,56 @@ def _resposta_de_politica(*, modo: str, turno: Dict[str, Any], tipo: str, code: 
     return StreamingResponse(gerar(), media_type="text/event-stream", headers=dict(CABECALHOS_SSE))
 
 
+class _ReservaDoTurno:
+    """O lugar do turno em `TURNOS_ATIVOS` entre a conferência do "já em andamento" e o `create_task`.
+
+    🔴 Conserto da SPEC-132-A (juiz P1, medido): a conferência e o registro da task tinham `await`s no meio (a
+    porteira e o agente foram para `asyncio.to_thread`) — dois POSTs com o MESMO `client_request_id` passavam os dois
+    pela conferência, e o modelo era chamado 2× (📊 6/6 rodadas). A chave agora é RESERVADA logo depois da
+    conferência, sem `await` no meio, e solta em todo caminho que não chega ao `create_task` (`chat_stream`).
+    `done()` = falso: para quem confere, o turno já está em voo. `cancel()` (o Stop chegou antes da task) fica anotado
+    e a task nasce cancelada.
+    """
+
+    __slots__ = ("parado",)
+
+    def __init__(self):
+        self.parado = False
+
+    def done(self) -> bool:
+        return False
+
+    def cancel(self) -> bool:
+        self.parado = True
+        return True
+
+
 @router.post("/chat/stream")
 @limiter.limit("100/minute")
 async def chat_stream(
     request: Request,
     chat_request: ChatRequest,
     db: AsyncSupabaseClient = Depends(get_async_db),
+):
+    """Streaming chat endpoint (SSE) — ver `_chat_stream_do_pedido`.
+
+    Aqui só mora a ÚLTIMA palavra sobre a reserva do turno: o caminho que não chegou ao `create_task` (recusa de
+    política, porteira, agente, 4xx, exceção) solta a chave — e só a SUA reserva, nunca a task de outro pedido.
+    """
+    reservas: list = []
+    try:
+        return await _chat_stream_do_pedido(request, chat_request, db, reservas)
+    finally:
+        for chave, reserva in reservas:
+            if TURNOS_ATIVOS.get(chave) is reserva:
+                TURNOS_ATIVOS.pop(chave, None)
+
+
+async def _chat_stream_do_pedido(
+    request: Request,
+    chat_request: ChatRequest,
+    db: AsyncSupabaseClient,
+    reservas: list,
 ):
     """Streaming chat endpoint (SSE).
 
@@ -877,6 +921,7 @@ async def chat_stream(
     # (o Stop só alcançava a segunda). Um turno em andamento não ganha segunda
     # geração: é aviso tipado, sem gravar nada (R5). A retentativa legítima é a
     # do turno que JÁ TERMINOU (falhou/parou) — essa continua entrando.
+    reserva: Optional[_ReservaDoTurno] = None
     if modo == "painel" and client_request_id:
         em_voo = TURNOS_ATIVOS.get(chave_do_turno)
         if em_voo is not None and not em_voo.done():
@@ -887,6 +932,10 @@ async def chat_stream(
                 texto=MENSAGENS_HUMANAS["turn_in_progress"],
                 legado={"token": MENSAGENS_HUMANAS["turn_in_progress"]},
             )
+        # 🔴 SEM `await` entre a conferência acima e esta linha: é isso que faz a 2ª chamada ver o turno em voo.
+        reserva = _ReservaDoTurno()
+        TURNOS_ATIVOS[chave_do_turno] = reserva
+        reservas.append((chave_do_turno, reserva))
 
     # Check HUMAN_REQUESTED status
     # 🔴 A conversa e lida pela SESSAO, mas ela TEM DONO. Sem esta
@@ -1412,7 +1461,7 @@ async def chat_stream(
     # ⚠️ Dois tetos, e nenhuma fila nova (§5): a fila do turno tem teto para
     # o consumidor que sumiu nao crescer sem fim na memoria, e o processo tem
     # teto de turnos em voo. Estourou o segundo, e 429 — nao e espera muda.
-    if len(TURNOS_ATIVOS) >= TETO_DE_TURNOS_ATIVOS:
+    if len(TURNOS_ATIVOS) - (1 if reserva is not None else 0) >= TETO_DE_TURNOS_ATIVOS:
         logger.warning("[STREAM] teto de turnos em voo atingido (%d)", len(TURNOS_ATIVOS))
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                             detail="muitos turnos em voo; tente de novo em instantes")
@@ -1747,6 +1796,8 @@ async def chat_stream(
 
     task = asyncio.create_task(_gerar(fila))
     TURNOS_ATIVOS[chave_do_turno] = task
+    if reserva is not None and reserva.parado:
+        task.cancel()  # o Stop chegou enquanto o turno ainda se preparava
 
     async def gerador_do_painel():
         seq = Sequenciador(turno)
