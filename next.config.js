@@ -39,6 +39,13 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
+  // SPEC-132-A (A4) — o `middleware.ts` intercepta `/api/upload` (o matcher pega toda rota sem ponto), e o Next 15.5
+  // corta o corpo que passa pelo middleware em 10 MB (`config-shared.js`: `middlewareClientMaxBodySize: 10485760`).
+  // O chat aceita 20 MB por arquivo (B5): sem esta linha, o arquivo de 10–20 MB chegava TRUNCADO à rota de upload.
+  // 25 MB = os 20 MB do arquivo + a moldura do multipart, com folga.
+  experimental: {
+    middlewareClientMaxBodySize: '25mb',
+  },
   // 43P-FINAL-2: playwright-core é server-only (CDP remoto via connectOverCDP);
   // nunca deve ser bundled pelo webpack.
   serverExternalPackages: ['playwright-core'],
