@@ -2893,6 +2893,31 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
     integration = await _resolve_webhook_integration("evolution-go", token)
     body = await request.json()
 
+    # 🔴 SPEC-132-C C2 — O NÚMERO DO AUTOBROKERS (o atalho do chat do corretor). Só a integração `purpose='assistente'`
+    # da empresa da PLATAFORMA entra aqui — e ANTES do desvio do QCM, porque as duas moram na MESMA empresa
+    # (`company_kind='platform_canal'`): depois dele, o "ATIVAR 123456" morreria no portão do convite do QCM. E ANTES do
+    # observer, que consome. Qualquer outra integração (atendimento, observer, QCM) não lê nem uma linha do banco aqui:
+    # o `purpose` já veio na integração. `connection.update` segue o caminho de sempre (status do QR); o resto vai para
+    # `atalho.entrada.turno_do_atalho` em 2º plano (fromMe, grupo, desligado, anti-laço, ATIVAR, silêncio, teto).
+    if str(integration.get("purpose") or "").strip().lower() == "assistente":
+        from app.services.atalho import entrada as _atalho
+
+        if await asyncio.to_thread(_atalho.eh_do_assistente, supabase.client, integration):
+            from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope as _v2
+
+            _env = _v2(body if isinstance(body, dict) else {})
+            if _env.get("event") == "connection.update":
+                return await _handle_evolution_like_inbound(integration, _env, background_tasks, "evolution-go")
+            if _env.get("event") == "unknown":
+                return {"status": "ignored", "reason": "unrecognized_payload"}
+            _norm_atalho, _motivo_atalho = _atalho.filtrar(_env)
+            if _norm_atalho is None:
+                return {"status": "ignored", "reason": f"atalho_{_motivo_atalho}"}
+            if await _is_duplicate_namespaced("evolution-go", _norm_atalho.get("message_id")):
+                return {"status": "ignored", "reason": "duplicate"}
+            background_tasks.add_task(_atalho.turno_do_atalho, supabase.client, integration, _env)
+            return {"status": "accepted", "reason": "atalho"}
+
     # 🔴 SPEC-133-A D-133A-02 — O CANAL DE COTAÇÃO NÃO PASSA PELO OBSERVADOR (desvio 1 de 2; o 2º é no turno).
     # O hub pareia TUDO com `purpose='observer'` e o canal não tem agente: sem este desvio o "oi" do convidado
     # morreria no `observer_tap` (BLOCO 0 §1.2). `fromMe` e grupo morrem AQUI (D-133A-06) — antes do espelho/pausa
