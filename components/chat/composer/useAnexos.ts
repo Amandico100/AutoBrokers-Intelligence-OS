@@ -181,6 +181,18 @@ export function useAnexos(opcoes: { aoRecusarQuantidade?: (cabem: number) => voi
     setFichas([]);
   }, []);
 
+  /**
+   * 🔴 Conserto da SPEC-132-A (juiz P4): o envio foi RECUSADO antes de o turno começar — as fichas que tinham saído
+   * da caixa voltam para ela (na frente das que o corretor já anexou de novo), até o teto de 10.
+   */
+  const restaurar = useCallback((devolvidas: Ficha[]) => {
+    const ids = new Set(fichasRef.current.map((f) => f.id));
+    const voltam = devolvidas.filter((f) => !ids.has(f.id));
+    if (voltam.length === 0) return;
+    fichasRef.current = [...voltam, ...fichasRef.current].slice(0, MAX_ARQUIVOS);
+    setFichas(fichasRef.current);
+  }, []);
+
   useEffect(() => {
     const emCurso = envios.current;
     return () => {
@@ -193,5 +205,5 @@ export function useAnexos(opcoes: { aoRecusarQuantidade?: (cabem: number) => voi
   const comErro = fichas.some((f) => f.estado === 'erro');
   const prontos = fichas.filter((f) => f.estado === 'pronto' && f.anexo).map((f) => f.anexo as AnexoEnviado);
 
-  return { fichas, fichasRef, adicionar, remover, limpar, subindo, comErro, prontos };
+  return { fichas, fichasRef, adicionar, remover, limpar, restaurar, subindo, comErro, prontos };
 }
