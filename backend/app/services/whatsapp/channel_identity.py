@@ -62,6 +62,15 @@ silêncio quando não consegue confirmar.
 **Os auxiliares** — cobrança à frente — são serviço diferente, mensagem
 diferente e risco de bloqueio diferente. Esses têm número **próprio**, e por isso
 nome próprio.
+
+**O assistente dos corretores** (SPEC-132-C) — o número da PLATAFORMA
+"AutoBrokers" com que o corretor conversa como conversa com o chat. Ele não é
+número de corretora nenhuma: mora na empresa da plataforma
+(`company_kind='platform_canal'`), ao lado do número do Quem Cobra Menos, e por
+isso tem escopo, `purpose` e nome PRÓPRIOS (`plataforma:assistente`,
+`assistente`, `ab-ast-<base>`). 🔴 Sem isso ele caía em "corretora": gravava
+`purpose='observer'` e ganhava o MESMO nome de instância do QCM — o QR do
+assistente substituiria o número do Quem Cobra Menos.
 """
 
 from __future__ import annotations
@@ -85,6 +94,13 @@ FUNCOES_DO_NUMERO_DA_CORRETORA: Tuple[str, ...] = ("observer", "attendance", "di
 
 PREFIXO_AUXILIAR = "auxiliary:"
 
+# SPEC-132-C — o número da PLATAFORMA com que o corretor conversa (o atalho do chat).
+# Um escopo só dele: nem "corretora" (dividiria a linha do QCM, que mora na mesma
+# empresa da plataforma), nem auxiliar (não é serviço de uma corretora).
+PURPOSE_DO_ASSISTENTE = "assistente"
+ESCOPO_DO_ASSISTENTE = "plataforma:assistente"
+_PREFIXO_ASSISTENTE = "ab-ast"
+
 
 def _base(company_id: str) -> str:
     return str(company_id or "").replace("-", "")[:_TAMANHO_DA_BASE]
@@ -97,12 +113,16 @@ def _slug(valor: str) -> str:
 def escopo_de(purpose: str) -> str:
     """Normaliza o `purpose` para um dos dois escopos que existem de verdade.
 
-    Devolve ``"corretora"`` ou ``"auxiliary:<slug>"``. Qualquer coisa que não
-    seja auxiliar cai no número da corretora — inclusive valor desconhecido.
+    Devolve ``"corretora"``, ``"auxiliary:<slug>"`` ou — só para o número da
+    plataforma com que o corretor conversa (SPEC-132-C) —
+    ``"plataforma:assistente"``. Qualquer outra coisa cai no número da
+    corretora — inclusive valor desconhecido.
     O padrão é o conservador: um `purpose` novo e não previsto compartilha a
     linha existente em vez de criar um pareamento que ninguém pediu.
     """
     p = str(purpose or "observer").strip().lower()
+    if p == PURPOSE_DO_ASSISTENTE or p == ESCOPO_DO_ASSISTENTE:
+        return ESCOPO_DO_ASSISTENTE
     if p.startswith(PREFIXO_AUXILIAR):
         slug = _slug(p[len(PREFIXO_AUXILIAR):])
         return f"{PREFIXO_AUXILIAR}{slug}" if slug else "corretora"
@@ -112,11 +132,12 @@ def escopo_de(purpose: str) -> str:
 def numero_proprio(purpose: str) -> bool:
     """Este propósito exige um WhatsApp SEPARADO (e portanto outro QR)?
 
-    Verdadeiro só para auxiliares. Observador, atendimento e acionamento dividem
+    Verdadeiro para auxiliares e para o assistente da plataforma. Observador, atendimento e acionamento dividem
     a linha da corretora — pedir outro QR para eles seria pedir à atendente um
     pareamento a mais para um poder que a sessão dela já tem.
     """
-    return escopo_de(purpose).startswith(PREFIXO_AUXILIAR)
+    escopo = escopo_de(purpose)
+    return escopo.startswith(PREFIXO_AUXILIAR) or escopo == ESCOPO_DO_ASSISTENTE
 
 
 def nome_da_instancia(company_id: str, purpose: str = "observer") -> str:
@@ -133,6 +154,8 @@ def nome_da_instancia(company_id: str, purpose: str = "observer") -> str:
     """
     base = _base(company_id)
     escopo = escopo_de(purpose)
+    if escopo == ESCOPO_DO_ASSISTENTE:
+        return f"{_PREFIXO_ASSISTENTE}-{base}"
     if escopo.startswith(PREFIXO_AUXILIAR):
         return f"{_PREFIXO_AUXILIAR}-{base}-{escopo[len(PREFIXO_AUXILIAR):]}"
     return f"{_PREFIXO_CORRETORA}-{base}-{_SUFIXO_CORRETORA}"
@@ -147,6 +170,8 @@ def purpose_canonico(purpose: str) -> str:
     próprios, apontando para um WhatsApp que nunca foi pareado por ninguém.
     """
     escopo = escopo_de(purpose)
+    if escopo == ESCOPO_DO_ASSISTENTE:
+        return PURPOSE_DO_ASSISTENTE
     return "observer" if escopo == "corretora" else escopo
 
 
@@ -157,4 +182,6 @@ __all__ = [
     "numero_proprio",
     "FUNCOES_DO_NUMERO_DA_CORRETORA",
     "PREFIXO_AUXILIAR",
+    "PURPOSE_DO_ASSISTENTE",
+    "ESCOPO_DO_ASSISTENTE",
 ]
