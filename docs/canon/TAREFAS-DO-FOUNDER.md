@@ -245,6 +245,9 @@
 > 8. **T-157** e **T-158** — quando quiser.
 > 9. **13/10 (131-A construída):** **T-159** (as licenças do Agger, ⚠️ a da Resulta vence HOJE) · **T-160** (Implantar os 3 serviços
 >    JUNTOS, depois da 131-B) · **T-161** (apagar as 8 linhas de ensaio) · **T-162** (a conta do Agger usada no BLOCO 0).
+> 10. **13/10 (131-B construída, `main` `1247e44`):** **T-160** (agora os **4** serviços, com o `smith-web`) → **T-161** → **T-157** (cada
+>    comercial no Meu perfil) → **T-163** (LIGAR a Renovação numa corretora) · **T-165** (quem vê "Todas") quando quiser · **T-164** (as
+>    capas, opcional).
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -264,6 +267,15 @@
       Minhas conexões**: confirma o próprio WhatsApp (é para onde vai o "Quero renovar" do cliente dele) e conecta o próprio Agger (a
       T-141 passa a ser feita por ela mesma, no perfil, D-131-07). **Esperado:** em Personalização → Equipe, a coluna "Agger" mostra
       "conectado ✓" para cada um. **Se não fizer:** o "Quero renovar" vai ao WhatsApp da corretora (T-125). · *de:* proposta SPEC-131 §4.8
+      🔁 **13/10 (SPEC-131-B construída) — o caminho exato, depois da T-160.** Cada comercial, logada com o PRÓPRIO usuário:
+      1. Canto da tela → **Meu perfil** → aba **Minhas conexões** → conecta o **SEU** Agger (o admin não consegue conectar o Agger de outra
+         pessoa — D-131-07, provado: 403).
+      2. Aba **Meu WhatsApp de trabalho** → digita o próprio celular ("Número com DDD"; só número do Brasil) → **confirma**. É só o número, para o
+         cliente responder a ela: nada é pareado, e o WhatsApp de atendimento da corretora e o do Quem Cobra Menos não mudam (D-131-43).
+      3. (Se for sair de férias) aba **Ausência** → período + quem cobre.
+      **Esperado:** em Personalização → Equipe, a situação de cada pessoa mostra o Agger conectado e o WhatsApp confirmado. 📊 13/10: 0
+      números gravados. **Se der errado:** a tela diz em português o que corrigir ("Use um número do Brasil: +55, o DDD e o número…",
+      "Confira o DDD e o número…") → corrija e confirme de novo; outro erro → print e a hora no chat.
 - [ ] **T-158** ⏳ 🧑 **decisão, 1 min — não trava construir** · **Em qual Agger roda o canário da madrugada** (a prova da 131-A numa
       corretora de ENSAIO, ≤ 5 renovações, uma madrugada). 📊 12/10: além das 2 contas das corretoras (ativas), as 2 contas `teste` do Agger estão **pausadas** (laudo I1 §1).
       Opções: (a) reativar uma conta de teste para a corretora de ensaio — nota **85**; (b) esperar a T-141 de uma comercial real — **40**
@@ -298,6 +310,17 @@
       **Esperado:** `build_time` de 13/10/2026 ou depois. Nada calcula até a 131-B instalar o aplicativo numa corretora (📊 13/10: 0
       instalados). **Se der errado:** `build_time` antigo → Implantar o `portal-worker` de novo; erro na tela → print e a hora no chat.
       · *de:* S131-A §6 · RT-P9
+      🔁 **13/10 (SPEC-131-B na `main` `1247e44`) — AGORA SÃO 4, e o `smith-web` é obrigatório.** Ordem, no mesmo momento:
+      `smith-api` → `smith-worker` → `portal-worker` → `smith-web`. A 131-B também tem migration, e ela **já está no banco** (versão
+      📊 `20261013113534`, aplicada 13/10). Nenhuma variável nova.
+      1. Implantar os quatro, nessa ordem.
+      2. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao` → **esperado:** `commit` começando
+         por `1247e44` (ou mais novo) e `build_em_brasilia` de hoje. Depois o `/health` do `portal-worker` (passo 2 acima).
+      3. Entre no painel. **Esperado na tela:** o menu diz **"Aplicativos"** (não mais "Auxiliares"); a loja tem capa colorida e ícone em
+         cada aplicativo, sem estrelas; ao abrir **Renovação** aparecem as abas Início · Configurar · Renovações · Dúvidas, e o Início
+         mostra **"Como começar"** com "N de M prontos". Personalização → Serviços agora leva à aba Configurar da Renovação.
+      **Se der errado:** `/api/versao` com commit antigo → Implantar o `smith-web` de novo; a loja ainda antiga → `Ctrl+F5`; qualquer
+      página com erro → print e a hora no chat (nunca tente "consertar" pelo banco). · *de:* S131-B §6/§10.1
 - [ ] **T-161** ⏳ 🧑 **decisão, 1 min** · **Apagar as 8 renovações de ensaio do canário** (P-131A-11) — 📊 13/10: a tabela `renovacoes`
       tem 8 linhas e as 8 são do canário (`canario = true`), todas da corretora de origem dos dados. Elas não aparecem para ninguém hoje, mas
       a aba Renovações da 131-B as mostraria misturadas às reais. Responda no chat *"T-161: pode apagar"* ou *"T-161: guarde"*; a execução
@@ -310,6 +333,39 @@
          sessão mostrada no aviso (a do teste).
       **Esperado:** ela entra normalmente; nada do trabalho dela some (o robô não apaga cotação de ninguém). **Se der errado:** print da
       tela e a hora no chat. · *de:* S131-A §10.1
+
+> **13/10 (SPEC-131-B, o aplicativo de Renovação, na `main` `1247e44`, nota 89):** a loja nova, o padrão de todo aplicativo, a aba
+> Renovações, a página de RENOVAÇÃO para o cliente e o "Enviar pelo WhatsApp" que abre o WhatsApp DE QUEM CLICA (o produto não envia nada
+> sozinho). 📊 0 corretoras com a Renovação ligada. A **T-160** passou a ser de **4** serviços e a **T-157** ganhou o caminho exato; nasceram
+> a **T-163** (LIGAR), a **T-164** (as capas) e a **T-165** (quem vê "Todas").
+
+- [ ] **T-163** ⏳ 🧑 **depois da T-160, da T-161 e de pelo menos um Agger conectado** · **LIGAR a Renovação numa corretora** —
+      🔴 **Ligar = a madrugada começa a calcular** naquela corretora (00:30 a lista, 02:00 os cálculos no Agger, 06:45 o aviso). Nada vai ao
+      cliente sem um comercial tocar "Enviar pelo WhatsApp". Comece por UMA corretora.
+      1. Entre no painel como administrador dessa corretora → menu **Aplicativos** → **Renovação**.
+      2. Aba **Início** → **Como começar**: cada passo diz se está pronto ("N de M prontos") — o sistema de gestão (InfoCap) conectado, o
+         Agger (o da corretora ou o de cada comercial, T-157) e a Configuração. Clique no link de cada passo que faltar.
+      3. Aba **Configurar** → confira "O que fazer", "Quando" e "Com qual conta" (**Do responsável** = o Agger de quem cuida do cliente; **Da
+         corretora** = sempre o Agger da corretora) → salvar.
+      4. Botão **Ligar** no topo → a janela "Ligar Renovação?" mostra os passos e "A partir da próxima madrugada…" → **Ligar**.
+      5. No dia seguinte, depois das 7h: aba **Renovações** → as do dia aparecem calculadas; abra uma → **Ver apresentação**.
+      **Esperado:** no **SQL** (só leitura), logo depois de ligar:
+      `select t.slug, ta.status from tenant_auxiliaries ta join auxiliary_templates t on t.id = ta.template_id where t.slug = 'renovacao';`
+      → 1 linha. 📊 13/10: **0 linhas**. Na manhã seguinte:
+      `select estado, count(*) from renovacoes where not canario group by 1 order by 1;` → linhas `calculada` (e `pendente` com motivo).
+      **Se der errado:** "Agora não" fecha sem ligar; para parar depois, o botão **Desligar** (não apaga nada). Aba Renovações vazia de
+      manhã → print e a hora no chat (o aviso das 06:45 diz "N calculadas de M cotáveis"). · *de:* S131-B §6/§10.1 · D-131-52
+- [ ] **T-164** ⏳ 🧑 **opcional, quando quiser** · **As capas dos aplicativos** — hoje cada aplicativo tem capa GERADA pela cor dele
+      (D-131-41), e fica bonito assim. Se quiser uma imagem própria: **1600×900 px, WebP, até 150 KB, SEM texto** (o nome já aparece
+      por cima), uma por aplicativo. Mande as imagens no chat dizendo de qual aplicativo é cada uma; a execução sobe e grava em
+      `auxiliary_templates.cover_url`. **Esperado:** a loja mostra a sua imagem no lugar da capa gerada. **Se der errado:** imagem maior
+      que 150 KB ou com texto → a execução devolve pedindo outra. · *de:* S131-B §10.1
+- [ ] **T-165** ⏳ 🧑 **decisão, 1 min** · **Quem vê "Todas" as renovações** (P-131B-01) — 📊 hoje TODO membro ativo, inclusive a atendente,
+      vê "Todas" e pode tocar "Enviar pelo WhatsApp" em qualquer renovação (o link leva o telefone do cliente). Opções:
+      (a) "Todas" só para o administrador; os demais veem as suas e as de quem cobrem nas férias — 💭 nota **75**;
+      (b) deixar como está e só corrigir a frase da aba Dúvidas — 💭 nota **60**.
+      Responda no chat *"T-165: a"* ou *"T-165: b"*. **Esperado:** a execução aplica numa SPEC pequena. · *de:* S131-B §10 · juiz P5 ·
+      red team P6
 
 ### ① Implantar e conferir — não depende de nada
 

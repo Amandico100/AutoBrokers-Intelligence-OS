@@ -23,7 +23,7 @@ REFERÊNCIA ..... interna: DS-001 §5 · o laudo DESIGN-DO-PADRAO-DE-APLICATIVO 
 GATES .......... fio · tsc · rotas montam · next build + next start + requisição · 5 mutações · 2 corretoras · design ≥ 90 · bateria
 O ELO .......... "o cliente recebe a página de RENOVAÇÃO PORQUE o envio publica pela variante" → o teste do fio lê o HTML SERVIDO por
                  `abrir_compartilhado` depois do POST de envio (📊 G5)
-FAIXA DE RELÓGIO declarada 💭 5–7 h · real ≈ 11 h (10:23 → 21:45 de 13/10): `next build` de 80–115 min nesta máquina (8 GB), coleta do
+FAIXA DE RELÓGIO declarada 💭 5–7 h · real ≈ 14 h (07:22 → 21:45 de 13/10, horário de Brasília): `next build` de 80–115 min nesta máquina (8 GB), coleta do
                  pytest de 7–30 min, e 3 rodadas de design até ≥ 90
 ```
 

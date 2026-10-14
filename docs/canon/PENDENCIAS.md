@@ -377,6 +377,9 @@ funcionam.** São alcançadas pela ficha do Auxiliar (`tela_de_execucao`), mas o
 lugar delas é sob `/dashboard/auxiliares/[slug]/`.
 - **Custa se esquecer:** o teste só impede a **terceira**; estas duas
   continuam sendo o precedente.
+- ↪ **13/10 · 🟡 CONTINUA (SPEC-131-B).** As duas seguem em `galeria/` (📊 0 commits da 131-B nessa pasta). O destino agora existe — a
+  casca `/dashboard/auxiliares/[slug]?aba=` — e a tela de **Serviços**, que também morava fora do lugar, saiu de Personalização para a aba
+  Configurar da Renovação (D-131-06, redirect). As duas vão com "A loja de aplicativos" (programa 8.1). Drenagem em P-131B.
 
 ## P-17 · A verdade sobre conexões mora em três tabelas
 
@@ -13482,6 +13485,8 @@ Fonte: `reports/SPEC-130-A-EXECUTION-REPORT.md` · SPEC `specs/SPEC-130-A-a-comp
 O botão "Quero fechar" leva ao WhatsApp da corretora vencedora; sem o número, **publicar RECUSA** (de propósito: proposta sem canal de
 fechamento não sai). **Destrava:** o Founder cadastra o WhatsApp de atendimento em Personalização → Corretora → Identidade da corretora, na
 Resulta e na AutoFleet (T-125). **Custa esquecer:** nenhuma proposta real é publicada.
+↪ **13/10 · 🟡 ALIVIADA NA RENOVAÇÃO (SPEC-131-B, D-131-44).** A página de RENOVAÇÃO publica sem o número da corretora: o "Quero renovar"
+vai ao dono ativo com número confirmado e, sem ele, diz "responda a mensagem que recebeu". A carteira de cotação e o QCM continuam recusando.
 
 ## P-130A-02 · 🧑 O nº SUSEP não está no cadastro de marca
 **Destrava:** o Founder cadastra o nº SUSEP das duas corretoras em Personalização → Corretora → Identidade da corretora (T-125). **Custa esquecer:**
@@ -13948,12 +13953,16 @@ certo. **De quem:** 🤖 (SPEC de ramos, depois da 132). **Custa esquecer:** a f
 O `falhou` definitivo não volta sozinho e o passageiro vira `precisa_de_voce` depois de 2 noites (conserto C1); não há botão para
 recalcular. **Destrava:** "Calcular de novo" na aba Renovações da **131-B**. **De quem:** 🤖 131-B. **Custa esquecer:** o item fica parado
 até o vencimento, e a corretora não tem como pedir de novo.
+↪ **13/10 · 🟡 CONTINUA.** A 131-B entregou a aba Renovações sem o "Calcular de novo" (📊 grep na aba e em `api/renovacoes.py` = 0). Fica
+para a próxima SPEC que tocar a aba (a 132 reusa a lista).
 
 ## P-131A-11 · 🧑 As 8 linhas de canário na tabela `renovacoes`
 📊 SELECT 13/10: `renovacoes` = 8 linhas, **8 com `canario=true`**, 1 corretora (a de origem dos dados, D-131-35); 2 `calculada` ·
 1 `falhou` · 5 `pendente`. ⚠️ O relatório §4 diz 6; o SELECT de hoje e o juiz dizem 8. O ROLLBACK da migration RECUSA enquanto houver
 dado. **Destrava:** o Founder decide apagar — T-161. **De quem:** 🧑 a decisão · 🤖 o delete. **Custa esquecer:** a aba Renovações da
 131-B abre com itens de ensaio misturados aos reais.
+↪ **13/10 · confirmado pela 131-B:** `/api/renovacoes` não filtra `canario` (📊 grep = 0) — as 8 aparecem na aba assim que a Renovação for
+ligada na corretora de origem. Responder a T-161 ANTES da T-163.
 
 ## P-131A-12 · 🤖 O teste do fio fecha os cálculos com dublê, não com o motor real
 `test_spec131a_o_fio.py` fecha com `fechar_com_ofertas` (juiz P3); a porta e o `de_apolice` são reais; o motor real só rodou no canário.
@@ -13989,3 +13998,112 @@ esquecer:** o guarda continua verde se a recusa sair do caminho real.
 | P-1310-02 | ✅ FECHADA — `documento_valido` antes da rede em todo chamador, com o guarda de todo `/cliente_cpf` |
 | P-1310-04 | ✅ FECHADA na renovação (`falhou(conta_recusada)` com frase); a cotação é da 132 |
 | P-129B-05 | 🟡 PARCIAL — o combustível ✅ (7 códigos medidos); estado civil, uso, garagem e fabricante continuam (P-131A-06) |
+
+## P-131B · SPEC-131-B, o aplicativo de Renovação (13/10/2026)
+
+> Fonte: `reports/SPEC-131-B-EXECUTION-REPORT.md` §10 · laudos `programa-multicalculo/131/` JUIZ-131-B (J-), RED-TEAM-131-B (RT-),
+> CONFIRMACAO-131-B (N-), JUIZ-DE-DESIGN-131-B-FINAL (o que falta para 95), conferidos contra o código de `1247e44`. 📊 Hoje nada roda
+> em produção: 0 corretoras com o aplicativo instalado (relatório §6) e o código não está implantado (T-160). Já fechados no conserto (não
+> entram aqui): J-B1 (D-131-49), J-P2/P3/P4/P6/P8, RT-B1 (D-131-50), RT-B2, RT-B3, RT-P1…P5, RT-P7 (D-131-52), N1, N2, J-P1 (§9.1 local:
+> `next build` + `next start` + 7 requisições, relatório §5) e os 4 blockers + 3½ polimentos do design (FINAL 91).
+
+## P-131B-01 · 🧑 "Todas" as renovações abertas a todo membro, inclusive a atendente
+📊 Red team A10: `todas_itens 1 · envio_por_nao_dono 200`; o envio devolve o `wa.me` com o telefone do cliente (J-P5/RT-P6). A Dúvidas
+do catálogo ("Quem administra a corretora vê todas") pode ser lida como trava, e não é. **Destrava:** o Founder decide (T-165): limitar
+"Todas" e o envio de renovação alheia por papel, ou manter e corrigir a frase. **De quem:** 🧑 a decisão · 🤖 a trava ou a frase.
+**Custa esquecer:** a atendente vê e manda a renovação de qualquer cliente da corretora, com o telefone dele.
+
+## P-131B-02 · 🤖 O `wa.me` com até 500 caracteres nunca foi aberto num aparelho
+BLOCO 0 B1 da SPEC: NÃO medido (juiz, "por medir"). O texto do link fica ≤ 500 e "Copiar a mensagem" (a completa, ≤ 700) está sempre ao
+lado (RT-B2 consertado). **Destrava:** abrir o link de UMA renovação real num Android e num iPhone, no canário (P-131B-13), e anotar se
+o texto chega inteiro. **De quem:** 🤖 (com 🧑 o aparelho). **Custa esquecer:** num aparelho que corta a URL, o comercial manda meia
+mensagem sem perceber.
+
+## P-131B-03 · 🤖 A Fila de atendimentos tem alvos < 44 px no celular e o "Fechar" do Sheet está em inglês
+📊 JUIZ-DE-DESIGN-131-B-FINAL item 24 (`medidas.jsonl`): "Atualizar" **34 px**, o link "Atendimentos" **17 px**, selos em monoespaçada
+— legado fora da 131-B (o `QuadroOuLista` foi extraído dela sem mudar o visual). O `components/ui/sheet.tsx:67` tem
+`<span className="sr-only">Close</span>`: o leitor de tela diz "Close" em TODA gaveta do produto. **Destrava:** os 44 px na Fila e
+"Fechar" no `sheet.tsx` (um arquivo, global). **De quem:** 🤖 "A loja de aplicativos" ou qualquer SPEC que toque a Fila. **Custa
+esquecer:** toque errado no celular e a única palavra em inglês do painel lida em voz alta.
+
+## P-131B-04 · 🤖 `min-w-4` em `ConversasClient.tsx` não gera CSS
+O K3 estendeu só `minHeight` com a escala de `spacing` (`tailwind.config.ts:15`; no Tailwind 3.3 `min-h-11` não existia). `minWidth`
+não foi estendido, e `app/dashboard/atendimentos/conversas/ConversasClient.tsx` usa `min-w-4` — conferido no código em 13/10, classe sem
+regra. **Destrava:** estender `minWidth` do mesmo jeito (as classes que existem saem iguais) e o guarda `a-loja-e-a-casca.test.mjs`
+varrer `min-w-*`. **De quem:** 🤖. **Custa esquecer:** o elemento pode encolher abaixo do tamanho pensado — e a próxima classe que "não
+existe" passa despercebida, como passou a `min-h-11`.
+
+## P-131B-05 · 🤖 O seletor "Do responsável | Da corretora" empilha no celular
+JUIZ-DE-DESIGN-131-B-FINAL item 8 e "o que falta" 2: duas pílulas desalinhadas e um vão à direita (`components/aplicativos/configurar/pecas.tsx:106`).
+**Destrava:** `grid w-full grid-cols-1 sm:inline-flex sm:w-auto`, cada opção na largura toda. **De quem:** 🤖. **Custa esquecer:** a
+única tela do Configurar que parece formulário cru (💭 projeção do juiz: itens 1–3 ≈ 93).
+
+## P-131B-06 · 🤖 A renovação já enviada mostra o mesmo botão primário — falta "Enviar de novo"
+JUIZ-DE-DESIGN-131-B-FINAL "o que falta" 3: no celular, cinco botões pretos iguais, inclusive na já `enviada`
+(`components/aplicativos/renovacao/PecasDaRenovacao.tsx:270`). **Destrava:** `enviada` → botão `outline` "Enviar de novo"; o primário
+fica para quem falta. **De quem:** 🤖. **Custa esquecer:** o olho do comercial não acha o que ainda falta mandar, e ele reenvia sem querer.
+
+## P-131B-07 · 🤖 Na página do cliente sem número, o cartão termina num vão vazio
+JUIZ-DE-DESIGN-131-B (polimento 6) → CONFIRMACAO → FINAL "o que falta" 4: onde ficaria o "Quero esta" sobra um vão
+(`cliente3/r_sem_numero_celular_dark_inteira.png`). **Destrava:** em `backend/app/services/artifacts/proposta_estilo.py:17`, o
+`margin-top:auto` só quando há `.want`. **De quem:** 🤖. **Custa esquecer:** o segurado vê um cartão "quebrado" justamente quando não
+há botão para responder.
+
+## P-131B-08 · 🤖 Meu perfil: a faixa de abas corta sem mostrar que rola; o link de Conectores tem 38 px
+JUIZ-DE-DESIGN-131-B-FINAL "o que falta" 5: no celular "WhatsApp d…" cortado sem sinal de rolagem (`perfil-conexoes_390_claro.png`);
+📊 o link "Personalização → Conectores" mede **38 px** (`components/perfil/MinhasConexoes.tsx:20`); no notebook a faixa é mais estreita
+que o cartão. **Destrava:** esmaecido na borda (ou rolar a aba ativa para a vista) e `inline-flex min-h-[44px] items-center`. **De
+quem:** 🤖. **Custa esquecer:** o comercial não acha "Meu WhatsApp de trabalho" — e sem ele o "Quero renovar" cai na corretora (T-157).
+
+## P-131B-09 · 🤖 O backend ainda aceita o modo `calcular_entregar` na renovação
+D-131-48 tirou "Preparar o envio" da TELA, mas `config.MODOS` segue com os 3 modos e a gravação valida contra ele
+(`backend/app/services/multicalculo/config.py:228/431`). 📊 grep 13/10: `pode_entregar(` / `pode_negociar(` têm **0 chamadores** fora da
+própria definição — gravar o modo por API hoje não envia nada. **Destrava:** recusar `calcular_entregar*` para `renovacao` na validação
+até a 135 (o envio automático, D-131-24). **De quem:** 🤖 132 ou 135. **Custa esquecer:** a 135 liga o envio automático e encontra
+corretoras com o modo gravado por fora da tela — envio que ninguém escolheu.
+
+## P-131B-10 · 🤖 Dois envios ao mesmo tempo deixam uma página publicada que nunca é enviada
+RT-P1 consertado (K1): quem perde a corrida adota o link do outro (`test_rtp1`: enviado == gravado). Mas a página que ele já publicou
+fica no ar sem dono (CONFIRMACAO (c): "Página órfã nunca é enviada" — e também não é revogada). **Destrava:** revogar a versão
+perdedora no mesmo passo de `fixar_referencia`, ou a trava curta por renovação antes de publicar. **De quem:** 🤖. **Custa esquecer:**
+Artifacts órfãos com nome, vencimento e preço do segurado acumulando (CLAUDE.md §6: Artifact não é arquivo órfão).
+
+## P-131B-11 · 🤖 A troca do link não deixa rastro na linha do tempo (N3)
+`_trocar_referencia` muda `proposta_ref` + `versao` sem gravar evento em `renovacao_eventos` (CONFIRMACAO N3, inferência por leitura — não
+se mediu se o evento do envio carrega o token). **Destrava:** um evento `link_trocado` com a versão de antes e a de depois. **De quem:**
+🤖. **Custa esquecer:** na auditoria de "qual página o cliente viu", a troca some.
+
+## P-131B-12 · 🤖 O "1 Issue" do `next dev` no Início, sem causa confirmada
+JUIZ-DE-DESIGN-131-B-FINAL "o que falta" 1: aparece em `app-inicio_1440_claro.png`. Suspeito: `useSearchParams` sem `<Suspense>` em
+`components/aplicativos/casca/LarguraDoAplicativo.tsx:14` (novo no K3); outra hipótese, aviso de hidratação. O `next build` passou e o
+`next start` respondeu (relatório §5), então não é erro de build. **Destrava:** abrir o aviso no `next dev`, zerá-lo, e o juiz de design
+ver `next start` + 200 (o checklist 25 segue NÃO AVALIADO por ele). **De quem:** 🤖. **Custa esquecer:** se for hidratação, vira tela
+piscando em produção.
+
+## P-131B-13 · 🧑🤖 Nenhuma prova em produção nem canário com corretor real
+📊 0 corretoras com o aplicativo instalado; o relatório §6 não teve canário real e a nota 89 desconta "a prova em produção e o canário
+com corretor real". **Destrava:** T-160 (Implantar os 4) → T-161 → T-163 (Ligar numa corretora) → uma manhã com renovações calculadas,
+uma apresentação aberta, um "Enviar pelo WhatsApp" de verdade (com P-131B-02) e a contagem
+`select estado, count(*) from renovacoes where not canario group by 1;`. **De quem:** 🧑 Implantar e Ligar · 🤖 o canário e a contagem.
+**Custa esquecer:** o produto entra no ar sem nunca ter sido visto ponta a ponta com uma comercial.
+
+## P-131B-14 · 🤖 O que o juiz de design não avaliou
+JUIZ-DE-DESIGN-131-B-FINAL: checklist **18** (a barra de salvar) NÃO AVALIADO; a captura `loja_390_claro.png` foi tirada ainda
+carregando (a loja no celular foi julgada pela escura); o contraste foi conferido a olho, sem axe/Lighthouse. **Destrava:** refazer as
+capturas com espera pela rede e rodar axe na loja, no Início e na página do cliente. **De quem:** 🤖. **Custa esquecer:** a nota 91 fica
+com três cantos sem prova.
+
+## P-131B-15 · 🤖 Os tokens globais de cor e as telas antigas fora do padrão
+D-131-45 deixou os tokens globais intocados (a correção global é proposta à parte, laudo DESIGN-DO-PADRAO §7). JUIZ-DE-DESIGN-131-B-CONFIRMACAO
+itens 14/15: 📊 8 `text-[10/11px]` e `emerald-/amber-` em `app/dashboard/auxiliares/checklist-6h/hoje/page.tsx` (fora da 131-B).
+**Destrava:** a SPEC "A loja de aplicativos" (8.1 do programa) traz os outros aplicativos ao padrão e decide os tokens. **De quem:** 🤖.
+**Custa esquecer:** as telas novas passam no contraste AA e as antigas, ao lado, não.
+
+## A drenagem das pendências que a SPEC-131-B tocou
+| P | estado |
+|---|---|
+| P-16 | 🟡 CONTINUA — as duas telas (`galeria/follow-up-whatsapp` e `galeria/resumo-atendimentos`) seguem fora da rota do aplicativo (📊 `git log 7d41c1f..1247e44 -- app/dashboard/auxiliares/galeria` = 0 commits). O que mudou: o DESTINO agora existe (a casca `[slug]?aba=`, D-131-19) e a outra tela fora do lugar — **Personalização → Serviços** — saiu: o endereço antigo redireciona para a aba Configurar da Renovação (D-131-06; 📊 307 no `next start`, relatório §5). As duas restantes vão com "A loja de aplicativos" |
+| P-1310-04 | 🟡 SEM MUDANÇA — fechada na renovação pela 131-A; a 131-B não criou chamador de cotação. A tradução HTTP da cotação segue da **132** |
+| P-130A-01 | 🟡 ALIVIADA na renovação — a página de renovação publica sem o número da corretora e o "Quero renovar" cai no dono confirmado ou em "responda a mensagem que recebeu" (D-131-44). Continua 🧑 para a carteira de cotação e o QCM (T-125) |
+| P-131A-10 | 🟡 CONTINUA — o "Calcular de novo" NÃO foi construído na 131-B (📊 grep "Calcular de novo"/"recalcular" em `components/aplicativos/renovacao` e `backend/app/api/renovacoes.py` = 0). Passa à próxima SPEC que tocar a aba Renovações |
+| P-131A-11 | 🟡 CONTINUA e pesa mais — a API `/api/renovacoes` não filtra `canario` (📊 grep `canario` em `backend/app/api/renovacoes.py` = 0): ao Ligar na corretora de origem, as 8 linhas de ensaio aparecem na aba. Decida a T-161 ANTES da T-163 |

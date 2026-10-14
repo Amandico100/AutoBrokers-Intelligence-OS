@@ -4135,3 +4135,32 @@ estrita é a que não mente.
 reais; o BLOCO 0 mediu a data em `GET /usuario/current` (AutoFleet: licença 20/10, `dataLimiteCalculo` 27/10). **Consequência:** a sessão
 lê `/usuario/current` e `/usuario/login/pdocs` interceptados (ou UM `fetch` na página aberta, nunca `goto`); só as datas são extraídas.
 ⚠️ Sem prova ao vivo até o Implantar (P-131A-02, T-160). **Autorização:** conserto do blocker B3, dentro do escopo.
+
+## 13/10/2026 · SPEC-131-B · a configuração de Serviços aceita as chaves novas da renovação (D-131-46) — ESSENCIAL · ✅ EXECUTADA (gerente)
+**Problema:** a SPEC §1 dizia "o backend de Serviços só lido", mas a aba Configurar da Renovação edita chaves que a madrugada da 131-A
+lê e que a rota de Serviços não conhecia. **Evidência:** relatório §8 — sem elas a tela não gravava; o diff de
+`backend/app/api/servicos_da_corretora.py` acrescenta `opcoes`, `teto_por_conta_noite`, `antecipar_ate_dias` e `conta` (lidas pelos MESMOS
+leitores de `multicalculo/config.py` que a madrugada usa) e as faixas delas; o link das regras passou a ser
+`/dashboard/auxiliares/renovacao?aba=configurar`. O red team conferiu: todas as chaves da tela antiga existem na nova, a rota PUT segue
+com o porteiro e `EDITAVEL_POR_SERVICO["cotacao"]` não aceita `conta`. 📊 `multicalculo_config` = 0 linhas em 13/10 (nada a migrar).
+**Consequência:** a Configurar grava; nenhum número comercial é escrito pela tela (guarda G8 da 130-A); cotação e QCM não mudam.
+⚠️ O modo `calcular_entregar` continua aceito pela validação (P-131B-09). **Autorização:** BLOCKER do outcome (a tela não funcionaria);
+executada pelo gerente dentro do escopo.
+
+## 13/10/2026 · SPEC-131-B · `tailwind.config.ts`: `minHeight` com a escala de `spacing` — ESSENCIAL · ✅ EXECUTADA (gerente, conserto K3)
+**Problema:** o conserto de design pôs `min-h-11` (44 px de toque) nas telas novas, e a classe não existia. **Evidência:** JUIZ-DE-DESIGN-131-B-CONFIRMACAO
+(87): "Os alvos de 44 px do conserto não existem: `min-h-11` não é classe no Tailwind 3.3.3" — achado EXCLUSIVO das capturas; o `globals.css`
+só ganhou classes. 📊 Depois do K3: `alvos_abaixo_44: []` em todas as telas do aplicativo nas duas cores (`medidas.jsonl`, JUIZ-DE-DESIGN-131-B-FINAL).
+**Consequência:** `minHeight: ({ theme }) => ({ ...theme('spacing') })` — antecipa o comportamento do Tailwind 3.4; as classes que já
+existiam saem iguais (`min-h-0` = 0 px nas duas escalas). Muda um arquivo GLOBAL de configuração; o guarda `a-loja-e-a-casca.test.mjs`
+fica vermelho com uma classe `min-h-*` sem CSS. ⚠️ `minWidth` não foi estendido (`min-w-4` em `ConversasClient.tsx`, P-131B-04).
+**Autorização:** conserto do blocker de design, dentro do escopo.
+
+## 13/10/2026 · SPEC-131-B · um harness de captura TEMPORÁRIO em `/embed/` para o juiz de design ver o painel — VALIOSA · ✅ EXECUTADA e APAGADO
+**Problema:** o juiz de design precisava VER o painel logado (loja, aplicativo, Meu perfil) no celular e no notebook, e criar usuário ou
+mexer na autenticação seria mudar segurança para tirar foto. **Evidência:** relatório §8; as capturas dos laudos JUIZ-DE-DESIGN-131-B-CONFIRMACAO
+(36 PNG) e FINAL (47 PNG + `medidas.jsonl`) foram feitas pelo `next dev` com dados sintéticos. 📊 Depois: `git ls-files app/embed` = só os 2
+arquivos do widget que já existiam, `git diff 7d41c1f..1247e44 -- app/embed` = vazio, `git status app/embed` = limpo. **Consequência:** o
+painel foi VISTO sem criar usuário nem tocar em autenticação; nada do harness foi para a `main`. Lição para a próxima SPEC com tela:
+um caminho de captura permanente, só em `next dev`, evitaria refazer o harness (proposta, não executada). **Autorização:** instrumento de
+prova do gerente, apagado antes do commit.
