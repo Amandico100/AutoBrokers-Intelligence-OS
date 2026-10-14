@@ -162,16 +162,73 @@ _CANDIDATOS = {
 }
 
 
-def unico_no_texto_cru(tipo: str, textos: Iterable[str]) -> Optional[str]:
+def unico_no_texto_cru(tipo: str, textos: Iterable[str], *, compativel_com: Any = None) -> Optional[str]:
     """O ÚNICO valor válido daquele tipo nas falas cruas do corretor (as mais recentes primeiro). Dois DIFERENTES →
-    None (nunca escolhe: pergunta). ⛔ Nunca loga o que achou."""
+    None (nunca escolhe: pergunta). ⛔ Nunca loga o que achou.
+
+    `compativel_com` (só o CPF — conserto juiz B3): o valor MASCARADO que o modelo mandou para ESTE pedido
+    (`***.***.***-25`, `<CPF>`). Só conta o achado que tem os MESMOS dígitos visíveis nas mesmas posições — o CPF de
+    outro cliente da mesma conversa ("…-25" do João quando o da Maria é "…-31") nunca entra."""
     achados: List[str] = []
     for t in textos or ():
         for bruto in _CANDIDATOS[tipo].findall(str(t or "")):
             v = documento_valido(bruto) if tipo == "cpf" else _validar(tipo, bruto)
+            if v and compativel_com is not None and not documento_compativel(v, compativel_com):
+                continue
             if v and v not in achados:
                 achados.append(v)
     return achados[0] if len(achados) == 1 else None
+
+
+#: os caracteres com que uma máscara esconde um dígito (`***.***.***-25`, `xxx.xxx.xxx-25`, `•••`, `#`)
+_CURINGA = set("*xX•#_?")
+
+
+def documento_compativel(documento: str, mascarado: Any) -> bool:
+    """O documento achado (só dígitos) CABE no valor mascarado que o modelo mandou? Cada dígito visível tem de estar
+    na MESMA posição (contada do FIM — a máscara da renovação mostra os 2 últimos). Sem dígito visível (`<CPF>`), cabe
+    (a conferência dos dígitos verificadores e o "único" fazem o resto). Mais dígitos visíveis que o documento → não."""
+    texto = str(mascarado or "")
+    sinais = [ch for ch in texto if ch.isdigit() or ch in _CURINGA]
+    visiveis = [ch for ch in sinais if ch.isdigit()]
+    if not visiveis:
+        return True
+    if len(sinais) > len(documento):
+        return False
+    for i, ch in enumerate(reversed(sinais)):
+        if ch.isdigit() and documento[len(documento) - 1 - i] != ch:
+            return False
+    return True
+
+
+def valor_em_reais(texto: Any) -> Optional[float]:
+    """O dinheiro como o corretor (ou o modelo) escreve: "4.200" → 4200 · "4200.00" → 4200,00 · "3.500,50" → 3500,50 ·
+    "3500.50" → 3500,50 · "R$ 4.200,00" → 4200,00 · 4200 → 4200. O separador que tem 1–2 dígitos depois é o decimal;
+    com 3 dígitos depois (e nada além) é o de milhar. Ilegível, zero ou negativo → None (nunca um número inventado).
+    🔴 Conserto RT B-1: o parser antigo apagava TODO ponto — "4200.00" virava 420.000."""
+    if isinstance(texto, bool) or texto is None:
+        return None
+    if isinstance(texto, (int, float)):
+        return round(float(texto), 2) if float(texto) > 0 else None
+    limpo = re.sub(r"(?i)r\$|reais|\s", "", str(texto)).strip()
+    if not limpo or not re.fullmatch(r"\d[\d.,]*", limpo):
+        return None
+    ultimo = max(limpo.rfind("."), limpo.rfind(","))
+    if ultimo == -1:
+        inteiro, decimal = limpo, ""
+    else:
+        depois = limpo[ultimo + 1:]
+        if len(depois) in (1, 2):                      # o último separador é o decimal
+            inteiro, decimal = limpo[:ultimo], depois
+        elif len(depois) == 3:                         # milhar ("4.200", "1,234,567")
+            inteiro, decimal = limpo, ""
+        else:
+            return None
+    inteiro = re.sub(r"[.,]", "", inteiro)
+    if not inteiro.isdigit():
+        return None
+    valor = float(f"{inteiro}.{decimal or '0'}")
+    return round(valor, 2) if valor > 0 else None
 
 
 # =====================================================================================================================
@@ -188,6 +245,8 @@ class Montagem:
     apolice_atual: Optional[Dict[str, Any]] = None
     descricao: Optional[str] = None
     do_anexo: bool = False
+    #: o que o corretor DISSE do seguro de hoje (seguradora, prêmio) — só para o resumo dele, nunca para a página
+    seguro_declarado: Optional[Dict[str, Any]] = None
 
     @property
     def completa(self) -> bool:
@@ -245,9 +304,12 @@ def montar(dados: Mapping[str, Any], *, ficha: Any = None, textos_crus: Sequence
 
     # -- o documento do cliente: o do modelo, ou o ÚNICO válido no texto cru (o modelo pode ter visto mascarado) ------
     doc = documento_valido(d.get("cpf_cnpj")) if d.get("cpf_cnpj") else None
-    if not doc:
-        doc = unico_no_texto_cru("cpf", textos_crus)
-        if not doc and d.get("cpf_cnpj") and not re.search(r"[*<x]|mascar", str(d.get("cpf_cnpj")), re.I):
+    if not doc and d.get("cpf_cnpj"):
+        # 🔴 conserto juiz B3: o texto cru só é lido quando o MODELO indicou um CPF (mascarado) PARA ESTE pedido — e o
+        #    achado tem de casar com os dígitos visíveis dele. Sem CPF do modelo, o CPF de OUTRO cliente da conversa
+        #    nunca completa o pedido: falta o CPF, e a ferramenta pergunta.
+        doc = unico_no_texto_cru("cpf", textos_crus, compativel_com=d.get("cpf_cnpj"))
+        if not doc and not re.search(r"[*<x•#]|mascar", str(d.get("cpf_cnpj")), re.I):
             problemas.append("o CPF/CNPJ que veio não confere (o dígito verificador não bate) — confira e me mande "
                              "de novo")
     seg: Dict[str, Any] = {}
@@ -298,21 +360,43 @@ def montar(dados: Mapping[str, Any], *, ficha: Any = None, textos_crus: Sequence
     for k in list(inferidos):
         if "." in k and pedido.valor(*k.split(".", 1)) is None:
             inferidos.pop(k)
-    apolice_atual = None
-    situacao = "novo_sem_apolice"
-    seguradora_atual = d.get("seguradora_atual")
-    if seguradora_atual:
-        apolice_atual = {"seguradora": str(seguradora_atual)}
-        premio = d.get("premio_atual_anual")
-        try:
-            if premio is not None and float(str(premio).replace(".", "").replace(",", ".")) > 0:
-                apolice_atual["premio_anual"] = round(float(str(premio).replace(".", "").replace(",", ".")), 2)
-        except ValueError:
-            pass
-        apolice_atual["origem"] = "documento" if ficha is not None else "corretor"
-        situacao = "novo_com_apolice"
+    situacao, apolice_atual, declarado = seguro_atual(d, ficha)
     return Montagem(ramo=ramo, pedido=pedido, faltam=faltam, problemas=problemas, inferidos=inferidos,
-                    situacao=situacao, apolice_atual=apolice_atual, descricao=descricao, do_anexo=ficha is not None)
+                    situacao=situacao, apolice_atual=apolice_atual, descricao=descricao, do_anexo=ficha is not None,
+                    seguro_declarado=declarado)
+
+
+def premio_conferido_da_ficha(ficha: Any) -> Optional[float]:
+    """O prêmio que a FICHA da 130-B CONFERIU: a leitura fechou (a soma das coberturas bate com o prêmio líquido
+    impresso — `leitura.estado == "fechou"`), o documento é uma APÓLICE e o prêmio esperado é um número > 0. Qualquer
+    outra coisa (não fechou, endosso, proposta, sem prêmio) → None. ⚠️ É o prêmio LÍQUIDO (sem IOF): a página diz isso."""
+    if not isinstance(ficha, Mapping):
+        return None
+    leitura = ficha.get("leitura") if isinstance(ficha.get("leitura"), Mapping) else {}
+    tipo = str(leitura.get("tipo_documento") or ficha.get("tipo_documento") or "")
+    if str(leitura.get("estado") or "") != "fechou" or tipo != "apolice":
+        return None
+    return valor_em_reais(leitura.get("premio_esperado"))
+
+
+def seguro_atual(d: Mapping[str, Any], ficha: Any) -> Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """(situacao, apolice_atual, seguro_declarado) — conserto juiz B2 + RT B-1 (SPEC §4.4, D-132B-02, mutação 5).
+
+    🔴 `novo_com_apolice` (e com ela a "economia" na página do CLIENTE) SÓ com a apólice ANEXADA nesta conversa, lida
+       pela ficha da 130-B, com o prêmio CONFERIDO (`premio_conferido_da_ficha`). O prêmio é o da FICHA — nunca o que
+       o modelo escreveu — e vai com `origem="documento"` e `base="liquido"`.
+    ⛔ O que o corretor DIGITOU ("ele paga 4.200 hoje na Porto") vira `seguro_declarado`: aparece no RESUMO que ele
+       confere ("o cliente disse que paga…") e nunca vai à página do cliente."""
+    seguradora = str(d.get("seguradora_atual") or "").strip() or None
+    premio_dito = valor_em_reais(d.get("premio_atual_anual"))
+    declarado = None
+    if seguradora or premio_dito:
+        declarado = {k: v for k, v in (("seguradora", seguradora), ("premio_anual", premio_dito)) if v}
+    premio_lido = premio_conferido_da_ficha(ficha)
+    if ficha is not None and seguradora and premio_lido:
+        return "novo_com_apolice", {"seguradora": seguradora, "premio_anual": premio_lido, "origem": "documento",
+                                    "base": "liquido"}, declarado
+    return "novo_sem_apolice", None, declarado
 
 
 def _perfil_auto(d: Mapping[str, Any], seg: Dict[str, Any], textos_crus: Sequence[str], problemas: List[str],
@@ -559,7 +643,19 @@ def resumo(m: Montagem, *, onde: str, opcoes: Sequence[str]) -> str:
             "a placa" if "veiculo.placa" in (p.campos.get("veiculo") or {}) else "",
             "o CEP" if "segurado.cep" in p.assumidos or "risco.cep" in p.assumidos else "") if x]) or "nada além do que você disse"))
     if m.apolice_atual:
-        linhas.append(f"- Seguro atual: {m.apolice_atual.get('seguradora')}")
+        from app.providers.policy_data_provider import reais
+
+        linhas.append(f"- Seguro atual (da apólice anexada): {m.apolice_atual.get('seguradora')}, prêmio líquido "
+                      f"{reais(m.apolice_atual.get('premio_anual'))} por ano — a apresentação mostra ao cliente quanto "
+                      "ele economiza")
+    elif m.seguro_declarado:
+        from app.providers.policy_data_provider import reais
+
+        dito = m.seguro_declarado
+        partes = [x for x in (dito.get("seguradora"),
+                              f"{reais(dito['premio_anual'])} por ano" if dito.get("premio_anual") else None) if x]
+        linhas.append("- O cliente disse que paga hoje: " + ", ".join(partes) + " (sem a apólice anexada isso não vai "
+                      "para a apresentação do cliente — para mostrar a economia, anexe a apólice atual)")
     nomes = [NOME_DA_OPCAO.get(o, o) for o in opcoes]
     linhas.append(f"- Vou calcular {len(nomes)} versões: {_juntar(nomes)}"
                   + (" — na resposta mostro a Recomendada, a Mais em conta e a Mais completa." if m.ramo == RAMO_AUTO
