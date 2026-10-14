@@ -1522,6 +1522,67 @@ def bloco_da_venda(*, corretor: Mapping[str, Any], marca: Mapping[str, Any], pag
     return bloco
 
 
+#: o que muda no modelo a cada montagem SEM mudar a página que o cliente vê (o carimbo da montagem)
+_VOLATEIS_DO_MODELO = ("gerado_em",)
+
+
+def _impressao_do_modelo(modelo: Mapping[str, Any]) -> str:
+    """O modelo como TEXTO canônico (chaves ordenadas, sem o carimbo da montagem): duas montagens iguais = a mesma
+    página. O JSON é o mesmo que o banco guarda (jsonb), então a versão lida de volta compara igual."""
+    import json
+
+    return json.dumps({k: v for k, v in dict(modelo or {}).items() if k not in _VOLATEIS_DO_MODELO},
+                      sort_keys=True, ensure_ascii=False, default=str)
+
+
+def link_que_ainda_vale(db: Any, company_id: str, pedido_id: str, modelo: Mapping[str, Any], base: str, *,
+                        agora: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    """SPEC-132-B (B4, pedido da B3): o link JÁ publicado deste pedido, se a página que ele mostra é EXATAMENTE a que
+    se publicaria agora — o mesmo modelo (as opções, o "Quero fechar" de quem atende, a marca, a validade) — e o link
+    ainda vale (não revogado, não vencido, não esgotado). Assim o "Ver apresentação"/"Copiar mensagem" da aba Cotações
+    não cria uma versão e um link novos a cada clique. Qualquer diferença (quem atende mudou, o recálculo trouxe outro
+    preço, virou o dia da validade) → None, e quem chama REPUBLICA. Leitura que falha → None (na dúvida, republica).
+    🔴 Filtro `company_id` em toda leitura (CLAUDE.md §7)."""
+    try:
+        existente = _proposta_existente(db, company_id, pedido_id)
+        if not existente:
+            return None
+        artifact_id = str(existente["id"])
+        versoes = [v for v in _dados(db.table("artifact_versions")
+                                     .select("id, artifact_id, company_id, version, status, payload")
+                                     .eq("artifact_id", artifact_id).eq("company_id", company_id)
+                                     .eq("status", "published").order("version", desc=True).limit(1).execute())
+                   if str(v.get("company_id")) == company_id and str(v.get("artifact_id")) == artifact_id]
+        if not versoes or not isinstance(versoes[0].get("payload"), Mapping):
+            return None
+        v = versoes[0]
+        if _impressao_do_modelo(v["payload"]) != _impressao_do_modelo(modelo):
+            return None
+        instante = _agora(agora)
+        validos = []
+        for sh in _dados(db.table("artifact_shares")
+                         .select("id, company_id, artifact_id, artifact_version_id, token, expires_at, revoked_at, "
+                                 "max_views, view_count, audience_label")
+                         .eq("company_id", company_id).eq("artifact_version_id", str(v["id"])).execute()):
+            if (str(sh.get("company_id")) != company_id or str(sh.get("artifact_version_id")) != str(v["id"])
+                    or sh.get("revoked_at") or sh.get("audience_label") != "cliente" or not sh.get("token")):
+                continue
+            fim = _instante(sh.get("expires_at"))
+            if fim is None or fim <= instante:
+                continue
+            if sh.get("max_views") and int(sh.get("view_count") or 0) >= int(sh["max_views"]):
+                continue
+            validos.append((fim, sh))
+        if not validos:
+            return None
+        _fim, sh = max(validos, key=lambda x: x[0])
+        return {"url": f"{base}/r/{sh['token']}", "token": sh["token"], "artifact_id": artifact_id,
+                "versao": int(v.get("version") or 1), "reaproveitado": True}
+    except Exception as exc:  # noqa: BLE001 — na dúvida, republica (nunca um link que talvez não valha)
+        logger.info("[PROPOSTA] link anterior ilegível (%s): republica", type(exc).__name__)
+        return None
+
+
 async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: Any,
                            apolice_atual: Optional[Mapping] = None, db: Any = None,
                            primeiro_nome: Optional[str] = None, base_url: Optional[str] = None,
@@ -1570,7 +1631,9 @@ async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: A
         modelo["exemplo"] = True
     _sem_comissao(modelo)
     publicada_por = corretor.get("user_id") or (str(pessoa_user_id) if pessoa_user_id else None)
-    publicado = _gravar_e_compartilhar(db, company_id, pedido_id, modelo, ctx, base, titulo_base="Cotação de seguro",
-                                       subject_extra={"pagina": "venda", "publicada_por": publicada_por})
+    # 🔴 B4: a MESMA página já publicada com um link que vale → o mesmo link (nada é gravado); senão, versão nova
+    publicado = link_que_ainda_vale(db, company_id, pedido_id, modelo, base, agora=agora) or _gravar_e_compartilhar(
+        db, company_id, pedido_id, modelo, ctx, base, titulo_base="Cotação de seguro",
+        subject_extra={"pagina": "venda", "publicada_por": publicada_por})
     return {**publicado, "validade_ate": modelo["validade_ate"], "resumo": resumo_da_cotacao(modelo),
             "modelo": modelo}
