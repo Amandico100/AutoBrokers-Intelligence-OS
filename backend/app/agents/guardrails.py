@@ -243,12 +243,28 @@ class SmithGuardrail:
         self.company_id = company_id
 
         # Services (Singleton)
-        self.presidio = get_presidio_service()
+        # 🔴 SPEC-132-A B6: o Presidio é PREGUIÇOSO. 📊 O construtor carregava o
+        # spaCy (`pt_core_news_md` + `en_core_web_lg`) na 1ª mensagem do processo —
+        # mesmo com o guardrail DESLIGADO (`enabled=False` nunca chega ao passo 4).
+        # Agora ele só é instanciado quando o passo de PII roda (e o arranque o
+        # aquece em 2º plano, `main.py`). O comportamento do passo é o mesmo.
+        self._presidio = None
         self.safety_service = get_llama_guard_service()
 
         # Use pre-compiled module-level patterns (compiled once at import)
         self._compiled_injection_patterns = _COMPILED_INJECTION_PATTERNS
         self._compiled_toxic_patterns = _COMPILED_TOXIC_PATTERNS
+
+    @property
+    def presidio(self):
+        """O singleton do Presidio, criado no PRIMEIRO uso (SPEC-132-A)."""
+        if self._presidio is None:
+            self._presidio = get_presidio_service()
+        return self._presidio
+
+    @presidio.setter
+    def presidio(self, valor) -> None:
+        self._presidio = valor
 
     def _check_prompt_injection(self, text: str) -> Tuple[bool, str]:
         """Verifica padrões conhecidos de prompt injection (Rápido)."""
