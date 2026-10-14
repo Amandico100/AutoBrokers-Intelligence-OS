@@ -642,3 +642,91 @@ def mensagem_de_renovacao(renovacao: Mapping[str, Any], proposta: Mapping[str, A
     curto = next((re.sub(r"\s+", " ", c).strip() for c in candidatos
                   if len(re.sub(r"\s+", " ", c).strip()) <= TETO_DO_TEXTO_CURTO), link[:TETO_DO_TEXTO_CURTO])
     return {"texto": texto, "texto_curto": curto, "link": link}
+
+
+# =====================================================================================================================
+# SPEC-132-B (B2) — A MENSAGEM DA COTAÇÃO: o CORRETOR copia e manda ao cliente (D-132B-05: o produto não envia nada)
+# =====================================================================================================================
+def _parcela_curta(o: Mapping[str, Any]) -> str:
+    """A MESMA parcela da página de venda (uma só por opção): "10x de R$ 478,43 sem juros" ou o preço por ano."""
+    from app.services.artifacts.proposta_cotacao_html import _parcela
+
+    p = _parcela(dict(o))
+    if p:
+        return f"{p['vezes']}x de {_brl(p['valor'])} {'sem juros' if p['sem_juros'] else 'com juros'}"
+    return f"{_brl(o['premio_anual'])} por ano"
+
+
+def _linha_da_cotacao(o: Mapping[str, Any], *, com_avista: bool, com_franquia: bool) -> str:
+    linha = f"*{o.get('rotulo') or 'Opção'}:* {o.get('seguradora')}, *{_parcela_curta(o)}*"
+    if com_avista and (o.get("parcelas_sem_juros") or o.get("parcelas")):
+        linha += f" (ou {_brl(o['premio_anual'])} à vista)"
+    f = o.get("franquia") or {}
+    if com_franquia and isinstance(f, Mapping) and f.get("valor"):
+        linha += f". Franquia de {_brl_inteiro(f['valor'])}"
+    return linha + "."
+
+
+def mensagem_de_cotacao(modelo: Mapping[str, Any], link: str) -> Dict[str, str]:
+    """SPEC-132-B (contrato B2 → B1): a mensagem que o CORRETOR copia (ou manda pelo `wa.me` do aparelho dele) para o
+    cliente — tom de gente, as opções na ordem da página (a recomendada primeiro), o link e a validade. Devolve
+    {texto, texto_curto}: `texto` ≤ 700 para o "Copiar a mensagem para o cliente"; `texto_curto` ≤ 500 💭 para o
+    `wa.me` (o mesmo teto da renovação, BLOCO 0 B1 da 131-B).
+
+    `modelo`: o modelo da página (ou o que `publicar_cotacao` devolve, com `modelo`). ⛔ PURA: nunca o nome do canal
+    comparador, nunca comissão, urgência falsa, "a melhor das N" ou dado do cliente além do primeiro nome."""
+    if isinstance(modelo.get("modelo"), Mapping):
+        modelo = modelo["modelo"]
+    link = str(link or "").strip()
+    if not link:
+        raise ValueError("a mensagem da cotação precisa do link da página (`url` de publicar_cotacao)")
+    from app.services.artifacts import proposta_html as PH
+
+    from app.services.artifacts.proposta_cotacao_html import opcoes_da_venda
+
+    ops = [o for o in opcoes_da_venda(dict(modelo)) if o.get("premio_anual")]   # no máximo as da página
+    if not ops:
+        raise ValueError("a cotação não tem opção com preço")
+    cliente = _primeiro((modelo.get("cliente") or {}).get("primeiro_nome"))
+    venda = modelo.get("venda") if isinstance(modelo.get("venda"), Mapping) else {}
+    quem = _primeiro((venda.get("corretor") or {}).get("primeiro_nome")) if isinstance(venda.get("corretor"), Mapping) else None
+    corretora = str((modelo.get("anfitria") or {}).get("nome") or "").strip()
+    bem = str((modelo.get("bem") or {}).get("apelido") or "").strip()
+    validade = _data(modelo.get("validade_ate"))
+    conta = PH._conta_do_resumo(dict(modelo))
+    cotadas = conta["cotadas"] if conta else int((modelo.get("resumo") or {}).get("seguradoras_cotadas") or 0)
+
+    ola = f"Olá, {cliente}!" if cliente else "Olá!"
+    do_seguro = f"do seguro do seu {bem}" if bem else "do seu seguro"
+    comparei = (f" Comparei {cotadas} seguradoras e separei {len(ops)} {'opção' if len(ops) == 1 else 'opções'} "
+                "para você:" if cotadas > 1 else " Separei estas opções para você:")
+    abertura = f"{ola} A cotação {do_seguro} está pronta.{comparei}"
+    assinatura = " · ".join(x for x in (quem, corretora) if x)
+
+    texto = ""
+    # o aperto tira, nesta ordem: o "à vista", a franquia, a última opção, o fecho — e só no fim fica a recomendada
+    todas, menos_uma = len(ops), max(1, len(ops) - 1)
+    for com_avista, com_franquia, n_ops, com_fecho in ((True, True, todas, True), (False, True, todas, True),
+                                                      (False, False, todas, True), (False, False, menos_uma, True),
+                                                      (False, False, menos_uma, False), (False, False, 1, False)):
+        blocos = [abertura, "\n".join(_linha_da_cotacao(o, com_avista=com_avista, com_franquia=com_franquia)
+                                      for o in ops[:n_ops])]
+        blocos.append("Veja os detalhes e compare as coberturas aqui:\n" + link
+                      + (f"\nOs preços valem até {validade}." if validade else ""))
+        if com_fecho:
+            blocos.append("Qualquer dúvida, é só me responder." + (f"\n{assinatura}" if assinatura else ""))
+        texto = "\n\n".join(b for b in blocos if b)
+        if len(texto) <= TETO_DE_CARACTERES:
+            break
+
+    rec = ops[0]
+    oferta = f"{rec.get('seguradora')}, {_parcela_curta(rec)}"
+    candidatos = [
+        f"{ola} A cotação {do_seguro} está pronta: {oferta}. Veja as {len(ops)} opções que separei: {link}",
+        f"{ola} A cotação {do_seguro} está pronta: {oferta}. Veja as opções: {link}",
+        f"{ola} A sua cotação está pronta. Veja as opções: {link}",
+        f"A sua cotação está pronta: {link}",
+    ]
+    curto = next((re.sub(r"\s+", " ", c).strip() for c in candidatos
+                  if len(re.sub(r"\s+", " ", c).strip()) <= TETO_DO_TEXTO_CURTO), link[:TETO_DO_TEXTO_CURTO])
+    return {"texto": texto, "texto_curto": curto}
