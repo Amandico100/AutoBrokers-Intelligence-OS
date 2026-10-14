@@ -160,9 +160,20 @@ def checar_secoes_da_casca(casca: str, catalogo: str) -> None:
         checar(f'titulo="{secao}"' in casca, f'a casca traz a seção "{secao}"')
     for secao in SECOES_QUE_SAIRAM:
         checar(secao not in casca and secao not in catalogo, f'a seção "{secao}" saiu (SPEC-131-B §4)')
-    pos = [casca.find(f'titulo="{x}"') for x in SECOES_DA_CASCA]
+    # SPEC-131-B conserto K2 (juiz de design, conserto 9; decisão do gerente na bateria de 13/10 — verdade vencida, §9.3):
+    # o "Como começar" é DECLARADO uma vez (`const comoComecar`) e RENDERIZADO em um de dois lugares — logo depois de
+    # "O que é" quando falta um passo (quem ainda não terminou de configurar vê o passo a passo primeiro) e, com tudo
+    # pronto, na ordem do laudo. A régua mede a ordem de RENDERIZAÇÃO, não a da declaração.
+    def _onde(secao: str) -> int:
+        if secao == "Como começar":
+            return casca.find("{!faltaPasso && comoComecar}")
+        return casca.find(f'titulo="{secao}"')
+    pos = [_onde(x) for x in SECOES_DA_CASCA]
     checar(all(p >= 0 for p in pos) and pos == sorted(pos),
-           "as seções vêm na ordem do laudo (o que é → o que faz → ganha → como começar → atividade)")
+           "as seções vêm na ordem do laudo (o que é → o que faz → ganha → como começar → atividade), com tudo pronto")
+    adiantado = casca.find("{faltaPasso && comoComecar}")
+    checar(casca.find('titulo="O que é"') < adiantado < casca.find('titulo="O que faz"'),
+           "faltando passo, o 'Como começar' vem logo depois de 'O que é'")
     checar("item.headline" in casca, "mostra a headline, não só o nome")
     checar("falta_para_existir" in casca and "falta_para_existir" in catalogo,
            "o 'em breve' explica o que falta para existir")
