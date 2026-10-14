@@ -401,10 +401,12 @@ def test_put_grava_so_servicos_e_preferencias_e_recusa_chave_fora_da_lista(clien
     assert linha_a["config"]["servicos"]["renovacao"]["conta_global_se_vence_em_dias"] == 3
     assert linha_a["config"]["servicos"]["cotacao"] == {"modo": "calcular"} and linha_a["atualizado_por"] is None
     # o que a tela não edita (escrito por outro caminho) sobrevive à gravação da tela
-    linha_a["config"]["servicos"]["cotacao"]["validade"] = {"padrao_dias": 4}
+    # §9.3 (SPEC-132-B, D-132B-06): a `validade` da cotação PASSOU a ser editada pela tela (`EDITAVEL_POR_SERVICO`) — a
+    # lição migra para uma chave que a tela continua sem editar (`lembretes`)
+    linha_a["config"]["servicos"]["cotacao"]["lembretes"] = {"primeiro_apos_h": 4}
     cliente.put(url, json={"company_id": A, "versao": linha_a["atualizado_em"],
                            "servicos": {"cotacao": {"modo": "calcular_entregar"}}}, headers=cab)
-    assert linha_a["config"]["servicos"]["cotacao"] == {"validade": {"padrao_dias": 4}, "modo": "calcular_entregar"}
+    assert linha_a["config"]["servicos"]["cotacao"] == {"lembretes": {"primeiro_apos_h": 4}, "modo": "calcular_entregar"}
 
 
 def test_put_numa_corretora_sem_linha_cria_a_linha_dela(cliente):
