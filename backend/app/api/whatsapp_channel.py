@@ -1137,7 +1137,9 @@ async def whatsapp_channel_status(
     alert = await _channel_alert_info(company_id, purpose)
     numero = await _numero_pareado_da_linha(company_id, purpose)
     if _go_enabled():
-        if str(purpose or "attendance").strip().lower() == "observer":
+        # SPEC-132-C C3 — o assistente da plataforma nasce como o observer: sem linha ainda = "não pareado" (a tela
+        # oferece o QR), e não o 404 do atendimento (que a tela lê como erro)
+        if str(purpose or "attendance").strip().lower() in ("observer", "assistente"):
             company_channel = await _go_company_channel(company_id, purpose)
             if not company_channel:
                 return {
