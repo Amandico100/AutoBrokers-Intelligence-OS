@@ -92,22 +92,51 @@ def is_supported_document(file_name: str) -> bool:
     return str(file_name or "").split("?")[0].lower().endswith(_SUPPORTED_DOC_EXTENSIONS)
 
 
+def data_url_da_imagem(dados: bytes, mime: str = "image/jpeg") -> str:
+    """Os BYTES da imagem como `data:<mime>;base64,…` — a forma que vai ao provedor (SPEC-132-A D-132A-05)."""
+    import base64
+
+    tipo = str(mime or "image/jpeg").split(";")[0].strip().lower() or "image/jpeg"
+    return f"data:{tipo};base64,{base64.b64encode(bytes(dados)).decode('ascii')}"
+
+
+def _imagem_que_o_provedor_alcanca(image_url: str) -> bool:
+    """Só `data:image/…` ou `http(s)://…` vão ao provedor.
+
+    📊 SPEC-132-A B4 (14/10/2026): o chat passava `/api/storage/<bucket>/<path>` — RELATIVO e atrás da sessão — e o
+    provedor nunca o alcançava (uma chamada paga para nada). Agora o chat manda os BYTES (data URL, `chat_anexos`);
+    um caminho relativo é recusado aqui, antes da chamada.
+    """
+    u = str(image_url or "").strip().lower()
+    return u.startswith("data:image/") or u.startswith("https://") or u.startswith("http://")
+
+
 async def describe_image(
-    image_url: str,
+    image_url: Optional[str] = None,
     *,
     company_id: str,
     agent_id: Optional[str] = None,
     agent_data: Optional[Dict[str, Any]] = None,
     purpose_hint: str = "Agente de Suporte",
     llm=None,
+    image_bytes: Optional[bytes] = None,
+    mime: str = "image/jpeg",
 ) -> Optional[str]:
     """Analisa a imagem e devolve descrição técnica p/ virar contexto do agente.
 
     Modelo: papel `visao` pela fábrica (ver o topo do módulo). `llm=` é o PONTO
     DE INJEÇÃO da bancada (SPEC-116 F5b) e dos testes: quando vem, é usado como
     está. Falha → None (o fluxo segue só com o texto), com o motivo no log.
+
+    SPEC-132-A: `image_bytes=` (+ `mime=`) manda a imagem como data URL — o provedor nunca recebe URL nossa.
+    `image_url` pode ser um data URL pronto; caminho relativo (`/api/storage/…`) é recusado (None).
     """
+    if image_bytes:
+        image_url = data_url_da_imagem(image_bytes, mime)
     if not image_url:
+        return None
+    if not _imagem_que_o_provedor_alcanca(image_url):
+        logger.error("[VISION] describe_image: a imagem não é data URL nem http(s) — o provedor não a alcança")
         return None
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
