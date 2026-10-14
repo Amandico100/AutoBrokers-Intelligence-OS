@@ -23,6 +23,77 @@ export const dynamic = 'force-dynamic';
  * ao backend. 📊 §1.3: a gravação era do browser, sem await, em paralelo com o
  * stream — uma falha no meio deixava a pergunta sem registro e a resposta órfã.
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEC-132-A · A2 — OS ANEXOS E O ESFORÇO DO PEDIDO
+// ─────────────────────────────────────────────────────────────────────────────
+// O chat novo manda `attachments: [{bucket, path, nome, mime, bytes}]` (já subidos por
+// POST /api/upload) e `options: {web_search?, esforco?}`. O backend lê os BYTES pelo
+// service role (`chat_anexos.preparar`) — então quem decide QUAIS bytes é este BFF.
+// 🔴 O path tem de começar com `<company_id DA SESSÃO>/`. O corpo do browser não tem voz
+// sobre a corretora (R1); um path de outra corretora é 403 — antes de criar conversa ou
+// gravar pergunta. ⛔ Sem import novo aqui: a conferência é local e pura (o teste do
+// SPEC-096 carrega esta rota com um resolvedor de imports fechado).
+
+const MAX_ANEXOS = 10;
+const BUCKETS_DO_CHAT = new Set(['chat-media', 'chat-docs']);
+const ESFORCOS = new Set(['rapido', 'equilibrado', 'maximo']);
+const SEGMENTO_SEGURO = /^[A-Za-z0-9._-]{1,200}$/;
+
+type Anexo = { bucket: string; path: string; nome: string; mime: string; bytes: number };
+type ResultadoDosAnexos =
+  | { ok: true; anexos: Anexo[] }
+  | { ok: false; status: number; motivo: string };
+
+/** O path é um objeto DESTA corretora? Segmentos limpos, sem `..`, e o 1º é o company_id da sessão. */
+function pathDaCorretora(path: unknown, companyId: string): path is string {
+  if (typeof path !== 'string' || path.length === 0 || path.length > 512 || !companyId) return false;
+  const segmentos = path.split('/');
+  if (segmentos.length < 2) return false;
+  if (!segmentos.every((s) => SEGMENTO_SEGURO.test(s) && s !== '.' && s !== '..')) return false;
+  return segmentos[0] === companyId;
+}
+
+function lerAnexos(bruto: unknown, companyId: string): ResultadoDosAnexos {
+  if (bruto === undefined || bruto === null) return { ok: true, anexos: [] };
+  if (!Array.isArray(bruto)) return { ok: false, status: 400, motivo: 'A lista de anexos veio num formato que não entendi.' };
+  if (bruto.length > MAX_ANEXOS) {
+    return { ok: false, status: 400, motivo: `Dá para mandar até ${MAX_ANEXOS} arquivos por mensagem.` };
+  }
+  const anexos: Anexo[] = [];
+  for (const item of bruto) {
+    if (!item || typeof item !== 'object') {
+      return { ok: false, status: 400, motivo: 'Um dos anexos veio num formato que não entendi.' };
+    }
+    const a = item as Record<string, unknown>;
+    if (typeof a.bucket !== 'string' || !BUCKETS_DO_CHAT.has(a.bucket)) {
+      return { ok: false, status: 400, motivo: 'Um dos anexos não veio do envio de arquivos do chat.' };
+    }
+    if (!pathDaCorretora(a.path, companyId)) {
+      return { ok: false, status: 403, motivo: 'Um dos anexos não pertence a esta corretora.' };
+    }
+    const bytes = typeof a.bytes === 'number' && Number.isFinite(a.bytes) && a.bytes >= 0 ? Math.floor(a.bytes) : 0;
+    anexos.push({
+      bucket: a.bucket,
+      path: a.path as string,
+      // eslint-disable-next-line no-control-regex
+      nome: (typeof a.nome === 'string' ? a.nome.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '').slice(0, 200) || 'arquivo',
+      mime: (typeof a.mime === 'string' ? a.mime.split(';')[0].trim().toLowerCase() : '').slice(0, 100),
+      bytes,
+    });
+  }
+  return { ok: true, anexos };
+}
+
+/** Só `web_search: boolean` e `esforco` ∈ {rapido, equilibrado, maximo} passam. O resto é descartado. */
+function lerOpcoes(bruto: unknown): { web_search?: boolean; esforco?: string } | undefined {
+  if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) return undefined;
+  const o = bruto as Record<string, unknown>;
+  const limpas: { web_search?: boolean; esforco?: string } = {};
+  if (typeof o.web_search === 'boolean') limpas.web_search = o.web_search;
+  if (typeof o.esforco === 'string' && ESFORCOS.has(o.esforco)) limpas.esforco = o.esforco;
+  return Object.keys(limpas).length ? limpas : undefined;
+}
+
 export async function POST(req: NextRequest) {
   try {
     // ─────────────────────────────────────────────────────────────────────
@@ -53,6 +124,7 @@ export async function POST(req: NextRequest) {
       fileUrl,
       fileName,
       options,
+      attachments,
       assistantMessageId,
     } = body || {};
 
@@ -68,6 +140,17 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // 🔴 SPEC-132-A — os anexos são conferidos ANTES de qualquer escrita (conversa ou pergunta).
+    const leituraDosAnexos = lerAnexos(attachments, companyId);
+    if (!leituraDosAnexos.ok) {
+      return NextResponse.json(
+        { ok: false, error: 'ANEXO_RECUSADO', motivo: leituraDosAnexos.motivo, message: leituraDosAnexos.motivo },
+        { status: leituraDosAnexos.status },
+      );
+    }
+    const anexos = leituraDosAnexos.anexos;
+    const opcoes = lerOpcoes(options);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -160,9 +243,11 @@ export async function POST(req: NextRequest) {
     const conteudo =
       typeof chatInput === 'string' && chatInput.length > 0
         ? chatInput
-        : imageUrl
-          ? '[Imagem]'
-          : '';
+        : anexos.length > 0
+          ? `[Anexo] ${anexos.map((a) => a.nome).join(', ')}`
+          : imageUrl
+            ? '[Imagem]'
+            : '';
 
     let userMessageId: string | null = null;
     const { data: gravada, error: erroGravacao } = await supabaseAdmin
@@ -176,6 +261,10 @@ export async function POST(req: NextRequest) {
         payload: {
           client_request_id: clientRequestId,
           turn: { submitted_at: new Date().toISOString() },
+          // SPEC-132-A — o que foi anexado (para a bolha mostrar as fichas). ⛔ Nunca o conteúdo nem a URL.
+          ...(anexos.length > 0
+            ? { attachments: anexos.map((a) => ({ nome: a.nome, mime: a.mime, bytes: a.bytes, path: a.path, bucket: a.bucket })) }
+            : {}),
         },
       })
       .select('id')
@@ -248,7 +337,9 @@ export async function POST(req: NextRequest) {
         imageUrl,
         fileUrl,
         fileName,
-        options,
+        // SPEC-132-A — só as opções conhecidas, e só os anexos DESTA corretora (conferidos acima)
+        options: opcoes,
+        ...(anexos.length > 0 ? { attachments: anexos } : {}),
         channel: 'web',
       }),
       // @ts-ignore - 'duplex' é necessário para streaming em algumas versões do Node
