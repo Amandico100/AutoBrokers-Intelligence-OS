@@ -3664,6 +3664,17 @@ async def tool_node(state: AgentState, tools: list,
                             logger.info(
                                 "[APOLICE] portal SEM número: a apólice do caso "
                                 "não é da família %r", FAMILIA_DO_PORTAL)
+                    elif tool_name in ("cotacao_preparar", "cotacao_disparar", "cotacao_ajustar"):
+                        # 🔴 SPEC-132-B (B4): QUEM PEDE e QUAL CONVERSA saem do ESTADO do turno (o pedido do
+                        #    painel: `userId` da sessão no BFF → `state["user_id"]`), NUNCA do modelo — o grafo é
+                        #    cacheado e reusado entre pessoas, e um `user_id` escrito pelo modelo poria a cotação
+                        #    no Agger (e na conversa) de outra pessoa. A sobrescrita é INCONDICIONAL: sem usuário
+                        #    no estado vai `None` (a ferramenta recusa com frase), nunca o valor que o modelo deu.
+                        #    As chaves de identidade que o modelo inventar são descartadas.
+                        tool_args = {k: v for k, v in (tool_args or {}).items()
+                                     if k not in ("company_id", "conversation_id", "user_id", "session_id")}
+                        tool_args = {**tool_args, "user_id": request_user_id,
+                                     "session_id": str(state.get("session_id") or "") or None}
                     elif tool_name == "delegate_to_subagent":
                         # 🤖 SubAgent: injeta contexto do orquestrador
                         delegation_config = None
