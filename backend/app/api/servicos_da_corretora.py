@@ -178,15 +178,11 @@ def _faixas_da_cotacao(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """As faixas do que a tela da cotação edita, das MESMAS réguas da leitura (`config._coerente`): a entrada fica entre
     o autônomo + um passo (senão a régua da comissão quebra e volta ao padrão) e o teto do item."""
     com = cfg.get("comissao") or {}
-    faixa_validade = getattr(CFG, "VALIDADE_DIAS_FAIXA", None) or _VALIDADE_FAIXA_SE_A_CONFIG_NAO_DISSER
+    faixa_validade = CFG.VALIDADE_DIAS_FAIXA     # a MESMA faixa que a validação da gravação usa (`config.py`)
     return {"opcoes_da_cotacao": _opcoes_aceitas_da_cotacao(),
             "comissao_entrada_da_cotacao": [float(com.get("autonomo_minimo", 0)) + float(com.get("passo_pp", 0)),
                                             float(com.get("teto_pct", 0))],
             "validade_dias_da_cotacao": list(faixa_validade)}
-
-
-#: 💭 só enquanto a config (fatia B2) não exportar `VALIDADE_DIAS_FAIXA`: de 1 dia a um mês
-_VALIDADE_FAIXA_SE_A_CONFIG_NAO_DISSER = (1, 30)
 
 
 def _opcoes_da_renovacao_na_ordem() -> List[str]:
