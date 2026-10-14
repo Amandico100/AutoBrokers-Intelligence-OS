@@ -1059,6 +1059,38 @@ def precisa_de_apolice(situacao: str) -> bool:
     return situacao in ("novo_com_apolice", "renovacao")
 
 
+def estados_do_recalculo(estados: Sequence[Mapping[str, Any]], ajuste_calculo_id: Any) -> List[Dict[str, Any]]:
+    """SPEC-132-B (conserto juiz B1 + RT B-2) — o pedido DEPOIS de um recálculo: o cálculo de ajuste
+    (`opcao='ajuste'`) toma o LUGAR da opção de onde ele saiu (a raiz da cadeia `origem_calculo_id`), e a raiz e os
+    ajustes intermediários da MESMA cadeia saem. Assim `comparar`/`opcoes` (que nunca misturam o ajuste com as opções)
+    rankeiam a opção ajustada com as ofertas DO RECÁLCULO — o antes e o depois nunca se misturam. As outras opções
+    seguem como estão; outro ajuste (de outra cadeia) continua `ajuste` (fora do ranking).
+
+    PURO. `ValueError` quando o cálculo não é um ajuste DESTE pedido ou a cadeia não chega a uma opção."""
+    por_id = {str(e.get("calculo_id")): e for e in estados or ()}
+    alvo = por_id.get(str(ajuste_calculo_id or ""))
+    if alvo is None or alvo.get("opcao") != "ajuste":
+        raise ValueError("o recálculo não é um ajuste deste pedido")
+    cadeia: List[str] = []
+    c: Optional[Mapping[str, Any]] = alvo
+    while c is not None and c.get("opcao") == "ajuste":
+        cid = str(c.get("calculo_id"))
+        if cid in cadeia:
+            raise ValueError("a cadeia do recálculo dá voltas")
+        cadeia.append(cid)
+        c = por_id.get(str(c.get("origem_calculo_id") or ""))
+    if c is None:
+        raise ValueError("o recálculo não tem a opção de onde saiu neste pedido")
+    raiz, opcao = str(c.get("calculo_id")), c.get("opcao")
+    saida: List[Dict[str, Any]] = []
+    for e in estados:
+        cid = str(e.get("calculo_id"))
+        if cid == raiz or (cid in cadeia and cid != cadeia[0]):
+            continue
+        saida.append({**dict(e), "opcao": opcao, "recalculo_de": raiz} if cid == cadeia[0] else dict(e))
+    return saida
+
+
 def conferir_apolice(situacao: str, apolice_atual: Optional[Mapping[str, Any]]) -> None:
     """J-B2 (juiz, 06/10): com apólice / renovação SEM a apólice atual, a página rotularia "Igual à sua atual" ou "Sua
     renovação" uma seguradora que não é a do cliente. Recusa com o motivo — nunca um rótulo inventado."""
