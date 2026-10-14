@@ -598,6 +598,26 @@ class PairingOrchestrator:
         return purpose_canonico(bruto)
 
     @staticmethod
+    async def _so_a_plataforma_tem_assistente(company_id: str, purpose: str) -> None:
+        """SPEC-132-C C3 — o número do ASSISTENTE dos corretores só se pareia na empresa da PLATAFORMA
+        (`company_kind='platform_canal'`, lida no banco). Numa corretora ele seria uma linha que o webhook nunca
+        reconhece (`atalho.entrada.eh_do_assistente` confere a empresa) e um QR pedido à toa. Os demais escopos não
+        passam por aqui. Erro de banco → recusa (na dúvida, nenhum QR)."""
+        from app.services.whatsapp.channel_identity import PURPOSE_DO_ASSISTENTE
+
+        if purpose != PURPOSE_DO_ASSISTENTE:
+            return
+        from app.core.database import get_supabase_client
+        from app.services.canal.repositorio import eh_canal
+
+        try:
+            ok = await asyncio.to_thread(eh_canal, get_supabase_client().client, company_id)
+        except Exception:  # noqa: BLE001
+            ok = False
+        if not ok:
+            raise ValueError("assistente_so_na_plataforma")
+
+    @staticmethod
     def _instance_name(company_id: str, purpose: str) -> str:
         """Delega para `channel_identity` — o nome nasce num lugar só.
 
@@ -1279,6 +1299,7 @@ class PairingOrchestrator:
         method = "phone" if method == "phone" else "qr"
         if not company_id:
             raise ValueError("invalid_pairing_scope")
+        await self._so_a_plataforma_tem_assistente(company_id, purpose)
         if method == "phone":
             phone_number = "".join(ch for ch in str(phone_number or "") if ch.isdigit())
             if not 10 <= len(phone_number) <= 15:
