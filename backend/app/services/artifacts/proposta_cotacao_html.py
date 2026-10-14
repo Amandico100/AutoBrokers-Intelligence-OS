@@ -571,8 +571,10 @@ def render_cotacao(modelo: dict) -> str:
     if eco:
         eco_html = (f'<section class="eco" aria-labelledby="h-eco"><h2 id="h-eco">'
                     f'{_e(AP.brl(eco["menos"], False))} a menos por ano</h2>'
-                    f'<p>Em relação ao seu seguro atual, que custa {_e(AP.brl(eco["hoje"], False))} por ano, '
-                    f'com a opção “{_e(rotulo(rec))}”.</p></section>')
+                    # 🔴 conserto juiz B2: o número de hoje é o prêmio LÍQUIDO lido e conferido na apólice anexada
+                    #    (a ficha da 130-B) — a frase diz exatamente isso, sem arredondar o que é a comparação
+                    f'<p>Comparado ao prêmio líquido da sua apólice atual ({_e(AP.brl(eco["hoje"], False))} por ano, '
+                    f'sem o IOF), com a opção “{_e(rotulo(rec))}”.</p></section>')
 
     # ---- 5. por que fechar com a corretora (só FATOS do banco)
     fatos = []
