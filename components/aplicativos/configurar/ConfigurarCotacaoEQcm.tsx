@@ -10,11 +10,13 @@ import { cn } from '@/lib/utils';
 import { BarraSalvar, Grupo } from './pecas';
 import { CartoesDeModo, Excecoes, Preferidas, type OpcaoDeModo } from './campos';
 import { copia, type DadosServicos, type Excecao, type Modo, type Preferencias, usePodeGerir, useServicos } from './servicos';
+import { RegrasDoCalculo, type ValorDasRegras } from '@/components/aplicativos/cotacao/RegrasDoCalculo';
 
 /**
  * SPEC-131-B G3 — a aba Configurar da COTAÇÃO e a do QUEM COBRA MENOS: o conteúdo que a antiga tela "Serviços" tinha
- * para elas, no padrão da aba Configurar (D-131-06, D-131-21). A Cotação edita o manual dela (o que fazer, exceções,
- * seguradoras preferidas); o Quem Cobra Menos não se edita — é a natureza do canal.
+ * para elas, no padrão da aba Configurar (D-131-06, D-131-21). A Cotação Rápida edita o manual dela (o que fazer, exceções,
+ * seguradoras preferidas) e — SPEC-132-B · B3 (D-132B-06) — mostra TODAS as regras do cálculo, editando as versões, a
+ * comissão de entrada e a validade; o Quem Cobra Menos não se edita — é a natureza do canal.
  */
 const MODOS_DA_COTACAO: OpcaoDeModo[] = [
   {
@@ -31,7 +33,7 @@ const MODOS_DA_COTACAO: OpcaoDeModo[] = [
   },
 ];
 
-type Rascunho = { modo: Modo; excecoes: Excecao[]; igualParaTodos: boolean; preferencias: Preferencias };
+type Rascunho = { modo: Modo; excecoes: Excecao[]; igualParaTodos: boolean; preferencias: Preferencias; regras: ValorDasRegras };
 
 function rascunhoDe(d: DadosServicos): Rascunho | null {
   const e = d.efetivo.cotacao;
@@ -40,6 +42,11 @@ function rascunhoDe(d: DadosServicos): Rascunho | null {
   return {
     modo: e.modo, excecoes: copia(e.excecoes_do_modo || []), igualParaTodos: !bruto.preferencias_de_seguradoras,
     preferencias: copia(e.preferencias_de_seguradoras || {}),
+    regras: {
+      opcoes: [...(e.opcoes || [])],
+      entrada: Number(e.regras?.comissao?.entrada ?? 0),
+      validade: Number(e.regras?.validade_dias ?? 0),
+    },
   };
 }
 
@@ -81,9 +88,22 @@ export function ConfigurarCotacao() {
   const enviar = async () => {
     const bloco: Record<string, unknown> = { modo: r.modo, excecoes_do_modo: r.excecoes };
     if (!r.igualParaTodos) bloco.preferencias_de_seguradoras = r.preferencias;
+    // SPEC-132-B · B3: só vai o que DIFERE do padrão (chave ausente = volta ao padrão do AutoBrokers) e só o que o
+    // backend já aceita gravar — o resto ele recusaria com 422
+    const editaveis = new Set(dados.editaveis_da_cotacao || []);
+    const padrao = dados.padrao.cotacao;
+    if (editaveis.has('opcoes') && JSON.stringify(r.regras.opcoes) !== JSON.stringify(padrao?.opcoes || [])) {
+      bloco.opcoes = r.regras.opcoes;
+    }
+    if (editaveis.has('comissao') && r.regras.entrada !== padrao?.regras?.comissao?.entrada) {
+      bloco.comissao = { entrada: r.regras.entrada };
+    }
+    if (editaveis.has('validade') && r.regras.validade !== padrao?.regras?.validade_dias) {
+      bloco.validade = { padrao_dias: r.regras.validade };
+    }
     const corpo: Record<string, unknown> = { servicos: { cotacao: bloco } };
     if (r.igualParaTodos) corpo.preferencias_de_seguradoras = r.preferencias;
-    await salvar(corpo, 'Configuração da Cotação salva.');
+    await salvar(corpo, 'Configuração da Cotação Rápida salva.');
   };
 
   return (
@@ -97,8 +117,9 @@ export function ConfigurarCotacao() {
         <CartoesDeModo opcoes={MODOS_DA_COTACAO} valor={r.modo} nome="O que fazer" desabilitado={!pode}
           onChange={(modo) => mudar({ modo })} />
       </Grupo>
+      <RegrasDoCalculo dados={dados} valor={r.regras} pode={pode} onChange={(regras) => mudar({ regras })} />
       <p className="text-sm text-muted-foreground">
-        As regras da Cotação são só dela: mudar aqui não muda a Renovação nem o Quem Cobra Menos.
+        As regras da Cotação Rápida são só dela: mudar aqui não muda a Renovação Automática nem o Quem Cobra Menos.
       </p>
 
       <Collapsible open={avancado} onOpenChange={setAvancado} className="space-y-3">
@@ -119,7 +140,7 @@ export function ConfigurarCotacao() {
           <Grupo id="cfg-cot-seguradoras" titulo="Seguradoras preferidas" descricao="Por ramo, em ordem de preferência.">
             <div className="p-4">
               <Preferidas ramos={dados.ramos} lista={r.preferencias} igualParaTodos={r.igualParaTodos} desabilitado={!pode}
-                comum={dados.comum.preferencias_de_seguradoras} nomeDoServico="Cotação"
+                comum={dados.comum.preferencias_de_seguradoras} nomeDoServico="Cotação Rápida"
                 onChange={({ preferencias, igualParaTodos }) => mudar({ preferencias, igualParaTodos })} />
             </div>
           </Grupo>
@@ -144,7 +165,7 @@ export function ConfigurarQcm() {
           <p className="text-sm font-medium text-foreground">Calcular, entregar e negociar.</p>
           <p className="text-sm text-muted-foreground">
             No Quem Cobra Menos é sempre assim: é como o canal funciona, e a comparação entre as corretoras segue a mesma
-            regra para todas. As regras da Cotação e da Renovação da sua corretora não mudam o Quem Cobra Menos.
+            regra para todas. As regras da Cotação Rápida e da Renovação Automática da sua corretora não mudam o Quem Cobra Menos.
           </p>
         </div>
       </Grupo>
