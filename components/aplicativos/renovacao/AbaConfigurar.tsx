@@ -235,7 +235,7 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
     if (r.conta !== (padrao.conta ?? 'responsavel')) bloco.conta = r.conta;
     const corpo: Record<string, unknown> = { servicos: { renovacao: bloco } };
     if (r.igualParaTodos) corpo.preferencias_de_seguradoras = r.preferencias;
-    await salvar(corpo, 'Configuração da Renovação salva.');
+    await salvar(corpo, 'Configuração da Renovação Automática salva.');
   };
 
   return (
@@ -386,7 +386,7 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
           <Grupo id="cfg-seguradoras" titulo="Seguradoras preferidas" descricao="Por ramo, em ordem de preferência.">
             <div className="p-4">
               <Preferidas ramos={ramos} lista={r.preferencias} igualParaTodos={r.igualParaTodos} desabilitado={!pode}
-                comum={dados.comum.preferencias_de_seguradoras} nomeDoServico="Renovação"
+                comum={dados.comum.preferencias_de_seguradoras} nomeDoServico="Renovação Automática"
                 onChange={({ preferencias, igualParaTodos }) => mudar({ preferencias, igualParaTodos })} />
             </div>
           </Grupo>
