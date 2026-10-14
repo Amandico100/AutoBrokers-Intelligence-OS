@@ -193,3 +193,7 @@ nos builders (dublês); a medição do chat (US$ 0,0568) está no relatório da 
 
 **Nota da execução: 82/100** (proposta pelo atualizador; o gerente fecha depois da bateria) — 6/6 blockers fechados com controle e o
 defeito novo consertado; desconta o canário real e o juiz de design da página, os dois gates da própria SPEC.
+
+
+## Design (gate do Founder: ≥ 90)
+1º juiz de design: venda 87 · renovação 88 → conserto `08c7138` (D1–D6, 7–13, R1–R5, G8) → confirmação de design **venda 92 · renovação 91** (`programa-multicalculo/132/JUIZ-DE-DESIGN-132-B-CONFIRMACAO.md`) → R6 ('iguais nas três' falso quando só uma opção tem pequenos reparos) consertado em `40d0072` (26+31+25+28+20 passed; carteira e QCM com o mesmo hash). Para 95: P-132B — subtítulo genérico e coluna vazia no notebook, barra fixa < 400 px sem a seguradora, esconder a barra no fecho, 'por ano' sem quebra.

@@ -389,9 +389,9 @@
       log do contêiner e a hora no chat (nunca reinicie mexendo no banco). · *de:* S132-A/B/C §6
 - [ ] **T-167** ⏳ 🧑 **depois da T-166, 3 min** · **Abrir as 3 páginas de EXEMPLO** (marca real da corretora-piloto, dados fictícios, faixa
       "Exemplo — dados fictícios"; o "Quero fechar" aponta para o SEU número de teste):
-      - RENOVAÇÃO: https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/hIV0NNYFaFgB5lZGA1DJCBD8Sg-QO5RAqSveIrwPQWA
-      - COTAÇÃO: https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/4qcLIjbTyeJ4nl9R3h25Ob_BG44XxQ5am51eUIww51M
-      - COTAÇÃO com apólice (mostra a economia): https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/5rKGV6bxoRZhl8ymGWVC2hnTlRU3jgmYvBYwyGaDlEo
+      - RENOVAÇÃO: https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/mq9Q149_aUR2OsQEnTX45bpyyeRJcJgPSCPD_uuTn-k
+      - COTAÇÃO: https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/TEvxrmvX8b4jjS2Z8WZw8Swbm5CQLNlV7vvYbqben1M
+      - COTAÇÃO com apólice (mostra a economia): https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/r/5RQASJ_O2L4y_vrZ7MZ4eat_SZJoF0bWMah2Yz3e37I
       **Esperado:** cada uma abre no celular com a marca, a faixa de exemplo no topo, a parcela em destaque e o "Quero fechar" que abre o
       seu WhatsApp de teste. 📊 Antes da T-166 elas dão "Este link não está mais disponível" (o servidor antigo não as entende).
       **Se der errado:** ainda "não disponível" depois do Implantar → print e a hora no chat. Diga no chat o que achou da página (o
