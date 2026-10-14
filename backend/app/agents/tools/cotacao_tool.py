@@ -296,7 +296,8 @@ class CotacaoDispararTool(_Cotacao):
         run_id = await asyncio.to_thread(WF.abrir, db, company_id=company_id, user_id=user_id,
                                          conversation_id=conversa, pedido_id=aberto.pedido_id,
                                          situacao=str(c.get("situacao") or "novo_sem_apolice"),
-                                         apolice_atual=c.get("apolice_atual"))
+                                         apolice_atual=c.get("apolice_atual"),
+                                         cliente=WF.resumo_do_cliente(c.get("campos"), c.get("descricao")))
         if not run_id:
             return ("O cálculo começou, mas não consegui acompanhá-lo para responder aqui — o resultado fica em "
                     "Cotação Rápida → Cotações.")
