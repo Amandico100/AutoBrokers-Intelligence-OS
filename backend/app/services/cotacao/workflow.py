@@ -111,6 +111,9 @@ def gravar_mensagem(db: Any, *, company_id: str, conversation_id: str, run_id: s
         }).eq("id", str(conversation_id)).eq("company_id", str(company_id)).execute()
     except Exception as exc:  # noqa: BLE001 — a prévia é cortesia; a mensagem já está lá
         logger.warning("[COTACAO] prévia da conversa não atualizada (%s)", type(exc).__name__)
+    # SPEC-132-C C3 — a conversa nasceu no WhatsApp do corretor? a mesma mensagem volta por lá (nunca levanta)
+    from app.services.atalho.envio import avisar_pelo_atalho_sem_esperar
+    avisar_pelo_atalho_sem_esperar(cli, company_id=company_id, conversation_id=conversation_id, texto_markdown=texto)
     return True
 
 
