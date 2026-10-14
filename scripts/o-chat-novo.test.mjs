@@ -31,6 +31,14 @@
 //   6 a barra do rodapé volta ao casco                                → [7]
 //   7 o esforço salvo é aceito sem conferir                           → [8]
 //   8 `body{min-height:100vh}` volta                                  → [9]
+//   SPEC-132 · A5 ([11] — a página VIVA; 9 no disco, 10–15 numa cópia via PAGINA_VIVA_SOB_TESTE=<cópia mutada>):
+//   9  `juntarChegadas` sem o dedupe (`if (false)`)                    → [11] 11 vermelhos
+//   10 a consulta não pausa com `document.hidden`                     → [11c]
+//   11 sem o prazo de 10 min                                           → [11d]
+//   12 `prometeuCalcular` liga para todo turno com texto              → [11b] 4 vermelhos
+//   13 ao abrir, sem conferir a idade da promessa                      → [11e]
+//   14 a espera nunca encerra ao chegar a resposta                     → [11a/c/e/g] 5 vermelhos
+//   15 a mensagem de um humano encerra a espera                        → [11i]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -626,6 +634,444 @@ console.log('\n[10] O Enter: notebook envia (Shift+Enter quebra a linha); no cel
   checar(/onPaste=\{aoColar\}/.test(fc) && /clipboardData\?\.files/.test(fc), 'colar imagem/arquivo no campo anexa');
   const fp = fonte('app/dashboard/chat/page.tsx');
   checar(/onDrop=\{aoSoltar\}/.test(fp) && /adicionarArquivos\(arquivos\)/.test(fp), 'soltar arquivos sobre a conversa anexa');
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[11] A resposta que chega depois (SPEC-132 · A5): a cotação disparada no turno aparece SEM recarregar');
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// 📊 14/10/2026, produção: `messages` e `conversations` fora da publicação `supabase_realtime` (0 linhas) — o
+// `postgres_changes` da página nunca recebe a mensagem que o Work Run `cotacao.chat` grava 1–6 min depois. A página
+// REAL roda aqui sobre um React dublê COM estado e efeitos, um relógio falso (setTimeout/Date.now) e um `document`
+// falso (`hidden` + `visibilitychange`); a rede é um servidor falso que guarda a conversa como o banco guardaria.
+// Dublê só na borda: fetch, relógio, document, Supabase (o Realtime calado, como em produção), marcadores de UI.
+const PROMESSA = 'Calculando nas seguradoras pela conta da corretora — volto aqui com o resultado em 1 a 2 minutos. Pode seguir conversando.';
+const T0 = Date.parse('2026-10-14T13:00:00.000Z');
+const LINHA_DA_ESPERA = 'Calculando a cotação… a resposta aparece aqui';
+
+function criarRelogioFalso(inicio) {
+  let agora = inicio;
+  let seq = 0;
+  const fila = new Map();
+  return {
+    agora: () => agora,
+    setTimeout(fn, ms = 0) { const id = ++seq; fila.set(id, { t: agora + Math.max(0, Number(ms) || 0), fn }); return id; },
+    clearTimeout(id) { fila.delete(id); },
+    pendentes: () => fila.size,
+    proximo(ate) {
+      let melhor = null;
+      for (const [id, x] of fila) if (x.t <= ate && (!melhor || x.t < melhor[1].t || (x.t === melhor[1].t && id < melhor[0]))) melhor = [id, x];
+      if (!melhor) return null;
+      fila.delete(melhor[0]);
+      agora = Math.max(agora, melhor[1].t);
+      return melhor[1].fn;
+    },
+    pular(t) { agora = Math.max(agora, t); },
+  };
+}
+
+/** React dublê com estado POR POSIÇÃO de hook, efeitos com dependências e limpeza, e "sujo" quando um set muda algo. */
+function criarReactVivo() {
+  const slots = [];
+  let cursor = 0;
+  let pendentes = [];
+  let sujo = false;
+  const React = {
+    useState(inicial) {
+      const i = cursor++;
+      if (!(i in slots)) slots[i] = { v: typeof inicial === 'function' ? inicial() : inicial };
+      const s = slots[i];
+      if (!s.set) s.set = (nv) => { const v = typeof nv === 'function' ? nv(s.v) : nv; if (!Object.is(v, s.v)) { s.v = v; sujo = true; } };
+      return [s.v, s.set];
+    },
+    useRef(v) { const i = cursor++; if (!(i in slots)) slots[i] = { v: { current: v } }; return slots[i].v; },
+    useCallback(fn, deps) { return React.useMemo(() => fn, deps); },
+    useMemo(fn, deps) {
+      const i = cursor++;
+      const antes = slots[i];
+      const igual = antes && deps && antes.deps && deps.length === antes.deps.length && deps.every((d, k) => Object.is(d, antes.deps[k]));
+      if (!igual) slots[i] = { v: fn(), deps };
+      return slots[i].v;
+    },
+    useEffect(fn, deps) {
+      const i = cursor++;
+      const antes = slots[i];
+      const mudou = !antes || !deps || !antes.deps || deps.length !== antes.deps.length || deps.some((d, k) => !Object.is(d, antes.deps[k]));
+      if (mudou) { pendentes.push({ i, fn, limpar: antes?.limpar }); slots[i] = { deps, limpar: antes?.limpar }; }
+    },
+    createElement(tipo, props, ...filhos) { return { tipo, props: props || {}, filhos }; },
+    Fragment: 'FRAGMENT',
+  };
+  return {
+    React,
+    render(Comp) {
+      cursor = 0; pendentes = []; sujo = false;
+      const arvore = Comp();
+      for (const p of pendentes) {
+        if (typeof p.limpar === 'function') p.limpar();
+        const r = p.fn();
+        slots[p.i].limpar = typeof r === 'function' ? r : undefined;
+      }
+      return arvore;
+    },
+    sujo: () => sujo,
+  };
+}
+
+function textoDaArvore(no) {
+  if (no == null || typeof no === 'boolean') return '';
+  if (typeof no === 'string' || typeof no === 'number') return String(no);
+  if (Array.isArray(no)) return no.map(textoDaArvore).join('');
+  return textoDaArvore(no.filhos) + textoDaArvore(no.props?.children);
+}
+
+/**
+ * A página VIVA: sobe com a conversa `conversaInicial` no servidor falso, roda os efeitos (empresa, agentes, conversa),
+ * e devolve como enviar uma mensagem (`eventosDoTurno` é o SSE que o backend responderia), avançar o relógio, esconder
+ * a aba e mexer no "banco".
+ */
+async function montarPaginaViva({ conversaInicial = [], arquivo = ARQ_PAGINA } = {}) {
+  const relogio = criarRelogioFalso(T0);
+  const ouvintesDoDocumento = new Map();
+  const doc = {
+    hidden: false,
+    activeElement: null,
+    body: {},
+    addEventListener(t, fn) { if (!ouvintesDoDocumento.has(t)) ouvintesDoDocumento.set(t, new Set()); ouvintesDoDocumento.get(t).add(fn); },
+    removeEventListener(t, fn) { ouvintesDoDocumento.get(t)?.delete(fn); },
+  };
+  const banco = { mensagens: conversaInicial.map((m) => ({ ...m })) };
+  let eventosDoTurno = [];
+  let respostaDoTurno = '';
+  const chamadas = [];
+  const SESSAO = 'sessao-viva-1';
+  let cridDoTurno = null;
+  const fetchFalso = async (url, opts = {}) => {
+    const u = String(url);
+    chamadas.push({ url: u, t: relogio.agora() });
+    if (u === '/api/chat/stream') { try { cridDoTurno = JSON.parse(opts.body).client_request_id; } catch { cridDoTurno = null; } }
+    const json = (dados) => ({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(dados)) });
+    if (u === '/api/user/company-data') return json({ companyId: 'co-alfa', allowWebSearch: false });
+    if (u === '/api/agents') return json({ agents: [{ id: AG, name: 'Agente Alfa' }] });
+    if (u.startsWith('/api/conversations?session_id=')) {
+      return json({ conversation: { id: 'conv-viva-1', agent_id: AG, session_id: SESSAO }, messages: banco.mensagens, has_more: false, cursor: null });
+    }
+    if (u === '/api/chat/stream') return respostaSSE(eventosDoTurno);
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  const { React, render, sujo } = criarReactVivo();
+  const stubs = (id) => {
+    if (id in MARCADORES_VIVOS) return MARCADORES_VIVOS[id];
+    return undefined;
+  };
+  const carregar = criarCarregador({ React, stubs });
+  const antes = {
+    window: globalThis.window, document: globalThis.document, fetch: globalThis.fetch, raf: globalThis.requestAnimationFrame,
+    setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, now: Date.now, error: console.error,
+  };
+  const imediato = antes.setTimeout; // o laço de microtarefas do teste usa o relógio REAL (setImmediate)
+  globalThis.window = {
+    location: { search: `?session=${SESSAO}`, href: `http://teste.local/dashboard/chat?session=${SESSAO}` },
+    history: { replaceState() {} },
+    addEventListener() {}, removeEventListener() {},
+  };
+  globalThis.document = doc;
+  globalThis.fetch = fetchFalso;
+  globalThis.requestAnimationFrame = undefined;
+  globalThis.setTimeout = relogio.setTimeout;
+  globalThis.clearTimeout = relogio.clearTimeout;
+  Date.now = relogio.agora;
+  console.error = () => {};
+  void imediato;
+  const pagina = carregar(arquivo).default;
+  let arvore = null;
+  const assentar = async () => {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setImmediate(r));
+      if (sujo()) arvore = render(pagina);
+    }
+  };
+  arvore = render(pagina);
+  await assentar();
+  const api = {
+    banco,
+    chamadas,
+    arvore: () => arvore,
+    bolhas: () => [...nos(arvore)].filter((n) => n.tipo && n.tipo.nome === 'MessageBubble').map((n) => n.props.message),
+    linhaDaEspera: () => textoDaArvore(arvore).includes(LINHA_DA_ESPERA),
+    consultas: () => chamadas.filter((c) => c.url.startsWith('/api/conversations?session_id=')).length,
+    relogiosPendentes: () => relogio.pendentes(),
+    agora: () => relogio.agora(),
+    async enviar(texto, eventos, respostaGravada) {
+      eventosDoTurno = eventos;
+      respostaDoTurno = respostaGravada;
+      const composer = [...nos(arvore)].find(ehComposer);
+      await composer.props.onSendMessage(texto, [], {});
+      // o "servidor" gravou a pergunta e a resposta do turno — com ids do BANCO (diferentes dos da tela) e o mesmo
+      // `client_request_id`, como o BFF faz; é isso que a consulta traz de volta
+      const crid = cridDoTurno;
+      banco.mensagens.push(
+        { id: `db-u-${banco.mensagens.length}`, conversation_id: 'conv-viva-1', role: 'user', content: texto, type: 'text', created_at: new Date(relogio.agora()).toISOString(), payload: { client_request_id: crid } },
+        { id: `db-a-${banco.mensagens.length + 1}`, conversation_id: 'conv-viva-1', role: 'assistant', content: respostaDoTurno, type: 'text', created_at: new Date(relogio.agora()).toISOString(), payload: { client_request_id: crid } },
+      );
+      await assentar();
+    },
+    async avancar(ms) {
+      const alvo = relogio.agora() + ms;
+      for (let n = 0; n < 10000; n++) {
+        const fn = relogio.proximo(alvo);
+        if (!fn) break;
+        fn();
+        await assentar();
+      }
+      relogio.pular(alvo);
+      await assentar();
+    },
+    async esconderAba(oculta) {
+      doc.hidden = oculta;
+      for (const fn of [...(ouvintesDoDocumento.get('visibilitychange') || [])]) fn();
+      await assentar();
+    },
+    restaurar() {
+      globalThis.window = antes.window; globalThis.document = antes.document; globalThis.fetch = antes.fetch;
+      globalThis.requestAnimationFrame = antes.raf; globalThis.setTimeout = antes.setTimeout; globalThis.clearTimeout = antes.clearTimeout;
+      Date.now = antes.now; console.error = antes.error;
+    },
+  };
+  return api;
+}
+function arvoreMensagens(arvore) {
+  return [...nos(arvore)].filter((n) => n.tipo && n.tipo.nome === 'MessageBubble').map((n) => n.props.message);
+}
+const marcadorVivo = (nome) => { const f = function () { return null; }; f.nome = nome; return f; };
+const MARCADORES_VIVOS = {
+  '@/components/chat/ChatWelcome': { ChatWelcome: marcadorVivo('ChatWelcome') },
+  '@/components/chat/LinhaDeAtividade': { LinhaDeAtividade: marcadorVivo('LinhaDeAtividade') },
+  '@/components/chat/AvisoDoTurno': { AvisoDoTurno: marcadorVivo('AvisoDoTurno') },
+  '@/components/chat/VoltarAoFim': { VoltarAoFim: marcadorVivo('VoltarAoFim') },
+  '@/components/chat/composer/Composer': { Composer: marcadorVivo('Composer') },
+  '@/components/MessageBubble': { MessageBubble: marcadorVivo('MessageBubble') },
+  '@/components/TypingIndicator': { TypingIndicator: marcadorVivo('TypingIndicator') },
+  // o Realtime CALADO — como em produção (📊 0 linhas na publicação)
+  '@/lib/supabase': { supabase: { channel: () => ({ on: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }) }), removeChannel() {} } },
+  '@/lib/types': {},
+  '@/hooks/useUserId': { useUserId: () => ({ userId: UID, userAvatar: null, userName: 'Ana Teste', isLoading: false }) },
+  sonner: { toast: { error() {}, success() {} } },
+};
+const ev = (seq, type, payload = {}) => ({ protocol: 'autobrokers.interaction.v1', seq, type, turn: {}, payload });
+const turnoQueDisparou = (texto, chave = 'generic') => [
+  ev(1, 'turn.accepted', {}),
+  ev(2, 'stage.started', { key: chave, label: 'Trabalhando nisso…' }),
+  ev(3, 'stage.completed', { key: chave }),
+  ev(4, 'assistant.content.delta', { text: texto }),
+  ev(5, 'assistant.content.completed', { content: texto }),
+  ev(6, 'turn.completed', { status: 'complete' }),
+];
+const conversaAntiga = [
+  { id: 'db-old-u', conversation_id: 'conv-viva-1', role: 'user', content: 'Oi', type: 'text', created_at: '2026-10-14T12:00:00.000Z', payload: { client_request_id: 'crid-antigo' } },
+  { id: 'db-old-a', conversation_id: 'conv-viva-1', role: 'assistant', content: 'Olá! Em que posso ajudar?', type: 'text', created_at: '2026-10-14T12:00:03.000Z', payload: { client_request_id: 'crid-antigo' } },
+];
+const resultadoDaCotacao = (t, id = 'db-cotacao-pronta', tipo = 'pronta') => ({
+  id, conversation_id: 'conv-viva-1', role: 'assistant', type: 'text', created_at: new Date(t).toISOString(),
+  content: 'Pronto: 5 seguradoras responderam. Recomendada R$ 2.100,00 …',
+  payload: { cotacao: { tipo, work_run_id: 'run-1', pedido_id: 'ped-1', estado: 'pronta', url: '/r/tok-falso' } },
+});
+/** Sem duplicata: cada `id` uma vez, e cada (client_request_id, role) uma vez. */
+function duplicatas(lista) {
+  const vistos = new Set();
+  const dup = [];
+  for (const m of lista) {
+    const crid = m.payload?.client_request_id;
+    const chave = crid ? `crid:${crid}:${m.role}` : `id:${m.id}`;
+    if (vistos.has(chave)) dup.push(chave);
+    vistos.add(chave);
+  }
+  return dup;
+}
+
+const ARQ_PAGINA_VIVA = process.env.PAGINA_VIVA_SOB_TESTE || ARQ_PAGINA;
+{
+  // (a) a cotação disparada: a espera liga, consulta a cada 6 s, junta a resposta UMA vez e para
+  const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+  try {
+    checar(p.bolhas().length === 2 && !p.linhaDaEspera(), 'a conversa abre com as 2 mensagens antigas e sem espera (a última não é uma promessa de cálculo)');
+    const consultasAoAbrir = p.consultas();
+    await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
+    checar(p.linhaDaEspera(), 'depois do turno que disparou o cálculo: a linha "Calculando a cotação… a resposta aparece aqui" aparece');
+    await p.avancar(5_000);
+    const aos5s = p.consultas() - consultasAoAbrir;
+    await p.avancar(1_000);
+    const aos6s = p.consultas() - consultasAoAbrir;
+    console.log(`      consultas à conversa depois do disparo · aos 5 s: ${aos5s} · aos 6 s: ${aos6s}`);
+    checar(aos5s === 0 && aos6s === 1, 'a 1ª consulta é aos 6 s (e não antes)', `5s=${aos5s} 6s=${aos6s}`);
+    checar(duplicatas(p.bolhas()).length === 0 && p.bolhas().length === 4, 'a consulta traz a pergunta e a resposta do turno com ids do banco — e NADA duplica (dedupe pelo id do envio)', `${p.bolhas().length} bolhas · dup=${duplicatas(p.bolhas()).join(',')}`);
+    await p.avancar(12_000);
+    const semResultado = p.consultas() - consultasAoAbrir;
+    p.banco.mensagens.push(resultadoDaCotacao(p.agora()));
+    await p.avancar(6_000);
+    const comCotacao = p.bolhas().filter((m) => m.payload?.cotacao);
+    console.log(`      consultas até o resultado: ${p.consultas() - consultasAoAbrir} · bolhas com payload.cotacao: ${comCotacao.length}`);
+    checar(semResultado === 3, 'sem resposta ainda, a espera segue consultando (3 consultas em 18 s)', String(semResultado));
+    checar(comCotacao.length === 1 && comCotacao[0].id === 'db-cotacao-pronta', 'a mensagem com payload.cotacao aparece UMA vez, sem recarregar');
+    checar(arvoreMensagens(p.arvore()).at(-1)?.id === 'db-cotacao-pronta', 'ela entra no FIM da conversa');
+    checar(!p.linhaDaEspera(), 'a linha "Calculando…" some quando a resposta chega');
+    const aoChegar = p.consultas();
+    await p.avancar(120_000);
+    checar(p.consultas() === aoChegar && p.relogiosPendentes() === 0, 'e a espera PARA: 2 min depois, nenhuma consulta nova e nenhum relógio armado', `+${p.consultas() - aoChegar} consultas · ${p.relogiosPendentes()} relógio(s)`);
+    checar(duplicatas(p.bolhas()).length === 0 && p.bolhas().length === 5, 'no fim: 5 bolhas, nenhuma duplicada', `${p.bolhas().length}`);
+  } finally { p.restaurar(); }
+}
+{
+  // (b) turnos comuns NÃO esperam — nem a recusa da ferramenta (que também passou pelo estágio)
+  const casos = [
+    ['um turno comum', 'O prêmio é R$ 1.200.', 'generic'],
+    ['a recusa da cotacao_disparar', 'Esse ramo eu ainda não calculo por aqui — cote direto no Agger.', 'generic'],
+    ['"o cálculo começou mas não consegui acompanhá-lo"', 'O cálculo começou, mas não consegui acompanhá-lo para responder aqui — o resultado fica em Cotação Rápida → Cotações.', 'generic'],
+  ];
+  for (const [nome, texto, chave] of casos) {
+    const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+    try {
+      const antes = p.consultas();
+      await p.enviar('qual o prêmio?', turnoQueDisparou(texto, chave), texto);
+      await p.avancar(60_000);
+      checar(!p.linhaDaEspera() && p.consultas() === antes, `${nome}: nenhuma espera, nenhuma consulta em 60 s`, `+${p.consultas() - antes}`);
+    } finally { p.restaurar(); }
+  }
+  // CONTROLE do estágio: com a chave `quote.calculating` (quando o catálogo nomear a ferramenta), um "calculando"
+  // parafraseado TAMBÉM liga a espera — e o mesmo texto sem a chave não liga
+  for (const [chave, liga] of [['quote.calculating', true], ['generic', false]]) {
+    const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+    try {
+      await p.enviar('sim', turnoQueDisparou('Certo, já estou calculando nas seguradoras.', chave), 'Certo, já estou calculando nas seguradoras.');
+      checar(p.linhaDaEspera() === liga, `estágio "${chave}" + "calculando" parafraseado → ${liga ? 'espera' : 'não espera'}`);
+    } finally { p.restaurar(); }
+  }
+}
+{
+  // (c) a aba oculta PAUSA (nenhuma consulta, nenhum relógio) e a volta consulta na hora
+  const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+  try {
+    await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
+    await p.avancar(6_000);
+    const antes = p.consultas();
+    await p.esconderAba(true);
+    await p.avancar(60_000);
+    const oculta = p.consultas() - antes;
+    checar(oculta <= 1 && p.relogiosPendentes() === 0, 'aba oculta: no máximo a volta em curso, depois NENHUMA consulta em 60 s e nenhum relógio armado', `+${oculta} · ${p.relogiosPendentes()} relógio(s)`);
+    const naVolta = p.consultas();
+    p.banco.mensagens.push(resultadoDaCotacao(p.agora()));
+    await p.esconderAba(false);
+    await p.avancar(0);
+    checar(p.consultas() === naVolta + 1 && p.bolhas().filter((m) => m.payload?.cotacao).length === 1 && !p.linhaDaEspera(), 'aba visível de novo: consulta NA HORA e a resposta aparece');
+  } finally { p.restaurar(); }
+}
+{
+  // (d) o prazo: 10 min sem resposta → a espera para sozinha
+  const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+  try {
+    const antes = p.consultas();
+    await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
+    await p.avancar(9 * 60_000 + 54_000);
+    const aos954 = p.consultas() - antes;
+    const linhaAinda = p.linhaDaEspera();
+    await p.avancar(6_000);
+    const aos10 = p.consultas() - antes;
+    await p.avancar(5 * 60_000);
+    console.log(`      consultas · aos 9 min 54 s: ${aos954} · aos 10 min: ${aos10} · aos 15 min: ${p.consultas() - antes}`);
+    checar(linhaAinda && aos954 === 99, 'até o prazo, uma consulta a cada 6 s (99 até 9 min 54 s) com a linha à vista', String(aos954));
+    checar(!p.linhaDaEspera() && p.consultas() - antes === aos10 && aos10 === 99 && p.relogiosPendentes() === 0, 'aos 10 min a espera PARA: a linha some e nenhuma consulta depois', `${aos10} → ${p.consultas() - antes}`);
+  } finally { p.restaurar(); }
+}
+{
+  // (e) ao ABRIR: só a promessa de cálculo recente (< 10 min) e ainda sem payload.cotacao liga a espera
+  const promessaGravada = (minutosAtras, extra = {}) => [
+    ...conversaAntiga,
+    { id: 'db-u-sim', conversation_id: 'conv-viva-1', role: 'user', content: 'sim', type: 'text', created_at: new Date(T0 - minutosAtras * 60_000 - 2000).toISOString(), payload: { client_request_id: 'crid-sim' } },
+    { id: 'db-a-sim', conversation_id: 'conv-viva-1', role: 'assistant', content: PROMESSA, type: 'text', created_at: new Date(T0 - minutosAtras * 60_000).toISOString(), payload: { client_request_id: 'crid-sim', ...extra } },
+  ];
+  for (const [nome, conversa, liga] of [
+    ['a promessa de 2 min atrás', promessaGravada(2), true],
+    ['a promessa de 15 min atrás', promessaGravada(15), false],
+    ['uma resposta que JÁ é a cotação', promessaGravada(2, { cotacao: { tipo: 'pronta' } }), false],
+    ['um "calculando" qualquer (não é a frase da ferramenta)', [...conversaAntiga, { id: 'db-a-x', conversation_id: 'conv-viva-1', role: 'assistant', content: 'Estou calculando a média da carteira.', type: 'text', created_at: new Date(T0 - 60_000).toISOString(), payload: {} }], false],
+  ]) {
+    const p = await montarPaginaViva({ conversaInicial: conversa, arquivo: ARQ_PAGINA_VIVA });
+    try {
+      checar(p.linhaDaEspera() === liga, `ao abrir · ${nome} → ${liga ? 'espera' : 'não espera'}`);
+      if (liga) {
+        p.banco.mensagens.push(resultadoDaCotacao(p.agora()));
+        await p.avancar(6_000);
+        checar(p.bolhas().filter((m) => m.payload?.cotacao).length === 1 && !p.linhaDaEspera(), 'ao abrir · a resposta chega pela consulta e a espera termina');
+      }
+    } finally { p.restaurar(); }
+  }
+}
+{
+  // (f) a transcrição do áudio (o UPDATE que o Realtime não entrega) chega pela mesma consulta
+  const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+  try {
+    await p.enviar('', turnoQueDisparou(PROMESSA), PROMESSA);
+    const daPergunta = p.banco.mensagens.at(-2);
+    daPergunta.payload = { ...daPergunta.payload, transcricao: 'cota o onix do joão' };
+    await p.avancar(6_000);
+    const pergunta = p.bolhas().find((m) => m.role === 'user' && m.payload?.client_request_id === daPergunta.payload.client_request_id);
+    checar(pergunta?.payload?.transcricao === 'cota o onix do joão' && duplicatas(p.bolhas()).length === 0, 'a transcrição gravada depois entra na bolha da pergunta (sem duplicá-la)', JSON.stringify(pergunta?.payload));
+  } finally { p.restaurar(); }
+}
+{
+  // (g) disparo + ajuste = DUAS respostas: a 1ª não encerra a espera, a 2ª sim — e nenhuma duplica
+  const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+  try {
+    await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
+    const ajuste = 'Recalculando com a franquia reduzida pela conta da corretora — volto aqui com o resultado em 1 a 2 minutos.';
+    await p.enviar('baixa a franquia', turnoQueDisparou(ajuste), ajuste);
+    p.banco.mensagens.push(resultadoDaCotacao(p.agora(), 'db-cot-1'));
+    await p.avancar(6_000);
+    const depoisDa1 = p.linhaDaEspera();
+    await p.avancar(12_000);
+    p.banco.mensagens.push(resultadoDaCotacao(p.agora(), 'db-cot-2'));
+    await p.avancar(6_000);
+    const cot = p.bolhas().filter((m) => m.payload?.cotacao).map((m) => m.id);
+    checar(depoisDa1 && !p.linhaDaEspera(), 'com disparo + ajuste, a espera segue depois da 1ª resposta e termina na 2ª');
+    checar(JSON.stringify(cot) === '["db-cot-1","db-cot-2"]' && duplicatas(p.bolhas()).length === 0, 'cada resposta aparece UMA vez, mesmo com as consultas que vieram depois da 1ª', JSON.stringify(cot));
+  } finally { p.restaurar(); }
+}
+
+{
+  // (h) a rolagem do corretor: quem subiu para reler NÃO é puxado para o fim quando a resposta chega — vê o
+  //     "Voltar ao fim" que já existe; quem estava no fim acompanha (CONTROLE)
+  for (const [nome, longe] of [['rolou para cima', true], ['estava no fim', false]]) {
+    const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+    try {
+      await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
+      const noDeRolagem = [...nos(p.arvore())].find((n) => typeof n.props?.onScroll === 'function');
+      const fim = [...nos(p.arvore())].find((n) => n.tipo === 'div' && n.props?.ref && n.props.className === 'h-4');
+      let puxadas = 0;
+      if (noDeRolagem?.props.ref) noDeRolagem.props.ref.current = { scrollHeight: 3000, scrollTop: longe ? 200 : 2450, clientHeight: 500 };
+      if (fim) fim.props.ref.current = { scrollIntoView() { puxadas += 1; } };
+      noDeRolagem?.props.onScroll();
+      p.banco.mensagens.push(resultadoDaCotacao(p.agora()));
+      await p.avancar(6_000);
+      const voltar = [...nos(p.arvore())].some((n) => n.tipo && n.tipo.nome === 'VoltarAoFim');
+      const chegou = p.bolhas().some((m) => m.payload?.cotacao);
+      checar(Boolean(noDeRolagem && fim) && chegou && (longe ? puxadas === 0 && voltar : puxadas >= 1 && !voltar),
+        `${nome}: a resposta chega e a tela ${longe ? 'NÃO rola (mostra "Voltar ao fim")' : 'acompanha até o fim'}`, `puxadas=${puxadas} voltar=${voltar}`);
+    } finally { p.restaurar(); }
+  }
+}
+
+{
+  // (i) a mensagem de um HUMANO da equipe no meio da espera aparece, mas não é o resultado: a espera continua
+  const p = await montarPaginaViva({ conversaInicial: conversaAntiga, arquivo: ARQ_PAGINA_VIVA });
+  try {
+    await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
+    p.banco.mensagens.push({ id: 'db-humano', conversation_id: 'conv-viva-1', role: 'assistant', content: 'Oi, aqui é a Bia da equipe.', type: 'text', created_at: new Date(p.agora()).toISOString(), sender_user_id: 'u-bia-ficticia', payload: {} });
+    await p.avancar(6_000);
+    const humanoNaTela = p.bolhas().some((m) => m.id === 'db-humano');
+    const aindaEspera = p.linhaDaEspera();
+    p.banco.mensagens.push(resultadoDaCotacao(p.agora()));
+    await p.avancar(6_000);
+    checar(humanoNaTela && aindaEspera && !p.linhaDaEspera(), 'a mensagem de um humano aparece e NÃO encerra a espera; a da cotação, sim', `humano=${humanoNaTela} esperando=${aindaEspera}`);
+  } finally { p.restaurar(); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
