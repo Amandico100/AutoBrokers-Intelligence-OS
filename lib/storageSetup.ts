@@ -16,7 +16,11 @@ export async function uploadVoiceMessage(audioBlob: Blob): Promise<string | null
     }
 
     const data = await response.json();
-    return data.publicUrl;
+    // SPEC-132-A (A4) — a rota nunca devolveu `publicUrl`. O `voice-messages` não é público: a URL é a do proxy
+    // autenticado (`url`), e sem ela a referência durável (`storagePath`). Nunca `undefined` calado.
+    if (typeof data?.url === 'string' && data.url) return data.url;
+    if (typeof data?.storagePath === 'string' && data.storagePath) return data.storagePath;
+    return null;
   } catch (error) {
     console.error('Error in uploadVoiceMessage:', error);
     return null;
