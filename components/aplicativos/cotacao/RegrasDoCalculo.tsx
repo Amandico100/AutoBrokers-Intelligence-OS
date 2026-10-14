@@ -197,7 +197,7 @@ export function RegrasDoCalculo({
       <Linha
         rotulo="Comissão de entrada"
         htmlFor={podeComissao ? 'cfg-cot-comissao' : undefined}
-        info="A comissão da corretora com que o cálculo começa num cliente novo. Na negociação ela desce aos poucos, nunca abaixo do piso."
+        info="Vale para Residencial, Condomínio e Empresarial: é a comissão com que esses cálculos começam num cliente novo (quando o ramo não tem uma comissão própria) e, na negociação, ela desce aos poucos, nunca abaixo do piso. No carro, o cálculo sai com a comissão que está na conta do Agger."
       >
         {podeComissao ? (
           <div className="space-y-2">
