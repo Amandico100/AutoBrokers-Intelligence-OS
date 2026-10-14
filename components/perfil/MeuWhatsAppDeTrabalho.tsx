@@ -19,6 +19,8 @@ import { fraseDoErro, type MeuPerfil } from './useMeuPerfil';
  * SPEC-132-C C1 (D-132C-02) — "Usar pelo WhatsApp": a pessoa prova que o número é DELA mandando, do próprio celular, o
  * código "ATIVAR 123456" ao número do AutoBrokers. Verificado, ela conversa com o AutoBrokers pelo WhatsApp como no chat.
  * Trocar o número apaga a verificação. Sem o número do AutoBrokers ligado pela plataforma, o botão não aparece.
+ * Conserto da 132-C: o código só vale mandado do número SALVO e confirmado aqui (a tela pede o número primeiro), e
+ * com o atalho desligado a tela diz "Em breve" em vez de oferecer um código que ficaria sem resposta.
  */
 type WhatsAppDoPerfil = MeuPerfil['whatsapp_trabalho'] & { verificado_em?: string | null; verificado?: boolean };
 type PerfilComAtalho = MeuPerfil & { atalho_whatsapp?: { disponivel?: boolean } };
@@ -65,6 +67,8 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
   if (!perfil) return <Skeleton className="h-40 w-full rounded-xl" />;
 
   const verificado = Boolean(atual?.verificado && atual?.numero);
+  // conserto P1 (SPEC-132-C): o código amarra o número DECLARADO — sem número salvo e confirmado, não há código
+  const numeroConfirmado = Boolean(atual?.confirmado && atual?.numero && !editando);
 
   const gravar = async (corpo: Record<string, unknown>, ok: string) => {
     setOcupado(true); setErro(''); setAviso('');
@@ -178,7 +182,12 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
             </p>
           ) : !atalhoDisponivel ? (
             <p className="text-sm text-muted-foreground">
-              O número do AutoBrokers ainda não foi ligado pela plataforma.
+              Em breve: você vai poder conversar com o AutoBrokers pelo seu WhatsApp de trabalho, como no chat.
+            </p>
+          ) : !numeroConfirmado ? (
+            <p className="text-sm text-muted-foreground">
+              Primeiro salve e confirme o seu WhatsApp de trabalho acima. Depois, você manda um código desse número
+              para o AutoBrokers.
             </p>
           ) : !codigo ? (
             <div className="space-y-3">
@@ -201,7 +210,11 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
                   ) : null}
                   .
                 </li>
-                <li>Mande a mensagem abaixo do <strong>seu</strong> celular — o do número que vai falar com o AutoBrokers.</li>
+                <li>
+                  Mande a mensagem abaixo do celular com o número{' '}
+                  <strong className="tabular-nums">{atual?.numero ? exibir(atual.numero) : 'que você salvou'}</strong>.
+                  De outro número, ela não vale.
+                </li>
               </ol>
               <p className="w-fit rounded-lg border border-border bg-background px-4 py-3 font-mono text-lg font-semibold tracking-wider text-foreground tabular-nums"
                 aria-label={`Mensagem: ${codigo.texto}`}>
