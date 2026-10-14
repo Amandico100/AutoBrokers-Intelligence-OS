@@ -105,6 +105,13 @@ checar(abasRen.find((a) => a.id === 'renovacoes')?.componente === 'renovacao/Aba
 checar(abasRen.find((a) => a.id === 'configurar')?.componente === 'renovacao/AbaConfigurar', 'Configurar = components/aplicativos/renovacao/AbaConfigurar (G3)');
 checar(C.abaValida(abasRen, 'renovacoes') === 'renovacoes', '?aba=renovacoes abre direto');
 checar(C.abaValida(abasRen, 'xpto') === 'inicio' && C.abaValida(abasRen, null) === 'inicio', 'aba inválida ou ausente → Início');
+// SPEC-132-B · B3 — a Cotação Rápida tão completa quanto a Renovação (era Início · Configurar · Dúvidas: verdade vencida, §9.3)
+const abasCot = C.abasDoAplicativo({ slug: 'cotacao', faq, estado: 'disponivel', instalado: false, sem_rotina: true });
+checar(abasCot.map((a) => a.id).join(',') === 'inicio,configurar,cotacoes,duvidas', 'Cotação Rápida: Início · Configurar · Cotações · Dúvidas', abasCot.map((a) => a.id).join(','));
+checar(abasCot.find((a) => a.id === 'cotacoes')?.componente === 'cotacao/AbaCotacoes' && abasCot.find((a) => a.id === 'cotacoes')?.rotulo === 'Cotações',
+  'Cotações = components/aplicativos/cotacao/AbaCotacoes (B3)');
+checar(C.abaValida(abasCot, 'cotacoes') === 'cotacoes' && C.abasLargas(abasCot).join(',') === 'cotacoes', '?aba=cotacoes abre direto e ganha largura');
+checar(fs.existsSync(path.join(RAIZ, 'components/aplicativos/cotacao/AbaCotacoes.tsx')), 'o arquivo da aba Cotações existe (senão a casca diria "sendo preparada")');
 const abasCob = C.abasDoAplicativo({ slug: 'cobranca-feita', faq: [], estado: 'disponivel', instalado: false, sem_rotina: false });
 checar(abasCob.map((a) => a.id).join(',') === 'inicio', 'não instalado, sem dúvidas: só Início (o painel exige instalar)', abasCob.map((a) => a.id).join(','));
 const abasCobInst = C.abasDoAplicativo({ slug: 'cobranca-feita', faq: [], estado: 'pausado', instalado: true, sem_rotina: false });
@@ -140,6 +147,21 @@ checar(nCego.prontos === 1 && cego.find((x) => x.chave === 'agger_da_corretora')
   'sem leitura do backend: Agger e equipe "não deu para conferir", nunca pronto (só a InfoCap, que o catálogo leu)', JSON.stringify(nCego));
 const ligadoRen = C.contagemDosPassos(C.passosDoComoComecar({ ...itemRen, estado: 'ligado' }, fontes));
 checar(ligadoRen.prontos === 3, 'CONTROLE: ligado → o passo Ligar vira pronto (3 de 6)');
+// SPEC-132-B · B3 — o Como começar da Cotação Rápida: Agger da corretora → o SEU Agger → as regras, cada um com estado real
+const itemCot = { slug: 'cotacao', estado: 'disponivel', instalado: false, rotinas: 0, sem_rotina: true, conexoes: [] };
+const fontesCot = (porServico) => ({
+  prontidao: [{ chave: 'agger_da_corretora', estado: 'pronto', detalhe: 'ok' }, { chave: 'servicos', estado: 'pronto', ...(porServico ? { por_servico: porServico } : {}) }],
+  meuAgger: false,
+});
+const pc = C.passosDoComoComecar(itemCot, fontesCot({ cotacao: false, renovacao: true }));
+checar(pc.map((x) => x.chave).join(',') === 'agger_da_corretora,meu_agger,servicos', 'Cotação: Agger da corretora → seu Agger → regras', pc.map((x) => x.chave).join(','));
+checar(pc[1].estado === 'falta' && pc[1].link === C.LINK_MEU_PERFIL && /Agger da corretora/.test(pc[1].detalhe), 'sem o seu Agger: falta, com o link do Meu perfil e o aviso de que sai no da corretora');
+checar(pc[2].estado === 'falta' && pc[2].link === '/dashboard/auxiliares/cotacao?aba=configurar',
+  'a regra da RENOVAÇÃO não conta como regra da cotação (por_servico.cotacao = false → falta), e leva ao Configurar da cotação');
+const pcPronto = C.passosDoComoComecar(itemCot, { ...fontesCot({ cotacao: true, renovacao: false }), meuAgger: true });
+checar(C.contagemDosPassos(pcPronto).prontos === 3, 'CONTROLE: Agger da corretora + seu Agger + regras da cotação → 3 de 3');
+checar(C.passosDoComoComecar(itemCot, { prontidao: null, meuAgger: null }).every((x) => x.estado === 'nao_sei'),
+  'sem leitura do backend: os 3 passos "não deu para conferir", nunca pronto');
 const pg = C.passosDoComoComecar({ slug: 'cobranca-feita', estado: 'falta_conectar', instalado: false, rotinas: 0, sem_rotina: false,
   conexoes: [{ slug: 'insurance_portal', nome: 'Portal da Seguradora', pronto: false, onde: '/p' }, { slug: 'whatsapp_zapi', nome: 'WhatsApp', pronto: true, onde: '/w' }] },
   { prontidao: null, meuAgger: null });
@@ -162,7 +184,7 @@ function bancoFalso() {
     auxiliary_templates: [
       { id: 't-cob', slug: 'cobranca-feita', name: 'Cobrança Feita', headline: 'O boleto chega antes', categories: ['tempo_livre'], catalog_state: 'available',
         required_connectors: ['insurance_portal', 'whatsapp_zapi'], status: 'active', is_active: true, icon: 'ReceiptText', what_it_does: [], data_sources: [] },
-      { id: 't-ren', slug: 'renovacao', name: 'Renovação', headline: 'As renovações amanhecem calculadas', categories: ['cliente_blindado'], catalog_state: 'available',
+      { id: 't-ren', slug: 'renovacao', name: 'Renovação Automática', headline: 'As renovações amanhecem calculadas', categories: ['cliente_blindado'], catalog_state: 'available',
         required_connectors: ['infocap'], status: 'active', is_active: true, icon: 'RefreshCcwDot', featured_rank: 1,
         faq: [{ pergunta: 'Quando?', resposta: 'Antes das 7h.' }], cover_url: null, what_it_does: [], data_sources: [] },
       { id: 't-velha', slug: 'renovacao-maxima', name: 'Renovação Máxima', headline: 'x', categories: [], catalog_state: 'coming_soon',
@@ -304,6 +326,8 @@ const ARQS = [
   'app/dashboard/auxiliares/[slug]/AuxiliarDetalheClient.tsx',
   'lib/auxiliaries/catalog.ts',
   ...fs.readdirSync(path.join(RAIZ, 'components/aplicativos/casca')).filter((f) => /\.tsx?$/.test(f)).map((f) => `components/aplicativos/casca/${f}`),
+  // SPEC-132-B · B3 — a aba Cotações e as regras do cálculo passam pela MESMA régua
+  ...fs.readdirSync(path.join(RAIZ, 'components/aplicativos/cotacao')).filter((f) => /\.tsx?$/.test(f)).map((f) => `components/aplicativos/cotacao/${f}`),
 ];
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{FE0F}]/u;
 for (const rel of ARQS) {
@@ -323,6 +347,7 @@ const TELAS_131B = [
   ...listar('components/aplicativos/casca'),
   ...listar('components/aplicativos/configurar'),
   ...listar('components/aplicativos/renovacao'),
+  ...listar('components/aplicativos/cotacao'),
   'components/aplicativos/QuadroOuLista.tsx',
   ...listar('components/perfil'),
   'app/dashboard/auxiliares/AuxiliaresClient.tsx',
