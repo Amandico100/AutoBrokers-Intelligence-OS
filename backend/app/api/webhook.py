@@ -2917,6 +2917,12 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
                 return {"status": "ignored", "reason": "duplicate"}
             background_tasks.add_task(_atalho.turno_do_atalho, supabase.client, integration, _env)
             return {"status": "accepted", "reason": "atalho"}
+        # 🔴 conserto B1 (juiz 132-C) — o portão FALHA FECHADO: `purpose='assistente'` cuja empresa não se confirmou
+        # como a da plataforma (banco instável, cache vazio, ou uma corretora que gravou a palavra) NUNCA segue para o
+        # desvio do QCM, o observer ou o pipeline de atendimento. O pareamento só cria esse purpose na plataforma
+        # (`pairing_orchestrator._so_a_plataforma_tem_assistente`): fechar aqui não tira nada de ninguém.
+        logger.warning("[WEBHOOK EVOLUTION-GO] integração do assistente sem a plataforma confirmada — ignorada")
+        return {"status": "ignored", "reason": "atalho_nao_confirmado"}
 
     # 🔴 SPEC-133-A D-133A-02 — O CANAL DE COTAÇÃO NÃO PASSA PELO OBSERVADOR (desvio 1 de 2; o 2º é no turno).
     # O hub pareia TUDO com `purpose='observer'` e o canal não tem agente: sem este desvio o "oi" do convidado
