@@ -396,6 +396,9 @@ def previa_do_modelo(modelo: dict) -> dict:
     modelo = modelo or {}
     if e_renovacao(modelo):                     # SPEC-131-B: a prévia da renovação não fala de ranking
         return _previa_da_renovacao(modelo)
+    from .proposta_cotacao_html import e_venda, previa_da_cotacao
+    if e_venda(modelo):                         # SPEC-132-B (D-132B-01): a prévia da página de VENDA
+        return previa_da_cotacao(modelo)
     rec = opcao_recomendada(modelo) or {}
     resumo = modelo.get("resumo") or {}
     anfitria = _anfitria(modelo)
@@ -881,6 +884,9 @@ def render_proposta(modelo: dict) -> str:
     modelo = modelo if isinstance(modelo, dict) else {}
     if e_renovacao(modelo):                     # SPEC-131-B (D-131-40): a página de quem JÁ é cliente
         return render_renovacao(modelo)
+    from .proposta_cotacao_html import e_venda, render_cotacao
+    if e_venda(modelo):                         # SPEC-132-B (D-132B-01): a página de VENDA (quem ainda não é cliente)
+        return render_cotacao(modelo)
     previa = previa_do_modelo(modelo)
     ops = _ordenadas(modelo)
     rec = ops[0] if ops else None
