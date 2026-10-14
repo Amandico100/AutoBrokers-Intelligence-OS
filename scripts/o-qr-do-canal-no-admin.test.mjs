@@ -247,6 +247,42 @@ const layout = readFileSync(rel('app/admin/layout.tsx'), 'utf8');
 assert('o menu do admin leva à página', layout.includes("href: '/admin/canais/quem-cobra-menos/whatsapp'")
   && existsSync(rel('app/admin/canais/quem-cobra-menos/whatsapp/page.tsx')));
 
+// ---------------------------------------------------------------- 6. o 2º número da plataforma (SPEC-132-C C3)
+console.log('\n-- 6. o assistente dos corretores: a MESMA rota, outro purpose (e o QCM igual) --');
+CACHE = {}; STUBS = stubsDaBorda();
+const ASSIST = carregar(rel('app/api/admin/canais/assistente/whatsapp/route.ts'));
+const QCM = carregar(rel('app/api/admin/canais/whatsapp/route.ts'));
+for (const [nome, rota, purpose] of [['assistente', ASSIST, 'assistente'], ['QCM', QCM, 'observer']]) {
+  estado = novoEstado(); estado.sessao = MASTER;
+  await rota.GET(pedidoGET(`?action=qr&company_id=${OUTRA}&purpose=observer`));
+  assert(`${nome}: o QR vai para a empresa da plataforma com purpose=${purpose} (a query não escolhe)`,
+    estado.fetches[0]?.url === `https://backend.teste/api/whatsapp-channel/qr?company_id=${CANAL}&purpose=${purpose}`,
+    estado.fetches[0]?.url);
+  estado = novoEstado(); estado.sessao = MASTER;
+  await rota.POST(pedidoPOST({ action: 'pairing', method: 'qr', company_id: OUTRA, purpose: 'observer' }));
+  assert(`${nome}: o pareamento leva purpose=${purpose} (o corpo não escolhe)`,
+    estado.fetches[0]?.body?.company_id === CANAL && estado.fetches[0]?.body?.purpose === purpose,
+    JSON.stringify(estado.fetches[0]?.body));
+  estado = novoEstado(); estado.sessao = MASTER;
+  await rota.POST(pedidoPOST({ action: 'disconnect' }));
+  assert(`${nome}: desconectar leva purpose=${purpose}`, estado.fetches[0]?.body?.purpose === purpose);
+  estado = novoEstado(); estado.sessao = { adminId: 'adm-1', role: 'company_admin', companyId: OUTRA };
+  const r6 = await rota.GET(pedidoGET('?action=qr'));
+  assert(`${nome}: admin de corretora → 403 e nada ao backend`, r6.status === 403 && estado.fetches.length === 0);
+}
+estado = novoEstado(); estado.sessao = MASTER;
+await ASSIST.POST(pedidoPOST({ action: 'pairing', method: 'qr' }));
+assert('assistente: a auditoria diz de qual tela veio', estado.auditoria[0]?.metadata?.origem === 'admin_canal_assistente');
+estado = novoEstado(); estado.sessao = MASTER;
+await QCM.POST(pedidoPOST({ action: 'pairing', method: 'qr' }));
+assert('QCM: a auditoria igual à de antes', estado.auditoria[0]?.metadata?.origem === 'admin_canal');
+const paginaAssist = readFileSync(rel('app/admin/canais/assistente/whatsapp/page.tsx'), 'utf8');
+const epAssist = paginaAssist.match(/ENDPOINT_DO_ASSISTENTE = '([^']+)'/)?.[1];
+assert('a página do assistente aponta para a rota que existe (e não a do QCM)',
+  epAssist === '/api/admin/canais/assistente/whatsapp' && existsSync(rel(`app${epAssist}/route.ts`)));
+assert('o menu do admin leva à página do assistente',
+  layout.includes("href: '/admin/canais/assistente/whatsapp'"));
+
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
 process.exit(0);
