@@ -5,7 +5,10 @@ WORKDIR /app
 # Instalar dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
-    python -m spacy download en_core_web_lg
+    python -m spacy download en_core_web_lg && \
+    python -m spacy download pt_core_news_md
+# SPEC-132-A (conserto, RT P1): o modelo português do Presidio vinha sendo BAIXADO a cada arranque do contêiner —
+# lentidão no 1º uso e risco de o download falhar. Agora vem na imagem.
 
 # Copiar código
 COPY . .
