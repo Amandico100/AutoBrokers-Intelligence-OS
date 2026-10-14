@@ -131,8 +131,23 @@ function MessageBubbleBase({ message, onRetry, emCurso = false }: MessageBubbleP
   const audios = anexos.filter((a) => ehAudio(a.mime));
   const documentos = anexos.filter((a) => !fotos.includes(a) && !audios.includes(a));
 
+  // SPEC-132-A (A4) — o que o áudio disse. O backend grava a transcrição em `payload.transcricao` da PERGUNTA (A3,
+  // `chat.py:_gravar_a_transcricao`), não dentro de cada anexo: sem ler daqui, a bolha de voz nunca a mostrava.
+  // O texto vale para a mensagem inteira (vários áudios = uma transcrição só), então vai sob o ÚLTIMO áudio —
+  // a não ser que algum anexo já traga a sua.
+  const transcricaoDoTurno =
+    isUser && typeof message.payload?.transcricao === 'string' && message.payload.transcricao.trim()
+      ? message.payload.transcricao.trim()
+      : undefined;
+  const algumAudioTemTranscricao = audios.some((a) => a.transcricao);
+
+  // SPEC-132-A (A4) — sem texto do corretor, o BFF grava a pergunta como "[Anexo] nome1, nome2" (para a conversa
+  // nunca ter uma linha vazia). Isso é marcação, não fala: as fichas e a bolha de voz já dizem o que foi mandado.
+  const soMarcaDeAnexo = isUser && anexos.length > 0 && /^\[Anexo\]\s/.test(displayContent || '');
+
   const temTexto =
     Boolean(displayContent) &&
+    !soMarcaDeAnexo &&
     displayContent !== '[Imagem]' &&
     !(isVoice && message.audio_url) &&
     !displayContent.includes('Imagem enviada') &&
@@ -190,7 +205,9 @@ function MessageBubbleBase({ message, onRetry, emCurso = false }: MessageBubbleP
               <PlayerDeAudio
                 src={url}
                 duracaoConhecida={a.duracaoSegundos}
-                transcricao={a.transcricao}
+                transcricao={
+                  a.transcricao ?? (!algumAudioTemTranscricao && i === audios.length - 1 ? transcricaoDoTurno : undefined)
+                }
               />
             </div>
           ) : null;
@@ -284,6 +301,7 @@ export const MessageBubble = memo(MessageBubbleBase, (antes, depois) => {
     antes.message.audio_url === depois.message.audio_url &&
     antes.message.payload?.turn?.artifacts === depois.message.payload?.turn?.artifacts &&
     antes.message.payload?.attachments === depois.message.payload?.attachments &&
+    antes.message.payload?.transcricao === depois.message.payload?.transcricao &&
     antes.emCurso === depois.emCurso &&
     antes.onRetry === depois.onRetry &&
     antes.userAvatar === depois.userAvatar &&
