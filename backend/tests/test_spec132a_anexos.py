@@ -554,3 +554,330 @@ def test_lista_vazia_e_lixo_nao_lancam(bordas):
     assert _rodar(EMPRESA_A, []).bloco_do_turno() == ""
     r = _rodar(EMPRESA_A, [None, "x", 3])  # type: ignore[list-item]
     assert r.lidos == [] and r.avisos == []
+
+
+# =====================================================================================================================
+# 🔴 O CONSERTO ÚNICO (14/10) — os achados do red team (B1, B2, P5, P6). Cada guarda tem a sua MUTAÇÃO, compilada
+# numa cópia em memória (a árvore compartilhada nunca é escrita — lição da SPEC-121).
+# =====================================================================================================================
+import struct  # noqa: E402
+import time as _t  # noqa: E402
+import tracemalloc  # noqa: E402
+import types  # noqa: E402
+
+ANEXOS_PY = BACKEND / "app" / "services" / "chat_anexos.py"
+VISION_PY = BACKEND / "app" / "services" / "vision_service.py"
+#: 9 dígitos seguidos (com ou sem pontuação) recalculam um CPF inteiro: os 2 últimos são dígitos verificadores
+_NOVE_DIGITOS = re.compile(r"(?:\d[.\-\s]?){9,}")
+
+
+def _mutado(caminho: Path, nome: str, de: str, para: str):
+    fonte = caminho.read_text(encoding="utf-8")
+    assert fonte.count(de) == 1, f"a âncora da mutação sumiu de {caminho.name}: {de[:70]!r}"
+    mod = types.ModuleType(nome)
+    mod.__file__ = str(caminho)
+    mod.__package__ = "app.services"
+    sys.modules[nome] = mod
+    try:
+        exec(compile(fonte.replace(de, para), str(caminho), "exec"), mod.__dict__)
+    finally:
+        sys.modules.pop(nome, None)
+    return mod
+
+
+def _csv_com_obs_longa(posicao: int, cpf: str) -> bytes:
+    obs = "x" * (posicao - 4) + "CPF " + cpf + " e o resto da observacao do corretor"
+    return f"Segurado,Obs\nPessoa Ficticia,{obs}\n".encode("utf-8")
+
+
+def _vazamentos_da_celula_longa(mod) -> list:
+    """O CPF começando em cada posição 50..70 de uma célula longa — pelo leitor e pela máscara REAIS do módulo."""
+    vaza = []
+    for pos in range(50, 71):
+        for cpf in (CPF, CPF_DIGITOS):
+            saida = mod._mascarar(mod.tabela_da_planilha(_csv_com_obs_longa(pos, cpf), "csv"))
+            m = _NOVE_DIGITOS.search(saida or "")
+            if m:
+                vaza.append((pos, cpf, m.group(0)))
+    return vaza
+
+
+def test_conserto_b1_a_celula_longa_e_mascarada_antes_do_corte(bordas):
+    """📊 red team B1: o corte em 77 caracteres vinha ANTES da máscara — 4 de 7 posições vazavam 9–10 dígitos."""
+    assert _vazamentos_da_celula_longa(CA) == []
+    # pelo contrato inteiro (`preparar`), uma posição que vazava antes
+    st = bordas["storage"]
+    a = _anexo(st, EMPRESA_A, "chat-docs", "csv", _csv_com_obs_longa(64, CPF), "obs.csv", "text/csv")
+    r = _rodar(EMPRESA_A, [a])
+    assert r.avisos == [] and not _NOVE_DIGITOS.search(r.texto) and "Pessoa Ficticia" in r.texto, r.texto
+    # 🔴 MUTAÇÃO — cortar antes de mascarar → VERMELHO
+    mutado = _mutado(ANEXOS_PY, "app.services._anexos_corte_antes_132a",
+                     "    if len(t) <= 80:\n        return t\n    mascarado = _mascarar(t)",
+                     "    if len(t) <= 80:\n        return t\n    t = t[:77] + '...'\n    mascarado = _mascarar(t)")
+    vaza = _vazamentos_da_celula_longa(mutado)
+    print("📊 MUTADO (corte antes da máscara): %d vazamentos, ex.: %s" % (len(vaza), vaza[:2]))
+    assert vaza, "a mutação passou — o guarda B1 é carimbo"
+
+
+def _csv_largo() -> bytes:
+    """📊 o CSV do red team: 1 linha com 10.000 vírgulas + 2.000 linhas curtas = 13,7 KB."""
+    return ("a" + "," * 10000 + "b\n" + "x\n" * 2000).encode()
+
+
+def _xlsx_largo(n: int = 1600) -> bytes:
+    """📊 o xlsx do red team: por linha, 1 célula em A e 1 em XFD, dimensão A1:XFDn = 12,6 KB com 1.600 linhas."""
+    linhas = "".join(f'<row r="{i}"><c r="A{i}" t="inlineStr"><is><t>a</t></is></c><c r="XFD{i}"><v>1</v></c></row>'
+                     for i in range(1, n + 1))
+    return _xlsx_cru(f'<dimension ref="A1:XFD{n}"/><sheetData>{linhas}</sheetData>')
+
+
+def _xlsx_cru(miolo: str) -> bytes:
+    ns = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    rel = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"'
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml",
+                   '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/'
+                   'content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+                   'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/'
+                   'workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+'
+                   'xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-'
+                   'officedocument.spreadsheetml.worksheet+xml"/></Types>')
+        z.writestr("_rels/.rels", f'<?xml version="1.0" encoding="UTF-8"?><Relationships {rel}><Relationship Id="rId1" '
+                   'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+                   'Target="xl/workbook.xml"/></Relationships>')
+        z.writestr("xl/workbook.xml", f'<?xml version="1.0" encoding="UTF-8"?><workbook {ns} xmlns:r="http://schemas.'
+                   'openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" sheetId="1" '
+                   'r:id="rId1"/></sheets></workbook>')
+        z.writestr("xl/_rels/workbook.xml.rels", f'<?xml version="1.0" encoding="UTF-8"?><Relationships {rel}>'
+                   '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+                   'worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
+        z.writestr("xl/worksheets/sheet1.xml", f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                   f'<worksheet {ns}>{miolo}</worksheet>')
+    return b.getvalue()
+
+
+def _pico_mb(fn) -> float:
+    tracemalloc.start()
+    try:
+        fn()
+        return tracemalloc.get_traced_memory()[1] / 2 ** 20
+    finally:
+        tracemalloc.stop()
+
+
+def test_conserto_b2_o_leitor_tabular_tem_teto_de_memoria():
+    """📊 red team B2: 13,7 KB de CSV pediam 154 MB; 12,6 KB de xlsx pediam 407 MB (8 B × largura × linhas)."""
+    csv_, xlsx = _csv_largo(), _xlsx_largo()
+    pico_csv = _pico_mb(lambda: CA.tabela_da_planilha(csv_, "csv"))
+    pico_xlsx = _pico_mb(lambda: CA.tabela_da_planilha(xlsx, "xlsx"))
+    print("📊 pico: csv %.1f KB → %.1f MB · xlsx %.1f KB → %.1f MB" % (len(csv_) / 1024, pico_csv, len(xlsx) / 1024,
+                                                                      pico_xlsx))
+    assert pico_csv <= 30 and pico_xlsx <= 60, (pico_csv, pico_xlsx)
+    t = CA.tabela_da_planilha(csv_, "csv")
+    assert "2000 linhas de dados × 10001 colunas" in t and f"(li só as primeiras {CA.COLUNAS_LIDAS} colunas)" in t, \
+        t[:400]
+    assert f"(li só as primeiras {CA.COLUNAS_LIDAS} colunas)" in CA.tabela_da_planilha(xlsx, "xlsx")
+    # 🔴 MUTAÇÃO — guardar cada linha COMPLETADA até a mais larga (o que o leitor de antes fazia) → VERMELHO
+    mutado = _mutado(ANEXOS_PY, "app.services._anexos_guarda_tudo_132a",
+                     "            amostra.append(celulas[:COLUNAS_DA_AMOSTRA])",
+                     "            pass\n        amostra.append(list(ln) + [None] * (largura_real - len(ln)))")
+    m_csv = _pico_mb(lambda: mutado.tabela_da_planilha(csv_, "csv"))
+    print("📊 MUTADO (guarda as linhas inteiras): csv %.1f MB" % m_csv)
+    assert m_csv > 30, "a mutação passou — o guarda B2 é carimbo"
+
+
+def test_conserto_b2_teto_de_celulas_e_prazo_cooperativo():
+    linhas = "Ramo,Valor\n" + "".join(f"Auto,{i}\n" for i in range(1, 120_001))
+    t = CA.tabela_da_planilha(linhas.encode(), "csv")
+    # 💭 200 mil células / 2 colunas: a leitura para em ~100 mil linhas e diz "+"
+    assert re.search(r"— \d+\+ linhas de dados × 2 colunas", t) and "(a planilha é grande: li só o começo dela)" in t, \
+        t[:300]
+    with pytest.raises(CA.PrazoDaLeituraEstourado):
+        CA.tabela_da_planilha(linhas.encode(), "csv", prazo=_t.monotonic() - 1)
+
+
+def test_conserto_b2_xlsx_com_linha_forjada_e_zip_bomba_viram_aviso(bordas):
+    st = bordas["storage"]
+    forjada = _xlsx_cru('<sheetData><row r="1">' + "<c/>" * (CA.CELULAS_POR_LINHA_DO_XML + 5) + "</row></sheetData>")
+    a = _anexo(st, EMPRESA_A, "chat-docs", "xlsx", forjada, "forjada.xlsx",
+               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", n=1)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", b"<w:t>a</w:t>" * (CA.DESCOMPRIMIDO_POR_PARTE_DO_DOCUMENTO // 12 + 10))
+    d = _anexo(st, EMPRESA_A, "chat-docs", "docx", buf.getvalue(), "bomba.docx",
+               "application/vnd.openxmlformats-officedocument.wordprocessingml.document", n=2)
+    print("📊 xlsx forjado %.1f KB · docx bomba %.1f KB" % (len(forjada) / 1024, len(buf.getvalue()) / 1024))
+    r = _rodar(EMPRESA_A, [a, d])
+    assert any("forjada.xlsx" in x and "grande demais" in x for x in r.avisos), r.avisos
+    assert any("bomba.docx" in x and "grande demais" in x for x in r.avisos), r.avisos
+    with pytest.raises(CA.ArquivoGrandeDemais):
+        CA.tabela_da_planilha(forjada, "xlsx")
+    # 🔴 MUTAÇÃO — sem a conferência da linha, o xlsx forjado É lido (nenhuma recusa) → VERMELHO
+    mutado = _mutado(ANEXOS_PY, "app.services._anexos_sem_linha_132a",
+                     "                    if na_linha > CELULAS_POR_LINHA_DO_XML:\n                        raise",
+                     "                    if False:\n                        raise")
+    try:
+        mutado.tabela_da_planilha(forjada, "xlsx")
+        recusou = False
+    except mutado.ArquivoGrandeDemais:
+        recusou = True
+    assert not recusou, "a mutação passou — o guarda da linha forjada é carimbo"
+
+
+def _png_grande(lado: int = 7500) -> bytes:
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("1", (lado, lado), 0).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_conserto_b2_foto_gigante_vira_aviso_sem_decodificar():
+    """📊 red team B2: PNG 1-bit de 81 Mpx em 10 KB → +515 MB; 169 Mpx/20 KB abria só com um aviso do Pillow."""
+    png = _png_grande()
+    inicio = _t.monotonic()
+    jpeg, _tipo, aviso = CA._imagem_para_jpeg(png, "image/png", "foto.png")
+    dt = _t.monotonic() - inicio
+    print("📊 PNG 7500² (%.0f Mpx) em %.0f KB → %s em %.3f s" % (7500 * 7500 / 1e6, len(png) / 1024,
+                                                               "aviso" if aviso else "jpeg", dt))
+    assert jpeg is None and aviso and aviso.startswith("Esta foto é grande demais"), aviso
+    assert dt < 1.0, "a foto foi decodificada (%.2f s)" % dt
+    # o JPEG grande é lido REDUZIDO (draft): sai com o lado ≤ 2048
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (4000, 3000), (10, 120, 200)).save(buf, format="JPEG", quality=80)
+    j, _t2, av = CA._imagem_para_jpeg(buf.getvalue(), "image/jpeg", "grande.jpg")
+    assert j and av is None and max(Image.open(io.BytesIO(j)).size) <= CA.LADO_MAXIMO_DA_IMAGEM
+    # 🔴 MUTAÇÃO — sem a conferência dos pixels, a foto gigante é decodificada inteira → VERMELHO
+    mutado = _mutado(ANEXOS_PY, "app.services._anexos_sem_pixels_132a",
+                     "            if not e_jpeg and largura * altura > PIXELS_MAXIMOS:",
+                     "            if False:")
+    jm, _tm, avm = mutado._imagem_para_jpeg(png, "image/png", "foto.png")
+    assert jm is not None and avm is None, "a mutação passou — o guarda da foto gigante é carimbo"
+
+
+def test_conserto_b2_dez_anexos_ruins_nao_prendem_o_poco_do_processo(bordas, monkeypatch):
+    """O poço do processo (`EXECUTOR_THREADS`) atende o WhatsApp de todas as corretoras: dez planilhas lentas no
+    MESMO turno não podem segurá-lo. E o orçamento estourado CANCELA o que ainda estava na fila."""
+    import concurrent.futures as cf
+
+    st = bordas["storage"]
+    anexos = [_anexo(st, EMPRESA_A, "chat-docs", "csv", b"a,b\n1,2\n", f"lenta{i}.csv", "text/csv", n=i)
+              for i in range(10)]
+
+    def _medir(mod) -> tuple:
+        comecaram = []
+
+        def _lenta(dados, tipo, *, prazo=None):  # a borda: um leitor que demora (o motor do poço é o real)
+            comecaram.append(1)
+            _t.sleep(1.5)
+            return "x"
+
+        monkeypatch.setattr(mod, "tabela_da_planilha", _lenta)
+        monkeypatch.setattr(mod, "ORCAMENTO_TOTAL_S", 0.3)
+        if mod is not CA:
+            monkeypatch.setattr(mod, "_baixar_do_storage", st.baixar)
+
+        async def _cenario():
+            asyncio.get_running_loop().set_default_executor(cf.ThreadPoolExecutor(max_workers=2))
+            leitura = asyncio.ensure_future(mod.preparar(EMPRESA_A, anexos))
+            await asyncio.sleep(0.1)
+            t0 = _t.monotonic()
+            try:
+                await asyncio.wait_for(asyncio.to_thread(lambda: "ok"), 0.8)
+                sonda = _t.monotonic() - t0
+            except asyncio.TimeoutError:
+                sonda = None
+            r = await leitura
+            await asyncio.sleep(2.0)
+            return sonda, r
+
+        sonda, r = asyncio.run(_cenario())
+        return sonda, len(comecaram), r
+
+    sonda, comecaram, r = _medir(CA)
+    print("📊 outro to_thread do processo esperou %s s · leituras que COMEÇARAM: %d de 10" % (sonda, comecaram))
+    assert sonda is not None and sonda < 0.5, sonda
+    assert comecaram == CA.TRABALHADORES_DOS_ANEXOS, "o orçamento estourado não cancelou a fila: %d" % comecaram
+    assert sum("Demorei demais" in a for a in r.avisos) == 10, r.avisos
+    # 🔴 MUTAÇÃO — as leituras no poço do PROCESSO (o `to_thread` de antes) → a sonda espera → VERMELHO
+    mutado = _mutado(ANEXOS_PY, "app.services._anexos_poco_padrao_132a",
+                     "    return await laco.run_in_executor(_poco_dos_anexos(), ",
+                     "    return await laco.run_in_executor(None, ")
+    sonda_m, _c, _r = _medir(mutado)
+    print("📊 MUTADO (poço do processo): a sonda esperou %s" % sonda_m)
+    assert sonda_m is None or sonda_m >= 0.5, "a mutação passou — o guarda do poço é carimbo"
+
+
+def _m4a(segundos: int) -> bytes:
+    """Um .m4a mínimo: `ftyp` + `moov/mvhd` (escala 1000) — a duração mora no cabeçalho."""
+    mvhd_corpo = b"\0\0\0\0" + b"\0" * 8 + struct.pack(">II", 1000, segundos * 1000) + b"\0" * 80
+    mvhd = struct.pack(">I", 8 + len(mvhd_corpo)) + b"mvhd" + mvhd_corpo
+    moov = struct.pack(">I", 8 + len(mvhd)) + b"moov" + mvhd
+    ftyp = struct.pack(">I", 16) + b"ftypM4A \0\0\0\0"
+    return ftyp + moov + b"\0" * 64
+
+
+def test_conserto_p6_audio_de_mais_de_15_min_vira_aviso_sem_transcrever(bordas, monkeypatch):
+    st = bordas["storage"]
+    longo = _anexo(st, EMPRESA_A, "chat-docs", "m4a", _m4a(16 * 60), "reuniao.m4a", "audio/mp4", n=1)
+    curto = _anexo(st, EMPRESA_A, "chat-docs", "m4a", _m4a(14 * 60), "nota.m4a", "audio/mp4", n=2)
+    assert CA.duracao_do_audio(_m4a(16 * 60)) == 960.0
+    r = _rodar(EMPRESA_A, [longo, curto])
+    assert any(a.startswith("Este áudio passa de 15 minutos («reuniao.m4a»)") for a in r.avisos), r.avisos
+    assert len(bordas["api"].recebidos) == 1 and len(r.transcricoes) == 1, "só o áudio de 14 min foi à transcrição"
+    # 🔴 MUTAÇÃO — sem o teto de duração, o áudio de 16 min vai à transcrição (e ao ledger) → VERMELHO
+    mutado = _mutado(ANEXOS_PY, "app.services._anexos_sem_duracao_132a",
+                     "        if duracao is not None and duracao > SEGUNDOS_MAXIMOS_DO_AUDIO:",
+                     "        if False:")
+    monkeypatch.setattr(mutado, "_baixar_do_storage", st.baixar)
+    monkeypatch.setattr(mutado, "_servico_de_audio", CA._servico_de_audio)
+    rm = asyncio.run(mutado.preparar(EMPRESA_A, [longo]))
+    assert not any("15 minutos" in a for a in rm.avisos) and rm.transcricoes, \
+        "a mutação passou — o guarda do áudio longo é carimbo"
+
+
+def test_conserto_p5_o_download_antigo_so_vai_ao_storage_da_plataforma(monkeypatch):
+    """red team P5 (SSRF): `fileUrl` do corpo virava `httpx.get` com `follow_redirects=True` para qualquer host."""
+    import httpx
+
+    from app.core import settings
+
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://projeto-ficticio.supabase.co", raising=False)
+    criados = []
+
+    class _Cliente:
+        def __init__(self, *a, **k):
+            criados.append(k)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            return httpx.Response(200, content=b"%PDF", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Cliente)
+
+    def _baixar(mod, url):
+        return asyncio.run(mod.baixar_documento(url))
+
+    for ruim in ("http://169.254.169.254/latest/meta-data/", "https://interno.local/x.pdf",
+                 "http://projeto-ficticio.supabase.co/storage/v1/object/a.pdf",
+                 "https://projeto-ficticio.supabase.co.atacante.example/a.pdf"):
+        assert _baixar(VS, ruim) is None, ruim
+    assert criados == [], "nenhum cliente HTTP para um host fora do Storage"
+    assert _baixar(VS, "https://projeto-ficticio.supabase.co/storage/v1/object/sign/chat-docs/a.pdf?token=t") == b"%PDF"
+    assert criados and criados[-1].get("follow_redirects") is False
+    # 🔴 MUTAÇÃO — sem a lista do host → o endereço interno é baixado → VERMELHO
+    mutado = _mutado(VISION_PY, "app.services._vision_sem_lista_132a",
+                     "        if alvo.scheme != \"https\" or not alvo.hostname or alvo.hostname != nosso.hostname "
+                     "or alvo.port != nosso.port:",
+                     "        if False:")
+    assert _baixar(mutado, "http://169.254.169.254/latest/meta-data/") == b"%PDF", \
+        "a mutação passou — o guarda do SSRF é carimbo"
