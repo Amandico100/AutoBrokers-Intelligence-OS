@@ -55,6 +55,29 @@ interface EnvioDoTurno {
   esforco: string;
   clientRequestId: string;
   assistantMsgId: string;
+  /** a bolha da pergunta NESTA sessão (o envio pelo composer); sai da conversa se o BFF recusar antes do turno */
+  userMsgId?: string;
+}
+
+/**
+ * 🔴 Conserto da SPEC-132-A (juiz P4) — a recusa veio do PRÓPRIO BFF, antes de gravar a conversa ou a pergunta?
+ * O BFF recusa com 4xx e corpo `{error|message|motivo}`; o 4xx que ele só REPASSA do backend traz `status` no corpo
+ * (a pergunta já foi gravada — aí vale o "Tentar de novo"). 404 tem caminho próprio (a conversa não é desta pessoa).
+ */
+function recusaAntesDoTurno(status: number, corpo: unknown): boolean {
+  if (status < 400 || status >= 500 || status === 404) return false;
+  const c = (corpo && typeof corpo === 'object' ? corpo : {}) as Record<string, unknown>;
+  return !('status' in c);
+}
+
+/** A frase da recusa, em português: o `motivo`/`message` do BFF, ou uma genérica (nunca o código técnico). */
+function textoDaRecusa(corpo: unknown): string {
+  const c = (corpo && typeof corpo === 'object' ? corpo : {}) as Record<string, unknown>;
+  for (const campo of ['motivo', 'message']) {
+    const v = c[campo];
+    if (typeof v === 'string' && v.trim() && !/^[A-Z0-9_]+$/.test(v.trim())) return v.trim();
+  }
+  return 'Não consegui enviar esta mensagem.';
 }
 
 /** Só o que o contrato do pedido pede — a URL e a miniatura local nunca saem da tela (D-132A-05). */
@@ -729,7 +752,7 @@ export default function ChatPage() {
    * com o MESMO `client_request_id`, porque tentar de novo é a mesma pergunta
    * pedindo outra resposta, não uma pergunta nova (R3).
    */
-  const executarTurno = async (envio: EnvioDoTurno) => {
+  const executarTurno = async (envio: EnvioDoTurno, doComposer = false): Promise<'recusado' | void> => {
     const { message, anexos, esforco, clientRequestId, assistantMsgId } = envio;
     const attachments = anexosDoPedido(anexos);
 
@@ -775,12 +798,26 @@ export default function ChatPage() {
         setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
         setTurno(TURNO_PARADO);
         handleNewConversation();
-        toast.error('Essa conversa não é sua; começamos outra.');
-        return;
+        if (!doComposer) {
+          toast.error('Essa conversa não é sua; começamos outra.');
+          return;
+        }
+        toast.error('Essa conversa não é sua; começamos outra. Sua mensagem voltou para a caixa.');
+        return 'recusado';
       }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        // 🔴 Conserto da SPEC-132-A (juiz P4): um 4xx do PRÓPRIO BFF (anexo de outra corretora, lista inválida,
+        // sessão) chega ANTES de qualquer escrita — nada foi gravado. A pergunta sai da conversa e o texto e os
+        // anexos VOLTAM para a caixa. (O 4xx repassado do backend traz `status` no corpo: a pergunta já foi gravada,
+        // e aí vale o "Tentar de novo" de sempre.)
+        if (doComposer && recusaAntesDoTurno(response.status, errorData)) {
+          setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId && m.id !== envio.userMsgId));
+          setTurno(TURNO_PARADO);
+          toast.error(`${textoDaRecusa(errorData)} Sua mensagem voltou para a caixa.`);
+          return 'recusado';
+        }
         throw new Error(
           errorData.message || errorData.error || `Falha ao falar com o AutoBrokers (${response.status})`,
         );
@@ -884,10 +921,10 @@ export default function ChatPage() {
     // 🔴 R3 — PRIMEIRA linha, antes de qualquer `await`: quem chegou primeiro
     // envia, quem chegou junto não envia nada. O §0 promete "Enter duas vezes:
     // UMA pergunta, UMA resposta", e é aqui que essa promessa é cumprida.
-    if (enviandoRef.current) return;
+    if (enviandoRef.current) return false;
     enviandoRef.current = true;
     try {
-      if (!userId) return;
+      if (!userId) return false;
 
       // SPEC-095 BLOCO E — a pergunta pré-preenchida foi CONSUMIDA: quem envia,
       // envia. Zerar aqui (e só aqui) é o que impede uma remontagem do composer de
@@ -895,13 +932,14 @@ export default function ChatPage() {
       setTextoInicial('');
 
       if (!agentsLoaded) {
-        toast.error('Aguarde o carregamento dos agentes antes de enviar a mensagem.');
-        return;
+        // 🔴 juiz P4: `false` = recusado antes do turno — o composer devolve o texto e os anexos à caixa
+        toast.error('Aguarde o carregamento dos agentes antes de enviar a mensagem. Sua mensagem voltou para a caixa.');
+        return false;
       }
 
       if (!selectedAgentId || agents.length === 0) {
         toast.error('Nenhum agente ativo encontrado. Peça ao Admin para preparar o sandbox da empresa.');
-        return;
+        return false;
       }
 
       // 🔴 R3 — um identificador por ENVIO. É ele que faz a repetição continuar
@@ -911,8 +949,9 @@ export default function ChatPage() {
       const assistantMsgId = crypto.randomUUID();
       const convId = conversationId || '';
 
+      const userMsgId = crypto.randomUUID();
       const tempUserMessage: Message = {
-        id: crypto.randomUUID(),
+        id: userMsgId,
         conversation_id: convId,
         role: 'user',
         content: message,
@@ -944,10 +983,11 @@ export default function ChatPage() {
         esforco: esforcoDoPedido(opcoes?.esforco),
         clientRequestId,
         assistantMsgId,
+        userMsgId,
       };
       envioRef.current = envio;
 
-      await executarTurno(envio);
+      return (await executarTurno(envio, true)) !== 'recusado';
     } finally {
       // A trava vale pelo TURNO inteiro — solta quando ele termina, falha ou
       // é parado, e também nos caminhos que nem chegam a enviar.
