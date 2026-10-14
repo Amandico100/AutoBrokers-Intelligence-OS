@@ -191,10 +191,14 @@ def numero_de_corretora(db, telefone_e164: str) -> bool:
         return False
     digitos = [f for f in fs if not f.startswith("+")]
     try:
-        linhas = _dados(db.table("integrations").select("company_id").eq("is_active", True)
+        linhas = _dados(db.table("integrations").select("company_id, purpose").eq("is_active", True)
                         .in_("paired_phone_e164", fs).execute())
-        linhas += _dados(db.table("integrations").select("company_id").eq("is_active", True)
+        linhas += _dados(db.table("integrations").select("company_id, purpose").eq("is_active", True)
                          .in_("identifier", digitos).execute())
+        # SPEC-132-C C3 — o número do ASSISTENTE dos corretores mora na empresa da plataforma, mas é um robô do
+        # produto como a linha de uma corretora: o QCM nunca conversa com ele (robô↔robô)
+        if any(str(x.get("purpose") or "").strip().lower() == "assistente" for x in linhas):
+            return True
         empresas = sorted({str(x.get("company_id") or "") for x in linhas} - {""})
         if empresas:
             tipos = _dados(db.table("companies").select("id, company_kind").in_("id", empresas).execute())
