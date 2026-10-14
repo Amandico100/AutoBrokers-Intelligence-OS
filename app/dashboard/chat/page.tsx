@@ -102,6 +102,128 @@ function envioDaUltimaResposta(lista: Message[]): EnvioDoTurno | null {
   return null;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ * SPEC-132 · A5 — A RESPOSTA QUE CHEGA DEPOIS
+ *
+ * A Cotação Rápida responde FORA do turno: o Work Run `cotacao.chat` grava a mensagem do assistente na MESMA conversa
+ * (com `payload.cotacao`) 1 a 6 min depois. 📊 14/10/2026, produção: `select tablename from pg_publication_tables
+ * where pubname='supabase_realtime' and tablename in ('messages','conversations')` → 0 linhas — o `postgres_changes`
+ * abaixo nunca recebe nada, e a resposta só aparecia recarregando. D-132B-09: a tela CONSULTA, de tempos em tempos,
+ * a mesma rota que abre a conversa (`/api/conversations?session_id=`, que já filtra pelo dono da sessão), em vez de
+ * abrir o Realtime de `messages`.
+ *
+ * ⛔ Mora aqui, e não num arquivo ao lado: os três testes que EXECUTAM esta página (o do shell, o do chat novo e o dos
+ *    relatórios) resolvem imports desconhecidos como `{}` — um hook importado viraria "não é uma função" neles.
+ * ───────────────────────────────────────────────────────────────────────────────────────────────────────────────── */
+
+/** 💭 De quanto em quanto tempo a tela pergunta se a resposta chegou — com a aba visível. */
+const ESPERA_INTERVALO_MS = 6_000;
+/** 💭 Quanto tempo a tela espera. O Work Run desiste em 💭 6 min e grava a frase honesta; 10 min cobre a folga. */
+const ESPERA_TETO_MS = 10 * 60_000;
+
+/**
+ * 🔴 COMO A TELA SABE QUE UMA COTAÇÃO FOI DISPARADA.
+ *
+ * O SSE não traz o NOME da ferramenta (`chat_eventos.estagio_da_tool` o troca por uma frase), e o `stage.completed`
+ * não diz se ela deu certo: a recusa ("Esse ramo eu ainda não calculo por aqui") também completa. A prova de que o
+ * cálculo COMEÇOU é a frase que a `cotacao_disparar`/`cotacao_ajustar` devolvem só quando abriram o Work Run
+ * (`cotacao/resposta.py` · `frase_calculando`: "… — volto aqui com o resultado em 1 a 2 minutos") e que o agente é
+ * instruído a repetir. Então:
+ *   · a frase da promessa no texto final              → espera (funciona hoje, com o estágio genérico);
+ *   · o estágio `quote.calculating` + "calculando"    → espera (quando o catálogo de estágios ganhar a chave, o
+ *                                                       agente pode parafrasear a frase sem a tela perder a espera).
+ * Recusa, erro, "o cálculo começou mas não consegui acompanhá-lo" e qualquer turno comum: não esperam.
+ */
+const CHAVES_DO_CALCULO = new Set(['quote.calculating']);
+const PROMESSA_DO_CALCULO = /volto aqui com o resultado/i;
+const FALA_DO_CALCULO = /\b(re)?calculando\b/i;
+
+function prometeuCalcular(texto: string, viuOCalculo: boolean): boolean {
+  const t = typeof texto === 'string' ? texto : '';
+  if (PROMESSA_DO_CALCULO.test(t)) return true;
+  return viuOCalculo && FALA_DO_CALCULO.test(t);
+}
+
+/** A espera em curso: até quando, e quantas respostas ainda faltam (um disparo e um ajuste = duas). */
+interface EsperaDaResposta {
+  ate: number;
+  pendentes: number;
+}
+
+/**
+ * Ao ABRIR uma conversa (ou relê-la): a regra é CONSERVADORA de propósito — só espera quando a ÚLTIMA resposta do
+ * AutoBrokers é a PROMESSA do cálculo (a frase exata da ferramenta, não um "calculando" qualquer), ainda sem
+ * `payload.cotacao` (não é a própria resposta da cotação), e tem menos de 10 min. Fora disso o resultado, se vier,
+ * aparece ao recarregar — melhor do que uma linha "Calculando…" que mente.
+ */
+function esperaAoAbrir(lista: Message[], agora: number): EsperaDaResposta | null {
+  let ultima: Message | null = null;
+  for (let i = lista.length - 1; i >= 0; i--) {
+    const m = lista[i];
+    if (m.role === 'assistant' && !m.sender_user_id) {
+      ultima = m;
+      break;
+    }
+  }
+  if (!ultima || ultima.payload?.cotacao) return null;
+  if (!PROMESSA_DO_CALCULO.test(ultima.content || '')) return null;
+  const quando = Date.parse(ultima.created_at);
+  if (!Number.isFinite(quando) || agora - quando >= ESPERA_TETO_MS) return null;
+  // relógio do aparelho atrasado em relação ao do servidor: a espera nunca passa de 10 min a partir de AGORA
+  return { ate: Math.min(quando + ESPERA_TETO_MS, agora + ESPERA_TETO_MS), pendentes: 1 };
+}
+
+/**
+ * 🔴 E10 — a MESMA regra do eco do Realtime: pelo ID DO ENVIO quando a mensagem tem um (a pergunta e a resposta do
+ * turno, que a tela já desenhou com ids locais), pelo `id` quando não tem (a resposta da cotação). 📊 Comparar
+ * `content` engolia a segunda pergunta igual.
+ */
+function jaEstaNaConversa(lista: Message[], nova: Message): boolean {
+  const idDoEnvio = nova.payload?.client_request_id;
+  return lista.some((m) =>
+    idDoEnvio ? m.payload?.client_request_id === idDoEnvio && m.role === nova.role : m.id === nova.id,
+  );
+}
+
+/**
+ * SPEC-132-A (A4) — a transcrição do áudio chega DEPOIS da pergunta (um UPDATE em `payload.transcricao`). Só ela é
+ * fundida: o resto da bolha (miniatura local, fichas) continua sendo o que a tela já tem. Sem mudança, a MESMA lista.
+ */
+function fundirTranscricao(lista: Message[], atual: Message): Message[] {
+  const transcricao = atual?.payload?.transcricao;
+  if (atual?.role !== 'user' || typeof transcricao !== 'string' || !transcricao.trim()) return lista;
+  const idDoEnvio = atual.payload?.client_request_id;
+  let mudou = false;
+  const nova = lista.map((m) => {
+    if (
+      m.role === 'user' &&
+      (m.id === atual.id || (idDoEnvio && m.payload?.client_request_id === idDoEnvio)) &&
+      m.payload?.transcricao !== transcricao
+    ) {
+      mudou = true;
+      return { ...m, payload: { ...(m.payload || {}), transcricao } };
+    }
+    return m;
+  });
+  return mudou ? nova : lista;
+}
+
+/** O que a consulta trouxe, juntado à conversa SEM duplicar; devolve também só o que é novo. */
+function juntarChegadas(lista: Message[], chegadas: Message[]): { lista: Message[]; novas: Message[] } {
+  let atual = lista;
+  const novas: Message[] = [];
+  for (const m of chegadas) {
+    if (!m || typeof m.id !== 'string') continue;
+    if (jaEstaNaConversa(atual, m)) {
+      atual = fundirTranscricao(atual, m);
+      continue;
+    }
+    novas.push(m);
+    atual = [...atual, m];
+  }
+  return { lista: atual, novas };
+}
+
 export default function ChatPage() {
   const { userId, userAvatar, userName, isLoading: isLoadingUser } = useUserId();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -203,6 +325,13 @@ export default function ChatPage() {
   const composerRef = useRef<ComposerHandle>(null);
   const mensagensRef = useRef<Message[]>([]);
 
+  // SPEC-132 · A5 — a espera da resposta da cotação (ver `prometeuCalcular`). O estado desenha a linha; a ref é o
+  // que o relógio lê (um tique não pode depender do render em que nasceu).
+  const [esperaDaResposta, setEsperaDaResposta] = useState<EsperaDaResposta | null>(null);
+  const esperaRef = useRef<EsperaDaResposta | null>(null);
+  /** As respostas já contadas — a mesma pode chegar pela consulta e pelo Realtime, e conta UMA vez. */
+  const respostasContadasRef = useRef<Set<string>>(new Set());
+
   // O que o turno em curso precisa lembrar entre um evento e outro.
   /**
    * 🔴 R3 — a trava do envio é uma REF, não um estado.
@@ -226,6 +355,92 @@ export default function ChatPage() {
   useEffect(() => {
     mensagensRef.current = messages;
   }, [messages]);
+
+  const mudarEspera = (proxima: EsperaDaResposta | null) => {
+    esperaRef.current = proxima;
+    setEsperaDaResposta(proxima);
+  };
+
+  /** Um disparo (ou ajuste) que começou: espera mais uma resposta, e o prazo recomeça. */
+  const esperarMaisUmaResposta = () => {
+    const atual = esperaRef.current;
+    mudarEspera({ ate: Date.now() + ESPERA_TETO_MS, pendentes: (atual?.pendentes ?? 0) + 1 });
+  };
+
+  /**
+   * Chegou mensagem nova do AutoBrokers (pela consulta ou pelo Realtime): cada uma é uma resposta esperada. A de um
+   * HUMANO (atendimento) aparece, mas não encerra a espera — ela não é o resultado do cálculo.
+   */
+  const contarRespostas = (novas: Message[]) => {
+    const atual = esperaRef.current;
+    if (!atual) return;
+    let chegaram = 0;
+    for (const m of novas) {
+      if (m.role !== 'assistant' || m.sender_user_id || respostasContadasRef.current.has(m.id)) continue;
+      respostasContadasRef.current.add(m.id);
+      chegaram += 1;
+    }
+    if (chegaram === 0) return;
+    const restam = atual.pendentes - chegaram;
+    mudarEspera(restam > 0 ? { ...atual, pendentes: restam } : null);
+  };
+
+  /**
+   * 🔴 A consulta. Um relógio só, que se reagenda; pausa com a aba oculta (sem relógio nenhum — volta no
+   * `visibilitychange`), não consulta enquanto um turno corre (o turno já desenha a conversa), e para no prazo.
+   */
+  const esperando = esperaDaResposta !== null;
+  useEffect(() => {
+    if (!esperando) return;
+    let encerrado = false;
+    let relogio: ReturnType<typeof setTimeout> | null = null;
+    const sessaoDaEspera = sessionId;
+
+    const consultar = async () => {
+      relogio = null;
+      const atual = esperaRef.current;
+      if (encerrado || !atual) return;
+      if (Date.now() >= atual.ate) {
+        mudarEspera(null);
+        return;
+      }
+      if (typeof document !== 'undefined' && document.hidden) return;
+      if (!enviandoRef.current) {
+        try {
+          const resposta = await fetch(`/api/conversations?session_id=${sessaoDaEspera}`);
+          if (!encerrado && resposta.ok) {
+            const dados = await resposta.json();
+            const chegadas: Message[] = Array.isArray(dados?.messages) ? dados.messages : [];
+            if (!encerrado && chegadas.length > 0) {
+              const { novas } = juntarChegadas(mensagensRef.current, chegadas);
+              setMessages((prev) => juntarChegadas(prev, chegadas).lista);
+              contarRespostas(novas);
+            }
+          }
+        } catch {
+          // a rede falhou nesta volta; a próxima tenta de novo
+        }
+      }
+      if (!encerrado && esperaRef.current) agendarConsulta(ESPERA_INTERVALO_MS);
+    };
+
+    function agendarConsulta(ms: number) {
+      if (relogio) clearTimeout(relogio);
+      relogio = setTimeout(() => void consultar(), ms);
+    }
+
+    const aoVoltarParaAba = () => {
+      if (!encerrado && typeof document !== 'undefined' && !document.hidden) agendarConsulta(0);
+    };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', aoVoltarParaAba);
+    agendarConsulta(ESPERA_INTERVALO_MS);
+
+    return () => {
+      encerrado = true;
+      if (relogio) clearTimeout(relogio);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', aoVoltarParaAba);
+    };
+  }, [esperando, sessionId]);
 
   // 1. Busca Company e Permissões
   useEffect(() => {
@@ -336,16 +551,9 @@ export default function ChatPage() {
           // 🔴 E10 — o dedupe é pelo ID DO ENVIO, nunca pelo conteúdo.
           // 📊 Comparar `content` fazia a SEGUNDA pergunta igual sumir da
           // tela: quem repete "e o Pulso?" via a repetição ser engolida.
-          setMessages((prev) => {
-            const idDoEnvio = newMessage.payload?.client_request_id;
-            const exists = prev.some((m) =>
-              idDoEnvio
-                ? m.payload?.client_request_id === idDoEnvio && m.role === newMessage.role
-                : m.id === newMessage.id,
-            );
-            if (exists) return prev;
-            return [...prev, newMessage];
-          });
+          // (SPEC-132 · A5: a mesma regra serve à consulta da espera — `jaEstaNaConversa`.)
+          if (!jaEstaNaConversa(mensagensRef.current, newMessage)) contarRespostas([newMessage]);
+          setMessages((prev) => (jaEstaNaConversa(prev, newMessage) ? prev : [...prev, newMessage]));
         },
       )
       .subscribe();
@@ -366,18 +574,7 @@ export default function ChatPage() {
         },
         (payload) => {
           const atual = payload.new as Message;
-          const transcricao = atual?.payload?.transcricao;
-          if (atual?.role !== 'user' || typeof transcricao !== 'string' || !transcricao.trim()) return;
-          const idDoEnvio = atual.payload?.client_request_id;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.role === 'user' &&
-              (m.id === atual.id || (idDoEnvio && m.payload?.client_request_id === idDoEnvio)) &&
-              m.payload?.transcricao !== transcricao
-                ? { ...m, payload: { ...(m.payload || {}), transcricao } }
-                : m,
-            ),
-          );
+          setMessages((prev) => fundirTranscricao(prev, atual));
         },
       )
       .subscribe();
@@ -428,6 +625,9 @@ export default function ChatPage() {
 
         if (data.messages) {
           setMessages(data.messages);
+          // SPEC-132 · A5 — a conversa reaberta no meio de um cálculo volta a esperar a resposta dele.
+          const aoAbrir = Array.isArray(data.messages) ? esperaAoAbrir(data.messages, Date.now()) : null;
+          if (aoAbrir && !esperaRef.current) mudarEspera(aoAbrir);
         }
         setTemAnteriores(Boolean(data.has_more));
         setCursor(data.cursor || null);
@@ -545,6 +745,8 @@ export default function ChatPage() {
     const controlador = new AbortController();
     abortRef.current = controlador;
     let terminouLimpo = false;
+    /** SPEC-132 · A5 — o turno passou pela ferramenta que começa o cálculo (quando o catálogo a nomear). */
+    let viuOCalculo = false;
 
     try {
       const response = await fetch('/api/chat/stream', {
@@ -588,6 +790,9 @@ export default function ChatPage() {
       for await (const evento of lerEventos(response.body)) {
         turnoAtual = reduzirTurno(turnoAtual, evento);
         setTurno(turnoAtual);
+        if (evento.type === 'stage.started' && CHAVES_DO_CALCULO.has(String(evento.payload.key || ''))) {
+          viuOCalculo = true;
+        }
 
         if (evento.type === 'assistant.content.delta') {
           const pedaco = evento.payload.content ?? evento.payload.text ?? evento.payload.delta ?? '';
@@ -628,6 +833,11 @@ export default function ChatPage() {
             : m,
         ),
       );
+
+      // SPEC-132 · A5 — a cotação começou: a resposta dela vem DEPOIS deste turno, e a tela passa a esperá-la.
+      if (turnoAtual.status !== 'failed' && turnoAtual.status !== 'stopped' && prometeuCalcular(conteudoFinal, viuOCalculo)) {
+        esperarMaisUmaResposta();
+      }
 
       // A conversa passou a nascer no SERVIDOR (A.2). Quando ela nasce, esta
       // tela ainda não sabe o id dela — e sem o id não há assinatura de tempo
@@ -814,6 +1024,7 @@ export default function ChatPage() {
     setTemAnteriores(false);
     setCursor(null);
     envioRef.current = null;
+    mudarEspera(null);
   }, []);
 
   const handleSelectConversation = useCallback((newSessionId: string) => {
@@ -822,6 +1033,7 @@ export default function ChatPage() {
     setMessages([]);
     setTurno(TURNO_PARADO);
     envioRef.current = null;
+    mudarEspera(null);
   }, []);
 
   // Reset determinístico de conversa via evento global (sidebar/topbar "Nova conversa")
@@ -951,6 +1163,15 @@ export default function ChatPage() {
 
               {turnoCorrendo && !turno.stage && (!ultima || ultima.role !== 'assistant' || !ultima.content) && (
                 <TypingIndicator />
+              )}
+
+              {/* SPEC-132 · A5 — a resposta da cotação vem depois do turno: uma linha discreta, que some quando
+                  ela chega (ou no prazo). Enquanto outro turno corre, a atividade dele é a que aparece. */}
+              {esperaDaResposta && !turnoCorrendo && (
+                <p role="status" aria-live="polite" className="flex items-center gap-2 px-1 py-2 text-sm text-muted-foreground">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-primary/70" />
+                  Calculando a cotação… a resposta aparece aqui
+                </p>
               )}
 
               {turno.transport === 'reconnecting' && (
