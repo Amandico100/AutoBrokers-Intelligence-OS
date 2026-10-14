@@ -244,10 +244,17 @@ def _whatsapp_do_membro(db: Any, company_id: str, user_id: str) -> Dict[str, Any
 
 
 def _atalho_whatsapp(db: Any) -> Dict[str, Any]:
-    """SPEC-132-C: o número do AutoBrokers já foi ligado pela plataforma? (sem ele, a tela esconde o botão)."""
-    from app.services.atalho.verificacao import numero_do_assistente
+    """SPEC-132-C: o atalho está LIGADO (`ATALHO_WHATSAPP_LIGADO`) E o número do AutoBrokers já foi ligado pela
+    plataforma? Os dois, ou a tela diz "Em breve" e não oferece o código (P5 do juiz: desligado, o código era gerado e o
+    ATIVAR ficava sem resposta). Nunca levanta."""
+    try:
+        from app.services.atalho.entrada import ligado
+        from app.services.atalho.verificacao import numero_do_assistente
 
-    return {"disponivel": bool(numero_do_assistente(db))}
+        return {"disponivel": bool(ligado() and numero_do_assistente(db))}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[PERFIL] atalho do WhatsApp ilegível (%s)", type(exc).__name__)
+        return {"disponivel": False}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
