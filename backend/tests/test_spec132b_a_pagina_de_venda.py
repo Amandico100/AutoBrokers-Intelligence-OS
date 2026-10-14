@@ -61,9 +61,12 @@ APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "docume
 #: `docs/canon/programa-multicalculo/132/JUIZ-DE-DESIGN-132-B.md`: um eixo só, SUSEP no topo, "Por que considerar",
 #: nota igual escondida, sem "Tipo na seguradora", terceiros explicados) — o retrato foi tirado de novo com o mesmo
 #: cálculo (`scratchpad/hash_agora.py`). A carteira e o canal NÃO mudaram (os mesmos hashes de antes).
+#: §9.3 (14/10, confirmação de design 132-B, R6/(e)/(g)): a RENOVAÇÃO mudou de novo por decisão DELA — sem "Para guardar
+#: em PDF", a explicação da nota só com a nota nos cartões, o "vence em" uma vez só, "iguais nas três" só quando é verdade.
+#: Retirado com o mesmo cálculo; carteira e canal: os MESMOS hashes (o conserto não os tocou).
 RETRATO_ANTES = {
     "carteira": "56d8c9e5469dc837fa11cf95379f2e1237818f3ab7293cce73f86166d2aeac96",
-    "renovacao": "4c0ca3a6277425372f49ea66ec8f1ec3a4319080e617e09581d92b2ecaf2c1dd",
+    "renovacao": "8b673f7ad77c564fa5c40ff6b822318737154b70ce536e97eda4aa246083a8cf",
     "canal": "d5c72d4bffe4373d1e7c481081cd6c1bfb1789bf7f41565c09d77013b816a787",
 }
 
@@ -617,3 +620,41 @@ def test_navegador_preco_vencido_vira_pedir_atualizacao_e_impressao(navegador):
         assert erros == []
     finally:
         ctx.close()
+
+
+# =====================================================================================================================
+# R6/(e) (confirmação de design 132-B): na VENDA também — o que só a "Mais completa" tem vira linha com "a mais"
+# =====================================================================================================================
+def test_R6_a_mais_completa_da_venda_mostra_o_que_tem_a_mais_e_nao_diz_iguais():
+    """🔴 mutação: sem `AP.com_as_a_mais`/`AP.iguais_em_tudo` na venda, os pequenos reparos não aparecem e a página diz
+    "iguais nas três" de opções que diferem. CONTROLE: o mesmo modelo SEM o adicional não ganha linha nenhuma."""
+    modelo = _venda()
+    mc = next(o for o in modelo["opcoes"] if o["id"] == "outra_completa")
+    mc.update(id="mais_completa", rotulo="Mais completa",
+              coberturas_a_mais=[{"chave": "reparos", "nome": "Pequenos reparos", "valor": "Incluídos"}])
+    doc = PH.render_proposta(modelo)
+    txt = texto_visivel(doc)
+    assert "iguais nas três" not in txt and "iguais nas opções" not in txt
+    cartoes = re.findall(r'<article class="pass op".*?</article>', doc, re.S)
+    mais = [c for c in cartoes if "Mais completa" in texto_visivel(c)]
+    assert len(mais) == 1 and re.search(r"Pequenos\s*reparos:\s*Incluídos\s*a mais", texto_visivel(mais[0]))
+    assert all("Pequenos reparos" not in texto_visivel(c) for c in cartoes if c is not mais[0])
+    cmp_ = texto_visivel(re.search(r'<details class="cmp" id="comparar".*?</details>', doc, re.S).group(0))
+    assert re.search(r"Pequenos\s*reparos.*Incluídos\s*a mais", cmp_), cmp_
+    mc.pop("coberturas_a_mais")
+    assert "Pequenos reparos" not in texto_visivel(PH.render_proposta(modelo)), "CONTROLE"
+
+
+def test_R6_o_adicional_vem_do_motor_e_a_carteira_nao_o_le():
+    """`comparacao.coberturas_a_mais` lê o booleano DEVOLVIDO (`reparoRapido is True`), nada de texto; a carteira (sem
+    marcador de venda) ignora a chave — o retrato byte a byte acima segue o mesmo com ela no modelo."""
+    from app.services.multicalculo import comparacao as CMP
+    assert CMP.coberturas_a_mais({"coberturas": {"reparoRapido": True}}) == [
+        {"chave": "reparos", "nome": "Pequenos reparos", "valor": "Incluídos"}]
+    assert CMP.coberturas_a_mais({"coberturas": {"reparoRapido": False}}) == []
+    assert CMP.coberturas_a_mais({"coberturas": {"reparoRapido": "true"}}) == []          # só o booleano
+    assert CMP.coberturas_a_mais({"coberturas": {"reparoRapido": True}}, ramo=CMP.RAMO_AUTO + 1) == []  # fora do auto
+    carteira = copy.deepcopy(CONTRATO)
+    antes = PH.render_proposta(carteira)
+    carteira["opcoes"][1]["coberturas_a_mais"] = [{"chave": "reparos", "nome": "Pequenos reparos", "valor": "Incluídos"}]
+    assert PH.render_proposta(carteira) == antes

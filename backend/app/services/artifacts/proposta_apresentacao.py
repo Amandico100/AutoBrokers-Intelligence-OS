@@ -424,6 +424,51 @@ def escolher_coberturas(ops: list[dict]) -> tuple[list[str], list[str], bool]:
     return topo, resto, all(not muda(k) for k in resto)
 
 
+def com_as_a_mais(ops: list[dict]) -> list[dict]:
+    """VENDA e RENOVAÇÃO (quem lê é o cliente — confirmação de design 132-B, R6/(e)): as opções com os adicionais do
+    modelo (`coberturas_a_mais`: pequenos reparos e afins, `comparacao.coberturas_a_mais`) somados às `coberturas` —
+    assim o que só uma opção tem vira LINHA com "a mais" (`proposta_html.so_nas_outras`) no cartão e no "Comparar".
+    Cópias: o modelo de quem chama não muda. A carteira e o canal nunca chamam isto (seguem byte a byte)."""
+    saida = []
+    for o in ops:
+        extras = [c for c in o.get("coberturas_a_mais") or []
+                  if isinstance(c, dict) and cobertura({"coberturas": [c]}, c.get("chave")) is not None]
+        tem = {c.get("chave") for c in o.get("coberturas") or [] if isinstance(c, dict)}
+        novas = [c for c in extras if c.get("chave") not in tem]
+        saida.append(dict(o, coberturas=list(o.get("coberturas") or []) + novas) if novas else o)
+    return saida
+
+
+def iguais_em_tudo(ops: list[dict]) -> bool:
+    """"iguais nas três" só quando as opções são iguais em TUDO o que o modelo sabe das coberturas (confirmação de
+    design 132-B, R6/(e)): as mesmas linhas, com os mesmos valores, em todas. E nunca quando uma opção custa mais sem
+    diferença conhecida — a "Mais completa" (calculada PEDINDO mais) ou a mesma seguradora, com a mesma franquia, por
+    outro preço: a diferença existe e a página não sabe dizer qual, então não afirma igualdade."""
+    if len(ops) < 2:
+        return True
+
+    def assinatura(o: dict) -> tuple:
+        return tuple(sorted((str(c.get("chave")), _chave_txt(valor_da_cobertura(c)))
+                            for c in o.get("coberturas") or [] if isinstance(c, dict) and cobertura(o, c.get("chave"))))
+
+    if len({assinatura(o) for o in ops}) > 1:
+        return False
+    if any(o.get("id") == "mais_completa" for o in ops):
+        return False
+
+    def franquia(o: dict) -> Optional[Decimal]:
+        f = o.get("franquia") if isinstance(o.get("franquia"), dict) else {}
+        return dec(f.get("valor"))
+
+    for i, a in enumerate(ops):
+        for b in ops[i + 1:]:
+            pa, pb = dec(a.get("premio_anual")), dec(b.get("premio_anual"))
+            if (tidy(a.get("seguradora")).lower() == tidy(b.get("seguradora")).lower() and franquia(a) == franquia(b)
+                    and pa is not None and pb is not None and reais(abs(pa - pb)) >= 1):
+                return False
+    return True
+
+
 # =====================================================================================================================
 # parcelas — "sem juros" só quando a soma bate
 # =====================================================================================================================

@@ -586,6 +586,9 @@ def _passe(o: dict, i: int, ops: list[dict], modelo: dict, topo: list[str], rest
 
     mais = ""
     lis = "".join(_celula_cobertura(k, o, rec, "li", cliente=renovacao) for k in resto)
+    if renovacao:
+        # confirmação de design 132-B, R6/(e): "iguais nas três" só com as opções iguais em TUDO o que o modelo sabe
+        resto_iguais = resto_iguais and AP.iguais_em_tudo(ops)
     if lis:
         n_resto = sum(1 for k in resto if AP.cobertura(o, k))
         mais = (f'<details class="more"><summary><span>Mais {n_resto} cobertura{"s" if n_resto > 1 else ""}'
@@ -1344,7 +1347,8 @@ def render_renovacao(modelo: dict) -> str:
     mínima, a nota do Google (quem já é cliente não precisa de prova de estranho). "Quero renovar" e "Tirar uma
     dúvida" vão ao número do modelo (`cta`: o dono confirmado → a corretora); sem número, sem botão e a frase "responda
     a mensagem em que recebeu este link" (D-131-42)."""
-    ops = _opcoes(modelo)[:3]
+    # R6/(e): os adicionais (pequenos reparos e afins) viram linhas — o que só uma opção tem ganha "a mais"
+    ops = AP.com_as_a_mais(_opcoes(modelo)[:3])
     rec = ops[0] if ops else None
     anf = _anfitria(modelo)
     nome_anf = str(anf.get("nome") or "").strip()
@@ -1402,7 +1406,8 @@ def render_renovacao(modelo: dict) -> str:
                     + (f"<b>{_e(seg_hoje)}</b>" if seg_hoje else "")
                     + (f'<span class="hv">{_e(AP.brl(premio_hoje))}</span><span class="hs">por ano</span>'
                        if AP.dec(premio_hoje) is not None else "")
-                    + (f'<span class="hs">vence em {_e(vence)}</span>' if vence else "") + "</div>")
+                    # confirmação de design 132-B, (g): o "vence em" já está no título, logo acima — não se repete aqui
+                    + "</div>")
         pc = AP.parcelas(rec)
         parc = (f"ou {pc['sem_juros'][0]}x de {AP.brl(pc['sem_juros'][1])} sem juros" if pc["sem_juros"]
                 else f"ou {pc['com_juros'][0]}x de {AP.brl(pc['com_juros'][1])} com juros" if pc["com_juros"] else "")
@@ -1526,10 +1531,13 @@ def render_renovacao(modelo: dict) -> str:
 
     validade = AP.data_br(modelo.get("validade_ate"))
     aviso = AP.aviso_legal(modelo.get("aviso_legal"), susep)
+    # confirmação de design 132-B, (g): sem o "Para guardar em PDF" (texto de ferramenta) e a explicação da nota SÓ
+    # quando algum cartão mostra a nota (R3 a esconde quando é a mesma nos três)
+    nota_nos_cartoes = "<small>/100</small>" in passes
+    texto_legal = " ".join(x for x in (aviso, (V["nota_longa"] + " pesa preço, franquia e coberturas.")
+                                       if nota_nos_cartoes else "") if x)
     legal = ('<footer class="legal">' + (f'<p class="valid">Preços válidos até {_e(validade)}.</p>' if validade else "")
-             + f'<p>{_e((aviso + " " if aviso else "") + V["nota_longa"] + " pesa preço, franquia e coberturas.")}</p>'
-             + '<p class="pdf">Para guardar em PDF: no navegador, toque em Compartilhar › Imprimir (ou Ctrl+P) e '
-               'escolha “Salvar como PDF”.</p></footer>')
+             + (f'<p>{_e(texto_legal)}</p>' if texto_legal else "") + '</footer>')
 
     # ---- o fecho e o rodapé fixo: "Quero renovar" / "Tirar uma dúvida" (D-131-42)
     def sub_de(o: dict) -> str:

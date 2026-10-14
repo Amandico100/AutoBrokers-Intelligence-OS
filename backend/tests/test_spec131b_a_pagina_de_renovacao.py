@@ -234,12 +234,71 @@ def test_a_pagina_servida_de_renovacao(monkeypatch):
         assert p in txt, p
     # todas as seguradoras: RECOLHIDAS (nenhum `open`)
     assert re.search(r'<details class="line todas" id="todas">', doc) and "Todas as seguradoras que cotamos" in txt
-    # o dock: "Quero renovar" e "Tirar uma dúvida"; "Salvar PDF" = imprimir
-    assert "Quero renovar" in txt and "Tirar uma dúvida" in txt and "Salvar como PDF" in txt
+    # o dock: "Quero renovar" e "Tirar uma dúvida". §9.3 (confirmação de design 132-B, (g)): o rodapé "Para guardar em
+    # PDF … Salvar como PDF" era texto de ferramenta e saiu (imprimir continua: o `@media print` da página)
+    assert "Quero renovar" in txt and "Tirar uma dúvida" in txt
+    assert "Para guardar em PDF" not in txt and "Salvar como PDF" not in txt
+    # (g): o "vence em" UMA vez (no título) — o cartão "Hoje" não o repete
+    assert txt.count("vence em") == 1, txt.count("vence em")
     # nada de comissão (G3) nem o script trocado (o hash da CSP é o da constante)
     assert "17,37" not in doc and "17.37" not in doc and f"<script>{PH.SCRIPT_DA_PROPOSTA}</script>" in doc
     # a prévia não fala de ranking nem de dado pessoal
     assert re.search(r'og:title" content="A renovação do seu seguro: Porto por R\$ [\d.]+,\d\d ao ano"', doc)
+
+
+# =====================================================================================================================
+# R6/(e) (confirmação de design 132-B): a "Mais completa" mostra o que tem a mais — e a página não afirma igualdade falsa
+# =====================================================================================================================
+def test_a_mais_completa_mostra_os_pequenos_reparos_e_nao_diz_iguais_nas_tres(monkeypatch):
+    """O FIO: o robô grava a completa+ com `reparoRapido=True` (o dublê da borda) → a comparação REAL → a página SERVIDA.
+    🔴 mutação: sem a linha (o defeito de 08c7138) o cartão prometia "pequenos reparos" com a MESMA lista e dizia
+    "Mais 2 coberturas, iguais nas três" — o cliente pagava a mais sem ver por quê."""
+    m = mundo(monkeypatch)
+    r = _publicar(m)
+    mc = next(o for o in r["modelo"]["opcoes"] if o["id"] == "mais_completa")
+    assert mc.get("coberturas_a_mais") == [{"chave": "reparos", "nome": "Pequenos reparos", "valor": "Incluídos"}]
+    assert all("coberturas_a_mais" not in o for o in r["modelo"]["opcoes"] if o["id"] != "mais_completa"), \
+        "CONTROLE: só a completa+ tem pequenos reparos"
+    doc = _servido(m, r["token"])
+    txt = _texto(doc)
+    assert "iguais nas três" not in txt and "iguais nas opções" not in txt
+    # o cartão da "Mais completa": a LINHA com o selo "a mais"
+    cartoes = re.findall(r'<article class="pass".*?</article>', doc, re.S)
+    assert len(cartoes) == 3
+    mais = next(c for c in cartoes if "Mais completa" in texto_visivel(c))
+    assert re.search(r"Pequenos\s*reparos:\s*Incluídos\s*a mais", texto_visivel(mais)), texto_visivel(mais)
+    for outro in (c for c in cartoes if c is not mais):
+        assert "Pequenos reparos" not in texto_visivel(outro)
+    # o "Comparar": uma linha "Pequenos reparos" — "—" nas outras, "a mais" na completa+
+    cmp_ = texto_visivel(re.search(r'<details class="cmp" id="comparar".*?</details>', doc, re.S).group(0))
+    assert re.search(r"Pequenos\s*reparos\s*—\s*—\s*Incluídos\s*a mais", cmp_), cmp_
+
+
+def test_iguais_nas_tres_so_quando_e_verdade():
+    """A regra sem o banco: as MESMAS coberturas e nenhuma diferença desconhecida → "iguais nas três"; a "Mais completa"
+    (calculada pedindo mais) com a mesma lista → a página NÃO afirma igualdade (diferença existe, e não se sabe qual)."""
+    base = dict(copy.deepcopy(CONTRATO["opcoes"][0]), id="sua_renovacao", rotulo="Sua renovação", o_que_muda=[])
+    red = dict(copy.deepcopy(base), id="franquia_reduzida", rotulo="Franquia reduzida",
+               franquia=dict(base["franquia"], valor=round(float(base["franquia"]["valor"]) / 2, 2)),
+               premio_anual=round(float(base["premio_anual"]) * 1.05, 2))
+    outra = dict(copy.deepcopy(base), id="outra_seguradora", rotulo="Outra seguradora", seguradora="Seguradora Ficticia",
+                 premio_anual=round(float(base["premio_anual"]) * 1.02, 2))
+    mc = dict(copy.deepcopy(base), id="mais_completa", rotulo="Mais completa",
+              premio_anual=round(float(base["premio_anual"]) * 1.08, 2))
+
+    def pagina(ops):
+        modelo = dict(copy.deepcopy(CONTRATO), situacao="renovacao", opcoes=ops,
+                      renovacao={"vence_em": "2026-10-20", "seguradora_atual": base["seguradora"]})
+        return texto_visivel(PH.render_proposta(modelo))
+
+    assert "iguais nas três" in pagina([base, red, outra]), "CONTROLE: iguais de fato → a página o diz"
+    assert "iguais nas três" not in pagina([base, red, mc]), "a completa+ sem o que tem a mais"
+    mesma_franquia = dict(copy.deepcopy(base), id="outra_seguradora", rotulo="Outra",
+                          premio_anual=round(float(base["premio_anual"]) * 1.03, 2))
+    assert "iguais nas três" not in pagina([base, red, mesma_franquia]), "só o preço muda, sem diferença conhecida"
+    com_reparos = dict(mc, coberturas_a_mais=[{"chave": "reparos", "nome": "Pequenos reparos", "valor": "Incluídos"}])
+    t = pagina([base, red, com_reparos])
+    assert "iguais nas três" not in t and re.search(r"Pequenos\s*reparos:\s*Incluídos\s*a mais", t)
 
 
 def test_a_ordem_da_renovacao_na_comparacao_nunca_a_economica_nem_a_minima(monkeypatch):

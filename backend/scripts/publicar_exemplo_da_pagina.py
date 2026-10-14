@@ -200,6 +200,10 @@ def _opcoes_da_renovacao(contrato: Mapping[str, Any], *, premio_de_hoje: float) 
                                     pool=entradas, apolice_atual=hoje, ramo=ramo, renovacao=True)
         o["o_que_muda"] = CMP._o_que_muda(e, base, sua["rotulo"], o["id"], renovacao=True)
         o["por_que"] = CMP._por_que_da_renovacao(e, o["id"], base, ramo)
+        # R6/(e): os adicionais da oferta (os pequenos reparos da "Mais completa"), como `comparacao._opcao` os grava
+        a_mais = CMP.coberturas_a_mais({"coberturas": e["coberturas_brutas"]}, ramo=ramo)
+        if a_mais:
+            o["coberturas_a_mais"] = a_mais
     return ops
 
 

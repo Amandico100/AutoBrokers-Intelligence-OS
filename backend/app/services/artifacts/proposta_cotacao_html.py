@@ -546,7 +546,8 @@ def render_cotacao(modelo: dict) -> str:
     venda = _venda(modelo)
     pagina_pad = _pagina_padrao()
     previa = previa_da_cotacao(modelo)
-    ops = opcoes_da_venda(modelo)
+    # confirmação de design 132-B, R6/(e): os adicionais (pequenos reparos e afins) viram linhas com "a mais"
+    ops = AP.com_as_a_mais(opcoes_da_venda(modelo))
     rec = ops[0] if ops else None
     anf = PH._anfitria(modelo)
     nome_anf = str(anf.get("nome") or "").strip()
@@ -648,6 +649,9 @@ def render_cotacao(modelo: dict) -> str:
 
     # ---- 3. as 3 opções (carrossel sem JS no celular; lado a lado no notebook) + comparar coberturas
     topo, resto, resto_iguais = AP.escolher_coberturas(ops) if ops else ([], [], True)
+    # R6/(e): "iguais nas três" só com as opções iguais em TUDO o que o modelo sabe (nunca a "Mais completa" sem o que
+    # ela tem a mais)
+    resto_iguais = resto_iguais and AP.iguais_em_tudo(ops)
     n = len(ops)
     cartoes = []
     for i, o in enumerate(ops):

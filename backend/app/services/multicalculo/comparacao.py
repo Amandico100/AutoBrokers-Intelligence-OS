@@ -472,6 +472,28 @@ def coberturas_publicas(oferta: Mapping[str, Any], *, ramo: int = RAMO_AUTO) -> 
     return linhas
 
 
+#: confirmação de design 132-B, R6/(e): os ADICIONAIS do auto que o robô pede (`presets.CHAVES_DE_COBERTURA`) e que
+#: `coberturas_publicas` não mostra — a "Mais completa" (`completa_mais`, D-MC-69) é o padrão + `reparoRapido`, e a
+#: página prometia "pequenos reparos" sem uma linha que o dissesse. Só o booleano `True` devolvido conta (nunca o pedido,
+#: nunca texto): (campo bruto, chave da linha, nome, valor).
+COBERTURAS_A_MAIS_DO_AUTO: Tuple[Tuple[str, str, str, str], ...] = (
+    ("reparoRapido", "reparos", "Pequenos reparos", "Incluídos"),
+    ("protecaoPneuRodas", "pneus", "Proteção de pneus e rodas", "Incluída"),
+    ("despesasExtra", "despesas", "Despesas extras", "Incluídas"),
+)
+
+
+def coberturas_a_mais(oferta: Mapping[str, Any], *, ramo: int = RAMO_AUTO) -> List[Dict[str, str]]:
+    """As linhas dos adicionais que a oferta TEM (o mesmo formato de `coberturas_publicas`). Elas vão numa chave À PARTE
+    da opção (`coberturas_a_mais`), lida só pela VENDA e pela RENOVAÇÃO (quem lê é o cliente): a carteira e o canal
+    leem `coberturas` e seguem byte a byte. Fora do auto: nada (o RE já mostra todas as chaves)."""
+    if int(ramo) != RAMO_AUTO:
+        return []
+    cob = _coberturas(oferta)
+    return [{"chave": chave, "nome": nome, "valor": valor}
+            for campo, chave, nome, valor in COBERTURAS_A_MAIS_DO_AUTO if cob.get(campo) is True]
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # A COMPARAÇÃO
 # ---------------------------------------------------------------------------------------------------------------------
@@ -900,7 +922,10 @@ def _opcao(e: Mapping[str, Any], id_: str, rotulo: str, papel: str, **ctx: Any) 
     ramo = int(e.get("ramo") or RAMO_AUTO)
     ref, rotulo_ref = ctx["referencia"], ctx["rotulo_ref"]
     renovacao = bool(ctx.get("renovacao"))          # só `_opcoes_da_renovacao` liga (a cotação segue byte a byte)
+    # R6/(e): os adicionais numa chave À PARTE — e só quando existem (o modelo sem eles segue byte a byte)
+    a_mais = coberturas_a_mais({"coberturas": e.get("coberturas_brutas") or {}}, ramo=ramo)
     return {
+        **({"coberturas_a_mais": a_mais} if a_mais else {}),
         "id": id_, "rotulo": rotulo, "seguradora": e["seguradora"], "produto": e["produto"],
         "premio_anual": e["premio_anual"], "parcelas": e["parcelas"], "franquia": dict(e["franquia"]),
         "coberturas": coberturas_publicas({"coberturas": e.get("coberturas_brutas") or {}}, ramo=ramo),
