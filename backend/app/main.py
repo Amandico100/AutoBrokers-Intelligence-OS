@@ -79,7 +79,12 @@ async def aquecer_no_arranque() -> dict:
             await fazer()
             tempos[nome] = round(time.monotonic() - inicio, 1)
             logger.info("[AQUECIMENTO] %s pronto em %.1f s", nome, tempos[nome])
-        except Exception as falha:  # noqa: BLE001 — aquecer nunca derruba o app
+        except asyncio.CancelledError:
+            raise  # o desligamento cancela o aquecimento: isso não é falha
+        except BaseException as falha:  # noqa: BLE001 — aquecer NUNCA derruba o app
+            # 🔴 Conserto da SPEC-132-A (red team P1): `BaseException`, não só `Exception`. 📊 14/10: sem o
+            # `pt_core_news_md`, o spaCy tenta baixá-lo e, sem rede, faz `sys.exit(1)` — o `SystemExit` atravessava
+            # o `to_thread` e a task e DERRUBAVA o processo no arranque (laço de reinício).
             tempos[nome] = None
             logger.warning("[AQUECIMENTO] %s falhou (%s) — o 1º turno aquece sozinho",
                            nome, type(falha).__name__)
