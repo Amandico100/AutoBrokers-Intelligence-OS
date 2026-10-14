@@ -54,11 +54,36 @@ async def get_or_create_graph(
     qdrant_service,
     supabase_client,
     enable_logging: bool = True,
+    esforco_do_pedido: Optional[str] = None,
 ):
     """
     Retorna o grafo cacheado ou cria um novo se não existir (ASYNC).
     A chave inclui updated_at para invalidação automática quando a config muda.
+
+    `esforco_do_pedido` (SPEC-132-A B8): o nível (`low`/`high`) que o corretor
+    escolheu para ESTE pedido do chat — vale só para o papel `chat_principal`
+    (`model_policy.esforco_do_pedido`). A chave do cache já leva o esforço
+    RESOLVIDO: um grafo por esforço, o mesmo modelo e a mesma reserva.
+    `None` = o esforço da rota, exatamente como antes.
     """
+    from app.factories import model_policy as _MP
+
+    with _MP.esforco_do_pedido(esforco_do_pedido):
+        return await _grafo_do_cache_ou_novo(
+            company_id=company_id, agent_id=agent_id, agent_config=agent_config,
+            api_key=api_key, qdrant_service=qdrant_service,
+            supabase_client=supabase_client, enable_logging=enable_logging)
+
+
+async def _grafo_do_cache_ou_novo(
+    company_id: str,
+    agent_id: str,
+    agent_config: dict,
+    api_key: str,
+    qdrant_service,
+    supabase_client,
+    enable_logging: bool = True,
+):
     global _graphs_cache
 
     # PEGAR O UPDATED_AT PARA INVALIDAÇÃO AUTOMÁTICA
