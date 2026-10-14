@@ -7,10 +7,18 @@
     async consumir_codigo(db, *, telefone_remetente_e164, texto)   a C2 chama quando chega "ATIVAR …" ao assistente
     membros_verificados_por_telefone(db, telefone_e164)            quem é este telefone (só membros ATIVOS verificados)
 
-O FIO (SPEC-132-C §2): Meu perfil → código (só o HASH no banco, 15 min, uso único) + wa.me/<número do AutoBrokers>
-?text=ATIVAR 123456 → a pessoa manda do CELULAR DELA → webhook (C2) → `consumir_codigo` → o número do REMETENTE é gravado
-no membro DONO do código (`whatsapp_trabalho_verificado_em`) → "Pronto, {nome}…". Nada é enviado a ninguém antes: quem
-prova a posse é quem manda.
+O FIO (SPEC-132-C §2): Meu perfil → o número DECLARADO e confirmado pela pessoa → código (só o HASH no banco, 15 min,
+uso único) + wa.me/<número do AutoBrokers>?text=ATIVAR 123456 → a pessoa manda do CELULAR DELA → webhook (C2) →
+`consumir_codigo` → o REMETENTE tem de ser o número DECLARADO do dono do código → `whatsapp_trabalho_verificado_em` →
+"Pronto, {nome}…". Nada é enviado a ninguém antes: quem prova a posse é quem manda.
+
+🔴 O CÓDIGO AMARRA O NÚMERO DECLARADO (conserto P1 do juiz e do red team): gerar EXIGE `whatsapp_trabalho_e164` já
+   confirmado no Meu perfil; consumir só aceita o remetente == esse número (forma canônica, com o 9º dígito). Remetente
+   diferente → silêncio, conta tentativa, e o número/`confirmado_em` do membro NUNCA são reescritos (antes: o código
+   vazado num print trocava a identidade do membro pelo número de quem o mandasse).
+🔴 Teto GLOBAL de "ATIVAR" errados (💭 30/hora no total, além dos 💭 5/hora por número): acima dele, silêncio para todos
+   (o atacante que roda números não chuta 10⁶ códigos).
+🔴 Gerar exige o atalho LIGADO (`ATALHO_WHATSAPP_LIGADO`): desligado, o ATIVAR seria ignorado (P5 do juiz).
 
 🔴 O membro vinculado é SEMPRE o (company_id, user_id) DO CÓDIGO — nunca do corpo, da sessão nem do telefone (mutação 3).
 🔴 Uso único: o código só é marcado usado por um UPDATE condicionado a `usado_em is null` (mutação 2).
@@ -47,6 +55,8 @@ VALIDADE = timedelta(minutes=15)
 TETO_DE_CODIGOS_POR_HORA = 5
 #: 💭 teto de "ATIVAR" ERRADOS por número de telefone por hora — acima dele, silêncio (nem se procura o código)
 TETO_DE_TENTATIVAS_ERRADAS_POR_HORA = 5
+#: 💭 teto GLOBAL de "ATIVAR" ERRADOS por hora, somados todos os números — acima dele, silêncio para TODOS
+TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA = 30
 _TENTATIVAS_DE_SORTEIO = 10
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -63,8 +73,8 @@ class ResultadoDaAtivacao:
     """O que a C2 faz com o "ATIVAR": `responder=False` → SILÊNCIO (nenhuma resposta, nenhum conteúdo registrado);
     `responder=True` → manda `mensagem` ao remetente pelo número do AutoBrokers.
 
-    motivo: "" (ok) · nao_e_ativacao · numero_invalido · teto_de_tentativas · codigo_invalido · membro_inativo ·
-            numero_de_outra_pessoa · sem_segredo · erro"""
+    motivo: "" (ok) · nao_e_ativacao · numero_invalido · teto_de_tentativas · teto_global · codigo_invalido ·
+            membro_inativo · numero_nao_declarado · numero_de_outra_pessoa · sem_segredo · erro"""
     ok: bool
     company_id: Optional[str] = None
     user_id: Optional[str] = None
@@ -182,6 +192,12 @@ def _nomes_das_corretoras(db: Any, ids: List[str]) -> Dict[str, str]:
             for x in linhas if str(x.get("id") or "").lower() in ids}
 
 
+def _mesmo_telefone(a: Any, b: Any) -> bool:
+    """Os dois números são o MESMO telefone (forma canônica do canal, com o 9º dígito do celular BR)."""
+    ca, cb = _canonico(a), _canonico(b)
+    return bool(ca) and ca == cb
+
+
 def _membro(db: Any, cid: str, uid: str) -> Optional[Dict[str, Any]]:
     linhas = _dados(_t(db, "company_members")
                     .select("user_id, company_id, status, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em")
@@ -240,6 +256,14 @@ def gerar_codigo(db: Any, *, company_id: Any, user_id: Any, agora: Optional[date
     membro = _membro(db, cid, uid)
     if not membro or membro.get("status") != "active":
         raise Recusa("Você não está ativo na equipe desta corretora.")
+    from app.services.atalho.entrada import ligado
+
+    if not ligado():
+        raise Recusa("Falar com o AutoBrokers pelo WhatsApp ainda não está disponível. Em breve.")
+    if not (membro.get("whatsapp_trabalho_e164") and membro.get("whatsapp_trabalho_confirmado_em")):
+        # 🔴 P1: o código amarra o número DECLARADO — sem ele, não há o que verificar
+        raise Recusa("Primeiro salve e confirme o seu WhatsApp de trabalho acima. "
+                     "O código só vale mandado desse número.")
     if not _segredo():  # sem segredo → a frase, ANTES de qualquer escrita (nunca um código sem hash)
         logger.error("[ATALHO] sem segredo para o HMAC — código não gerado")
         raise Recusa("A verificação pelo WhatsApp ainda não está disponível. Tente de novo mais tarde.")
@@ -297,6 +321,18 @@ def _silencio(motivo: str) -> ResultadoDaAtivacao:
     return ResultadoDaAtivacao(ok=False, motivo=motivo, responder=False)
 
 
+def _tentativas_erradas_no_total(db: Any, t0: datetime) -> int:
+    """Quantos "ATIVAR" errados na última hora, de TODOS os números (o teto global)."""
+    uma_hora = t0 - timedelta(hours=1)
+    linhas = _dados(_t(db, TABELA_TENTATIVAS).select("id, criado_em").gte("criado_em", uma_hora.isoformat())
+                    .limit(TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA + 1).execute())
+    return len([x for x in linhas if (_quando(x.get("criado_em")) or t0) >= uma_hora])
+
+
+def _contar_tentativa(db: Any, tel_hash: str, t0: datetime) -> None:
+    _t(db, TABELA_TENTATIVAS).insert({"telefone_hash": tel_hash, "criado_em": t0.isoformat()}).execute()
+
+
 def _tentativas_erradas(db: Any, tel_hash: str, t0: datetime) -> int:
     uma_hora = t0 - timedelta(hours=1)
     linhas = _dados(_t(db, TABELA_TENTATIVAS).select("id, telefone_hash, criado_em").eq("telefone_hash", tel_hash)
@@ -319,6 +355,9 @@ def _consumir(db: Any, telefone: Any, texto: Any, agora: Optional[datetime]) -> 
     except Recusa:
         logger.error("[ATALHO] sem segredo para o HMAC — a ativação cala")
         return _silencio("sem_segredo")
+    if _tentativas_erradas_no_total(db, t0) >= TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA:
+        logger.warning("[ATALHO] teto GLOBAL de ativações erradas atingido — a ativação cala para todos")
+        return _silencio("teto_global")
     if _tentativas_erradas(db, tel_hash, t0) >= TETO_DE_TENTATIVAS_ERRADAS_POR_HORA:
         return _silencio("teto_de_tentativas")
 
@@ -332,7 +371,7 @@ def _consumir(db: Any, telefone: Any, texto: Any, agora: Optional[datetime]) -> 
     if len(achados) != 1:
         if len(achados) > 1:
             logger.warning("[ATALHO] %d códigos ativos com o mesmo hash — recusado", len(achados))
-        _t(db, TABELA_TENTATIVAS).insert({"telefone_hash": tel_hash, "criado_em": t0.isoformat()}).execute()
+        _contar_tentativa(db, tel_hash, t0)
         return _silencio("codigo_invalido")
     linha = achados[0]
     cid, uid = str(linha.get("company_id") or "").lower(), str(linha.get("user_id") or "").lower()
@@ -344,6 +383,17 @@ def _consumir(db: Any, telefone: Any, texto: Any, agora: Optional[datetime]) -> 
         _t(db, TABELA_CODIGOS).update({"invalidado_em": t0.isoformat()}).eq("id", linha["id"]) \
             .eq("company_id", cid).execute()
         return _silencio("membro_inativo")
+
+    # 🔴 P1: o código vale SÓ do número que a pessoa declarou e confirmou no Meu perfil. Outro remetente (o print do
+    # código vazado, o chute que acertou) → silêncio, tentativa contada, NADA muda no membro (nem número nem confirmação)
+    if not (membro.get("whatsapp_trabalho_e164") and membro.get("whatsapp_trabalho_confirmado_em")) \
+            or not _mesmo_telefone(membro.get("whatsapp_trabalho_e164"), e164):
+        _contar_tentativa(db, tel_hash, t0)
+        _t(db, TABELA_CODIGOS).update({"tentativas": int(linha.get("tentativas") or 0) + 1}) \
+            .eq("id", linha["id"]).eq("company_id", cid).execute()
+        logger.warning("[ATALHO] ativação de um número que não é o declarado (%s) — calada", _mascarar(e164))
+        return _silencio("numero_nao_declarado")
+    e164 = str(membro.get("whatsapp_trabalho_e164"))   # o número é o DECLARADO (a mesma pessoa, a mesma forma gravada)
 
     outros = [x for x in _dados(_t(db, "company_members").select("user_id, company_id, whatsapp_trabalho_e164, "
                                                                 "whatsapp_trabalho_verificado_em")
@@ -367,14 +417,13 @@ def _consumir(db: Any, telefone: Any, texto: Any, agora: Optional[datetime]) -> 
     if not usado:
         return _silencio("codigo_invalido")
 
-    mesmo_numero = membro.get("whatsapp_trabalho_e164") == e164
-    patch = {"whatsapp_trabalho_e164": e164, "whatsapp_trabalho_verificado_em": t0.isoformat()}
-    if not (mesmo_numero and membro.get("whatsapp_trabalho_confirmado_em")):
-        # o número provado pela posse É o confirmado (a pessoa mandou dele); o confirmado antigo era de outro número
-        patch["whatsapp_trabalho_confirmado_em"] = t0.isoformat()
+    # 🔴 só a VERIFICAÇÃO é escrita: o número e a confirmação são os que a pessoa gravou (nunca o remetente por cima).
+    # O UPDATE é condicionado ao número declarado não ter mudado no meio (a pessoa trocou o número entre o código e o
+    # ATIVAR → zero linhas → cala).
+    patch = {"whatsapp_trabalho_verificado_em": t0.isoformat()}
     try:
         feito = [x for x in _dados(_t(db, "company_members").update(patch).eq("company_id", cid).eq("user_id", uid)
-                                   .execute())
+                                   .eq("whatsapp_trabalho_e164", e164).execute())
                  if _mesma(x.get("company_id"), cid) and _mesma(x.get("user_id"), uid)]
     except Exception as erro:  # noqa: BLE001 — o índice único (o número já é de outra pessoa) ganhou a corrida
         logger.warning("[ATALHO] verificação não gravada para %s (%s)", _mascarar(e164), type(erro).__name__)
@@ -446,4 +495,5 @@ def membros_verificados_por_telefone(db: Any, telefone_e164: Any) -> List[Dict[s
 __all__ = ("Recusa", "ResultadoDaAtivacao", "numero_do_assistente", "gerar_codigo", "codigo_da_ativacao",
            "consumir_codigo", "membros_verificados_por_telefone", "hash_do_codigo", "PURPOSE_DO_ASSISTENTE",
            "ENV_DO_NUMERO", "VALIDADE", "TETO_DE_CODIGOS_POR_HORA", "TETO_DE_TENTATIVAS_ERRADAS_POR_HORA",
+           "TETO_GLOBAL_DE_TENTATIVAS_ERRADAS_POR_HORA",
            "TABELA_CODIGOS", "TABELA_TENTATIVAS")
