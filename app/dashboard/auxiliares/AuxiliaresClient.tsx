@@ -47,7 +47,11 @@ const GRUPOS: { chave: Exclude<Visao, 'todos'>; titulo: string; subtitulo: strin
   },
 ];
 
-const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+// Conserto B (juiz de design, galeria item 3): abaixo de `sm` o segmentado e os chips rolam na horizontal — a borda
+// direita esmaece para dizer que há mais (antes "Em brev…" e "Clien…" eram cortados secos). Do `sm` em diante tudo cabe.
+const ESMAECE_ROLAGEM = '[mask-image:linear-gradient(to_right,#000_82%,transparent)] sm:[mask-image:none]';
+
+const FOCO ='focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 
 function Esqueleto() {
   return (
@@ -147,7 +151,7 @@ export default function AuxiliaresClient() {
               value={visao}
               onValueChange={(v) => v && setVisao(v as Visao)}
               aria-label="Mostrar"
-              className="w-full justify-start overflow-x-auto rounded-lg border border-border bg-surface p-1 sm:w-auto"
+              className={cn('w-full justify-start overflow-x-auto rounded-lg border border-border bg-surface p-1 sm:w-auto', ESMAECE_ROLAGEM)}
             >
               {(
                 [
@@ -194,7 +198,7 @@ export default function AuxiliaresClient() {
           </div>
 
           {/* Categorias: por RESULTADO, nunca por módulo do sistema. Rolagem horizontal no celular. */}
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" role="group" aria-label="Categoria">
+          <div className={cn('-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0', ESMAECE_ROLAGEM)} role="group" aria-label="Categoria">
             {Object.entries(CATEGORIAS).map(([chave, cat]) => {
               const Icone: LucideIcon = iconeDoAplicativo(cat.icone);
               const ativo = categoria === chave;
