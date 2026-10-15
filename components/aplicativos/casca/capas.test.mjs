@@ -158,7 +158,8 @@ console.log('\n2b. a MUTAÇÃO 2 da SPEC, de verdade: uma cópia do motor com um
 {
   const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'capas-mutacao-'));
   for (const f of ['paleta.ts', 'icones-svg.ts']) fs.copyFileSync(path.join(PASTA, f), path.join(pasta, f));
-  const fonte = fs.readFileSync(path.join(PASTA, 'composicoes.ts'), 'utf8');
+  // CRLF → LF: numa cópia do Windows (core.autocrlf) a âncora com '\n' não casava e a mutação nem rodava (costura L6)
+  const fonte = fs.readFileSync(path.join(PASTA, 'composicoes.ts'), 'utf8').replace(/\r\n/g, '\n');
   const alvo = 'camadaDeGrao(p, tema)\n  );\n}\n\n// ── B';
   checar(fonte.includes(alvo), 'o ponto da mutação existe no motor (o fim da direção A)');
   fs.writeFileSync(path.join(pasta, 'composicoes.ts'), fonte.replace(alvo, 'camadaDeGrao(p, tema) + \'<text x="80" y="120">Renovação</text>\'\n  );\n}\n\n// ── B'));
