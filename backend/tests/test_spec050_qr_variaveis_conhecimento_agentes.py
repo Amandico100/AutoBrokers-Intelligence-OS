@@ -57,7 +57,7 @@ check("create auto-cura instancia fantasma (409/422 -> delete+recria)",
 # ---------------------------------------------------------------------------
 print("\n[3] Conhecimento — humano e sem selecao de assistente")
 
-_kc = _src("app/dashboard/personalizacao/conhecimento/KnowledgeClient.tsx")
+_kc = _src("app/dashboard/personalizacao/corretora/conhecimento/KnowledgeClient.tsx")
 check("seletor 'qual assistente' REMOVIDO", "Qual assistente" not in _kc and "agentId" not in _kc)
 check("lista humanizada (apolices InfoCap legiveis)",
       "humanize" in _kc and "Apólice do sistema da corretora" in _kc)
