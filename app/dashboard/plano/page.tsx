@@ -25,5 +25,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RedirecionaParaCustos() {
-  redirect('/dashboard/personalizacao/custos');
+  redirect('/dashboard/personalizacao/corretora/custos');
 }
