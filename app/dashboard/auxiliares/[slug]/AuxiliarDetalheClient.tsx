@@ -109,8 +109,11 @@ export default function AuxiliarDetalheClient({ item, podeLigar, atividade, font
         return;
       }
       if (action === 'install' && !item.sem_rotina && botao.tipo === 'acao' && botao.rotulo === 'Instalar') {
-        // instalar abre o Configurar — é ali que se diz o que ele faz antes de ligar (laudo de design §3)
-        router.push(`/dashboard/auxiliares/${item.slug}?aba=configurar`, { scroll: false });
+        // instalar abre o Configurar — é ali que se diz o que ele faz antes de ligar (laudo de design §3).
+        // SPEC-131-0-B3 · F3: a rota é a MESMA (só a query muda) → o histórico, não `router.push` (que era uma 2ª ida
+        // ao servidor). O `router.refresh()` abaixo continua: o estado mudou no servidor, e ele relê a URL canônica
+        // que o pushState acabou de trocar (refresh-reducer lê `state.canonicalUrl`; as duas ações vão em fila).
+        window.history.pushState(null, '', `/dashboard/auxiliares/${item.slug}?aba=configurar`);
       }
       router.refresh();
     } catch (e) {

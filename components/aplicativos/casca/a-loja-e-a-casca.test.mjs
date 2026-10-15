@@ -583,7 +583,15 @@ const DETALHE = fs.readFileSync(path.join(RAIZ, 'app/dashboard/auxiliares/[slug]
 checar(/configurarDaCasca = abas\.some\(\(a\) => a\.id === 'configurar' && a\.componente === null\)/.test(DETALHE) &&
   /instalado && configurarDaCasca \?/.test(DETALHE),
   'o painel com o modal só monta quando o Configurar é da casca — na Cobrança, nunca (o botão leva à aba Configurar)');
-checar(/router\.push\(`\/dashboard\/auxiliares\/\$\{item\.slug\}\?aba=configurar`/.test(DETALHE), 'Instalar leva direto à aba Configurar');
+// SPEC-131-0-B3 · F3 (§9.3 — a lição migra): o destino é o MESMO (a aba Configurar), mas pelo histórico do navegador —
+// `router.push` para mudar só a query pedia a página inteira ao servidor. O comportamento executado está em
+// `as-abas-trocam-no-navegador.test.mjs` [3]; aqui fica o destino, e a forma antiga tem de ficar VERMELHA.
+const instalarLevaAoConfigurar = (f) =>
+  /window\.history\.pushState\(null, '', `\/dashboard\/auxiliares\/\$\{item\.slug\}\?aba=configurar`\)/.test(f) &&
+  !/router\.push\(`\/dashboard\/auxiliares\/\$\{item\.slug\}\?aba=configurar`/.test(f);
+checar(instalarLevaAoConfigurar(DETALHE), 'Instalar leva direto à aba Configurar (pelo histórico, sem ida ao servidor)');
+checar(!instalarLevaAoConfigurar(DETALHE.replace(/window\.history\.pushState\(null, '', (`[^`]+`)\)/, 'router.push($1, { scroll: false })')),
+  'CONTROLE: o router.push(?aba=configurar) de antes deixa o guarda VERMELHO');
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 console.log('\n[15] SPEC-139 · L4 × L1 — a cor do tile tem UM ponto de leitura (`estiloDoTile`); nenhum import de arquivo que não existe');

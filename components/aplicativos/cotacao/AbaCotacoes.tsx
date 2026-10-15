@@ -83,10 +83,12 @@ function AbaCotacoesConteudo() {
         else p.delete(k);
       }
       const url = `${pathname}?${p.toString()}`;
-      if (modo === 'push') router.push(url, { scroll: false });
-      else router.replace(url, { scroll: false });
+      // SPEC-131-0-B3 · F3: só a query muda → o histórico do navegador (o App Router sincroniza `useSearchParams`),
+      // nunca `router.push/replace` (pedia ao servidor a página inteira a cada filtro e a cada detalhe aberto).
+      if (modo === 'push') window.history.pushState(null, '', url);
+      else window.history.replaceState(null, '', url);
     },
-    [busca, pathname, router],
+    [busca, pathname],
   );
 
   // a busca vale depois de uma pausa na digitação — e fica SÓ no estado (nunca na URL)

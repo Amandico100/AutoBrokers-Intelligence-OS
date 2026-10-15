@@ -2,8 +2,14 @@
 
 // SPEC-131-B · G1 — as abas de todo aplicativo, por `?aba=` (laudo de design §3).
 //
-// Radix Tabs controlado pela URL: trocar de aba faz `router.push('?aba=…', { scroll: false })` — "voltar" do
-// navegador volta à aba anterior; aba inválida → Início (`abaValida`). Barra grudada no topo, rolagem horizontal no
+// Radix Tabs controlado pela URL: trocar de aba faz `window.history.pushState(null, '', '?aba=…')` — "voltar" do
+// navegador volta à aba anterior; aba inválida → Início (`abaValida`).
+//
+// 🔴 SPEC-131-0-B3 · F3: NUNCA `router.push` para mudar só a query. A página (`app/dashboard/auxiliares/[slug]/page.tsx`)
+// é `force-dynamic` e não lê `searchParams`: o `router.push` pedia ao servidor a página INTEIRA (RSC + leituras do
+// backend) a cada troca, à toa (📊 relato do Founder: 3–4 s). No Next ≥ 14.1 o App Router intercepta
+// `history.pushState/replaceState` (`next/dist/client/components/app-router.js`, ACTION_RESTORE, sem fetch) e
+// `useSearchParams` devolve a URL nova — a aba troca sem ida ao servidor. Guarda: `as-abas-trocam-no-navegador.test.mjs`. Barra grudada no topo, rolagem horizontal no
 // celular, gatilho de 44 px, ativo com sublinhado de 2 px.
 //
 // 🔴 O contrato com G2/G3 (SPEC §5): uma aba com `componente = '<pasta>/Aba<Nome>'` é carregada por import
@@ -12,7 +18,7 @@
 // a frase "esta parte ainda está sendo preparada", não uma tela quebrada.
 
 import { useEffect, useRef, useState, type CSSProperties, type ComponentType, type ReactNode } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -24,6 +30,14 @@ const FORMA_DO_COMPONENTE = /^([a-z0-9-]+)\/Aba([A-Za-z0-9]+)$/;
 
 /** A altura da barra de abas antes da medida (gatilho h-11 = 44 px + a borda de 1 px): o 1º desenho já gruda certo. */
 const ALTURA_INICIAL_DAS_ABAS = '45px';
+
+/** A URL da aba `id` a partir da atual: mantém os outros parâmetros; o detalhe (`item=`) é da aba que o abriu. */
+export function urlDaAba(pathname: string, busca: string, id: string, abaAtual: string): string {
+  const p = new URLSearchParams(busca);
+  p.set('aba', id);
+  if (id !== abaAtual) p.delete('item');
+  return `${pathname}?${p.toString()}`;
+}
 
 function AbaCarregada({ componente, item, aba }: { componente: string; item: ItemDoCatalogo; aba: string }) {
   const [Comp, setComp] = useState<ComponentType<PropsDaAba> | null>(null);
@@ -89,7 +103,6 @@ export interface AbasDoAplicativoProps {
 }
 
 export function AbasDoAplicativo({ item, abas, abaAtual, conteudo, marcadas = [] }: AbasDoAplicativoProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const busca = useSearchParams();
   // `--altura-das-abas`: o que gruda DEBAIXO da barra (ex.: o cabeçalho de grupo da aba Renovações) lê a altura REAL
@@ -108,11 +121,8 @@ export function AbasDoAplicativo({ item, abas, abaAtual, conteudo, marcadas = []
   }, []);
 
   function trocar(id: string) {
-    const p = new URLSearchParams(busca?.toString() ?? '');
-    p.set('aba', id);
-    // o detalhe de um item (`item=`) é da aba que o abriu
-    if (id !== abaAtual) p.delete('item');
-    router.push(`${pathname}?${p.toString()}`, { scroll: false });
+    // só a query muda: o histórico do navegador (o App Router sincroniza `useSearchParams`), nunca o servidor
+    window.history.pushState(null, '', urlDaAba(pathname, busca?.toString() ?? '', id, abaAtual));
   }
 
   return (
