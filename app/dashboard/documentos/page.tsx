@@ -20,5 +20,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RedirecionaParaConhecimento() {
-  redirect('/dashboard/personalizacao/conhecimento');
+  redirect('/dashboard/personalizacao/corretora/conhecimento');
 }
