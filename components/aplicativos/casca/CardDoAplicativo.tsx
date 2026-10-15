@@ -39,9 +39,10 @@ function tintaDaMatiz(h: number): { claro: string; escuro: string } {
  * SPEC-139 — o PONTO ÚNICO da cor do tile do ícone (o card, a linha do "Em breve" e o cabeçalho passam todos por
  * `TileDoIcone`, que lê SÓ daqui). A cor é a `tinta` da paleta das capas (`capas/paleta.ts`) na MESMA linha que a capa
  * usa (`visualDoPedido`: o slug; sem ele, o par ícone + matiz) — o tile bate com a capa (ex.: o Radar, 262° no laudo,
- * é 300° na capa e no tile). `--tile-claro` / `--tile-escuro` viram a cor em `.icone-aplicativo` (globals.css);
+ * é 214° na capa e no tile). `--tile-claro` / `--tile-escuro` viram a cor em `.icone-aplicativo` (globals.css);
  * `--app-h` (a matiz do laudo) fica só como reserva do CSS. 📊 contraste do ícone sobre `surface-2` ≥ 5,6:1 nos dois
- * temas (o pior: quem-cobra-menos no claro — `scripts/a-loja-de-aplicativos.test.mjs`, 15/10/2026).
+ * temas (o pior, depois do conserto B: resumo-atendimentos no claro, 5,64:1 —
+ * `scripts/a-loja-de-aplicativos.test.mjs`, 15/10/2026).
  */
 export function estiloDoTile({ slug, matiz, icone }: { slug?: string | null; matiz: number; icone?: string }): CSSProperties {
   const { claro, escuro } = tintaDaMatiz(visualDoPedido({ slug, icone, matiz }).h);
@@ -110,9 +111,14 @@ export function CardDoAplicativo({ item }: { item: ItemDoCatalogo }) {
         )}
       </div>
 
-      <TileDoIcone icone={item.icone} matiz={item.matiz} slug={item.slug} className="-mt-6 ml-4 ring-4 ring-surface relative" />
+      {/* Conserto B da SPEC-139 (D-139-CB-03, a regra do cabeçalho D-139-L6-01 levada ao card): a capa GERADA já traz o
+          ícone no selo, grande e na cor do aplicativo — o tile de 48 px repetia o MESMO desenho a dois dedos dele, nos
+          nove cards. O tile só volta com a capa do Founder (`cover_url`), que pode não trazer o ícone. */}
+      {item.cover_url && (
+        <TileDoIcone icone={item.icone} matiz={item.matiz} slug={item.slug} className="-mt-6 ml-4 ring-4 ring-surface relative" />
+      )}
 
-      <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
+      <div className={cn('flex flex-1 flex-col px-4 pb-4', item.cover_url ? 'pt-3' : 'pt-1')}>
         <h3 className="line-clamp-1 text-base font-semibold tracking-tight text-foreground">{item.nome}</h3>
         <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-muted-foreground">
           {item.headline || item.resumo}
@@ -152,31 +158,41 @@ export function LinhaEmBreve({ item }: { item: ItemDoCatalogo }) {
   );
 }
 
-/** O destaque do topo (`featured_rank = 1`): capa larga, nome grande, "Conhecer". */
+/**
+ * O destaque do topo (`featured_rank = 1`): capa larga, nome grande, "Conhecer".
+ *
+ * Conserto B da SPEC-139 (juiz de design, galeria item 1): o ícone ficava ATRÁS do título e, no escuro, a película
+ * acinzentava a capa. Agora a capa usa o enquadramento `destaque` (o selo e a cena à DIREITA, a esquerda limpa) e:
+ *   · abaixo de `lg`: EMPILHADO — a capa em cima (4:3 no celular, 3:2 no tablet; o SVG ancora à direita, o corte come
+ *     a esquerda vazia) e o texto embaixo, sobre `surface`. Nada se sobrepõe;
+ *   · de `lg` em diante: o texto à esquerda, sobre a área livre da capa (3:1), com uma película que acaba em 45 % da
+ *     largura — antes do selo (que começa em ~43 % do desenho e fica à direita do bloco de texto, max-w 40 %).
+ */
 export function DestaqueDoAplicativo({ item }: { item: ItemDoCatalogo }) {
   return (
     <Link
       href={`/dashboard/auxiliares/${item.slug}`}
       aria-label={`Em destaque: ${item.nome}`}
+      data-destaque={item.slug}
       className={cn('group relative block overflow-hidden rounded-2xl border border-border bg-surface', FOCO)}
     >
-      <CapaGerada
-        slug={item.slug}
-        icone={item.icone}
-        matiz={item.matiz}
-        coverUrl={item.cover_url}
-        className="aspect-[4/3] sm:aspect-[3/1]"
-        marca={220}
-        crescerNoHover
-      />
-      {/* K3 (juiz de design 7): no claro a esmaecida cobria a capa inteira (um vazio pálido) — ela fica só sob o texto
-          (até ~45 %), e a cor aparece; no escuro segue como era */}
-      <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/40 to-transparent sm:bg-gradient-to-r sm:from-background/80 sm:via-background/20 sm:via-45% sm:to-transparent dark:sm:from-background/85 dark:sm:via-background/40 dark:sm:via-50%" />
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-5 sm:inset-y-0 sm:right-auto sm:max-w-xl sm:justify-center sm:p-8">
+      <div className="relative">
+        <CapaGerada
+          slug={item.slug}
+          icone={item.icone}
+          matiz={item.matiz}
+          coverUrl={item.cover_url}
+          enquadramento="destaque"
+          className="aspect-[4/3] sm:aspect-[3/2] lg:aspect-[3/1]"
+          crescerNoHover
+        />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 hidden w-[45%] bg-gradient-to-r from-background/75 via-background/35 to-transparent lg:block" />
+      </div>
+      <div className="flex flex-col gap-3 p-5 sm:p-6 lg:absolute lg:inset-y-0 lg:left-0 lg:w-[40%] lg:justify-center lg:p-10">
         <span className="inline-flex w-fit items-center rounded-full border border-primary/40 bg-background/70 px-2.5 py-0.5 text-xs font-medium text-foreground">
           Em destaque
         </span>
-        <span className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{item.nome}</span>
+        <span className="text-2xl font-semibold tracking-tight text-foreground lg:text-3xl">{item.nome}</span>
         <span className="line-clamp-2 text-base text-foreground-2">{item.headline || item.resumo}</span>
         <span className={`mt-1 inline-flex h-11 w-fit items-center gap-2 rounded-lg px-4 text-sm font-medium ${BOTAO_PRIMARIO}`}>
           Conhecer <ArrowRight className="h-4 w-4" strokeWidth={1.6} aria-hidden="true" />
