@@ -45,21 +45,24 @@ export function buildReadiness(input: ReadinessInput): { items: ReadinessItem[];
 
   add('dados', 'Dados da corretora', flag(Boolean(input.company_name), 'Cadastro básico preenchido.', 'Complete o cadastro da corretora.'), 'Abrir cadastro', `${P}/corretora`);
   add('core', 'AutoBrokers provisionado', flag(input.core_provisioned, 'AutoBrokers ativo.', 'AutoBrokers ainda não provisionado.'), 'Ver agente', `${P}/agentes/autobrokers`);
-  add('even', 'Even provisionada', flag(input.even_provisioned, 'Even criada.', 'Even ainda não provisionada.'), 'Ver Even', `${P}/agentes/even`);
+  // SPEC-139 (EXTRA-001.9): a tela diz o PAPEL — "Agente de Atendimento" —, nunca um nome
+  // próprio (cada corretora batiza o seu; o nome oficial do produto é AutoBrokers —
+  // CLAUDE.md §1). As chaves `even*` e os campos de entrada ficam: são código, não tela.
+  add('even', 'Agente de Atendimento criado', flag(input.even_provisioned, 'Agente de Atendimento criado.', 'O Agente de Atendimento ainda não foi criado.'), 'Ver agente de atendimento', `${P}/corretora/agente-de-atendimento`);
   add('core_pers', 'Personalização do AutoBrokers', flag(input.core_personalized, 'Personalizado.', 'Ajuste tom e identidade do AutoBrokers.'), 'Personalizar', `${P}/agentes/autobrokers`);
-  add('even_pers', 'Personalização da Even', flag(input.even_personalized, 'Personalizada.', 'Ajuste nome, voz e mensagens da Even.'), 'Personalizar', `${P}/agentes/even`);
-  add('handoff', 'Handoff humano definido', flag(input.handoff_defined, 'Destino de handoff configurado.', 'Defina para quem a Even transfere casos.'), 'Definir handoff', `${P}/corretora/suporte-humano`, true);
-  add('equipe', 'Equipe configurada', flag((input.team_count ?? 0) >= 1, 'Equipe cadastrada.', 'Cadastre a equipe da corretora.'), 'Abrir equipe', `${P}/equipe`);
+  add('even_pers', 'Personalização do Agente de Atendimento', flag(input.even_personalized, 'Personalizado.', 'Ajuste nome, voz e mensagens do Agente de Atendimento.'), 'Personalizar', `${P}/corretora/agente-de-atendimento`);
+  add('handoff', 'Suporte humano definido', flag(input.handoff_defined, 'Destino do suporte humano configurado.', 'Defina para quem o Agente de Atendimento transfere casos.'), 'Definir suporte humano', `${P}/corretora/suporte-humano`, true);
+  add('equipe', 'Equipe configurada', flag((input.team_count ?? 0) >= 1, 'Equipe cadastrada.', 'Cadastre a equipe da corretora.'), 'Abrir equipe', `${P}/corretora/equipe`);
   add('corredor', 'Pelo menos um corredor ativo', flag((input.active_corridors ?? 0) >= 1, `${input.active_corridors ?? 0} corredor(es) ativo(s).`, 'Ative ao menos um corredor.'), 'Ativar corredor', `${P}/corredores`, true);
 
   // Auxiliares: opcional — não bloqueia produção.
-  if ((input.installed_auxiliaries ?? 0) >= 1) add('auxiliar', 'Auxiliares instalados', { status: 'ready', reason: `${input.installed_auxiliaries} instalado(s).` }, 'Ver auxiliares', '/dashboard/auxiliares/meus');
-  else add('auxiliar', 'Auxiliares (opcional)', { status: 'not_applicable', reason: 'Nenhum auxiliar instalado (opcional).' }, 'Explorar galeria', '/dashboard/auxiliares/galeria');
+  if ((input.installed_auxiliaries ?? 0) >= 1) add('auxiliar', 'Aplicativos instalados', { status: 'ready', reason: `${input.installed_auxiliaries} instalado(s).` }, 'Ver aplicativos', '/dashboard/auxiliares/meus');
+  else add('auxiliar', 'Aplicativos (opcional)', { status: 'not_applicable', reason: 'Nenhum aplicativo instalado (opcional).' }, 'Explorar aplicativos', '/dashboard/auxiliares/galeria');
 
   add('whatsapp', 'Canal WhatsApp conectado', flag(input.whatsapp_connected, 'WhatsApp conectado.', 'Conecte o WhatsApp para atender segurados.'), 'Conectar canal', `${P}/conectores`, true);
-  add('even_ativa', 'Even ativa', input.even_active ? { status: 'ready', reason: 'Even ativa.' } : { status: 'pending', reason: 'Even inativa — ative após configurar e testar.' }, 'Ver Even', `${P}/agentes/even`, true);
-  add('conhecimento', 'Conhecimento privado', flag(input.knowledge_configured, 'Conhecimento configurado.', 'Adicione documentos/fontes da corretora.'), 'Abrir conhecimento', `${P}/conhecimento`);
-  add('aprovadores', 'Aprovadores definidos', flag(input.approvers_defined, 'Aprovadores definidos.', 'Defina quem aprova ações sensíveis.'), 'Definir aprovadores', `${P}/equipe`);
+  add('even_ativa', 'Agente de Atendimento ligado', input.even_active ? { status: 'ready', reason: 'Agente de Atendimento ligado.' } : { status: 'pending', reason: 'Agente de Atendimento desligado — ligue depois de configurar e testar.' }, 'Ver agente de atendimento', `${P}/corretora/agente-de-atendimento`, true);
+  add('conhecimento', 'Conhecimento privado', flag(input.knowledge_configured, 'Conhecimento configurado.', 'Adicione documentos/fontes da corretora.'), 'Abrir conhecimento', `${P}/corretora/conhecimento`);
+  add('aprovadores', 'Aprovadores definidos', flag(input.approvers_defined, 'Aprovadores definidos.', 'Defina quem aprova ações sensíveis.'), 'Definir aprovadores', `${P}/corretora/equipe`);
 
   const ready_count = items.filter((i) => i.status === 'ready').length;
   const total = items.length;
