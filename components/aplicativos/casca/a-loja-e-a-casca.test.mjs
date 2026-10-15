@@ -11,6 +11,7 @@
 // LINHA DE CONTROLE (CLAUDE.md §9.2/§9.3): cada guarda roda também contra uma entrada que ele DEVE reprovar.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -563,6 +564,19 @@ const nCob = C.contagemDosPassos(pCob);
 checar(nCob.prontos === 1 && nCob.total === 4, '"1 de 4 prontos" (só o portal)', JSON.stringify(nCob));
 const pCobNao = C.passosDoComoComecar({ ...itemCob, instalado: false, estado: 'disponivel' }, { prontidao: null, meuAgger: null });
 checar(pCobNao[2].link === null && /Instalar/.test(pCobNao[2].titulo), 'não instalada: "Instalar e escolher as regras" (o botão Instalar abre o Configurar)');
+// conserto A da 139 (juiz de design, Cobrança não instalada §1 — §9.3: a verdade "linha morta" migra): o passo ganha a
+// MESMA ação do botão principal, e só quando o botão principal É "Instalar" (disponível; falta conectar → nada)
+checar(pCobNao[2].acao === 'install' && pCobNao[2].rotuloDoLink === 'Instalar' && C.botaoPrincipal({ ...base, estado: 'disponivel' }).rotulo === 'Instalar',
+  'não instalada: o passo 3 tem a ação "Instalar →" — a mesma do botão principal', JSON.stringify(pCobNao[2]));
+const pCobFalta = C.passosDoComoComecar({ ...itemCob, instalado: false, estado: 'falta_conectar' }, { prontidao: null, meuAgger: null });
+checar(pCobFalta[2].acao === undefined && pCobFalta[2].link === null, 'CONTROLE: falta conectar → o passo NÃO instala (o servidor recusaria; os passos de cima dizem o quê)');
+checar(pCob[2].acao === undefined, 'CONTROLE: instalada → o passo leva ao Configurar, sem ação de instalar');
+const COMO = fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/ComoComecar.tsx'), 'utf8');
+const INI = fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/AbaInicio.tsx'), 'utf8');
+checar(/!p\.link && p\.acao && onAcao && \(/.test(COMO) && /onClick=\{\(\) => onAcao\(p\.acao!\)\}/.test(COMO) &&
+  /<ComoComecar passos=\{passos\} onAcao=\{onAcao\}/.test(INI) &&
+  /onAcao=\{\(acao\) => agir\(acao\)\}/.test(fs.readFileSync(path.join(RAIZ, 'app/dashboard/auxiliares/[slug]/AuxiliarDetalheClient.tsx'), 'utf8')),
+  'o botão do passo chama o `agir` do maestro (o MESMO do botão principal) — nenhum segundo caminho de instalar');
 checar(C.passosDoComoComecar({ ...itemCob, slug: 'checklist-6h' }, { prontidao: null, meuAgger: null })[0].titulo === 'Conectar Portal da Seguradora',
   'CONTROLE: os outros aplicativos seguem "Conectar <nome>"');
 const DETALHE = fs.readFileSync(path.join(RAIZ, 'app/dashboard/auxiliares/[slug]/AuxiliarDetalheClient.tsx'), 'utf8');
@@ -642,6 +656,69 @@ const linha = /export function LinhaEmBreve[\s\S]*?\r?\n}\r?\n/.exec(CARD)?.[0] 
 checar(linha.length > 0 && !/<CapaGerada/.test(linha) && /<TileDoIcone[^>]*apagado/.test(linha) && !/provaDoCard|Ligar|Instalar/.test(linha),
   'a linha do "Em breve": só o ícone apagado, nome, frase e o selo — sem capa, sem prova, sem Ligar');
 checar(/<CapaGerada/.test('export function LinhaEmBreve() { return <CapaGerada /> }'), 'CONTROLE: o detector de capa acha a capa quando ela existe');
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+console.log('\n[18] conserto A da 139 (red team B4) — o "Como começar" do Checklist mede o que o Configurar DELE grava');
+// O Configurar do Checklist é o perfil do briefing (POST /api/dashboard/briefing, acao 'preferencias'): ele NÃO cria
+// rotina. Antes, o passo era medido por `item.rotinas` → "falta" para sempre, sem link antes de instalar.
+const itemChk = { slug: 'checklist-6h', estado: 'disponivel', instalado: false, rotinas: 0, sem_rotina: false, conexoes: [] };
+const passoChk = (item, briefing) => C.passosDoComoComecar(item, { prontidao: null, meuAgger: null, briefing }).find((p) => p.chave === 'configurar');
+const naoSalvo = C.preferenciasDoBriefing({ schedule_spec: { time: '08:00' }, is_active: true, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-01T10:00:00Z' });
+const salvo = C.preferenciasDoBriefing({ schedule_spec: { time: '06:30' }, is_active: true, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-03T09:00:00Z' });
+const pausado = C.preferenciasDoBriefing({ schedule_spec: { time: '06:30' }, is_active: false, created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-03T09:00:00Z' });
+checar(!naoSalvo.salvo && salvo.salvo && salvo.horario === '06:30' && !pausado.ativo, 'as preferências: o perfil criado e nunca salvo ≠ o salvo pelo Configurar; o horário e o "ligado" vêm do perfil',
+  JSON.stringify({ naoSalvo, salvo, pausado }));
+checar(JSON.stringify(C.preferenciasDoBriefing(null)) === JSON.stringify({ salvo: false, horario: '08:00', ativo: true }), 'sem perfil: nada salvo, 08:00 (o padrão do backend), ligado');
+const pSalvo = passoChk(itemChk, salvo);
+checar(pSalvo?.estado === 'pronto' && /06:30/.test(pSalvo.detalhe), 'preferências salvas → o passo fica PRONTO (mesmo SEM instalar e com 0 rotinas)', JSON.stringify(pSalvo));
+checar(passoChk(itemChk, naoSalvo)?.estado === 'falta' && passoChk(itemChk, pausado)?.estado === 'atencao' && passoChk(itemChk, null)?.estado === 'nao_sei',
+  'nunca salvo → falta · pausado → atenção · não lido → "não deu para conferir"');
+checar([naoSalvo, salvo, null].every((b) => passoChk(itemChk, b)?.link === '/dashboard/auxiliares/checklist-6h?aba=configurar') &&
+  C.abasDoAplicativo({ ...itemChk, faq: [] }).some((a) => a.id === 'configurar'),
+  'sem instalação o passo LEVA à aba Configurar — e a aba existe sem instalar (não exige instalar)');
+checar(C.contagemDosPassos(C.passosDoComoComecar({ ...itemChk, estado: 'ligado', instalado: true }, { prontidao: null, meuAgger: null, briefing: salvo })).prontos === 2,
+  '"N de M prontos" FECHA no Checklist: ligado + preferências salvas = 2 de 2');
+// PAR: a forma antiga (o passo medido por rotinas) — tirar o ramo do Checklist do catálogo deixa o passo "falta" para sempre
+{
+  const fonteCat = fs.readFileSync(path.join(RAIZ, CAT), 'utf8');
+  const ancora = "if (item.slug === 'checklist-6h') {";
+  checar(fonteCat.includes(ancora), 'a âncora da mutação do Checklist existe no catálogo');
+  const tmp = path.join(os.tmpdir(), `catalogo-mutado-139-${process.pid}.ts`);
+  fs.writeFileSync(tmp, fonteCat.replace(ancora, 'if (false) {'));
+  try {
+    const M = carregarTS(tmp, (id) => (id === '@supabase/supabase-js' ? {} : undefined));
+    const pm = M.passosDoComoComecar(itemChk, { prontidao: null, meuAgger: null, briefing: salvo }).find((p) => p.chave === 'configurar');
+    checar(pm?.estado !== 'pronto' && pm?.link === null, 'PAR: o catálogo antigo (passo por rotinas) fica VERMELHO — "falta" e sem link, com as preferências salvas',
+      JSON.stringify(pm));
+  } finally { fs.rmSync(tmp, { force: true }); }
+}
+const PAGINA = fs.readFileSync(path.join(RAIZ, 'app/dashboard/auxiliares/[slug]/page.tsx'), 'utf8');
+checar(/\.from\('briefing_profiles'\)[\s\S]{0,200}\.eq\('company_id', companyId\)[\s\S]{0,120}\.eq\('cadence', 'daily'\)[\s\S]{0,60}\.is\('user_id', null\)/.test(PAGINA) &&
+  /item\.slug === 'checklist-6h'[\s\S]{0,80}preferenciasDoChecklist\(supabase, sessao\.companyId\)/.test(PAGINA) && !/\.insert\(|\.update\(|\.upsert\(/.test(PAGINA),
+  'a página lê o perfil do briefing da corretora da SESSÃO (company_id), só leitura (nenhum insert/update)');
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+console.log('\n[19] conserto A da 139 (o juiz B1) — a migration que conserta as Dúvidas que prometiam o que o produto não faz');
+const MIG2 = fs.readFileSync(path.join(RAIZ, 'backend/supabase/migrations/20261016_02_spec139_a_duvida_da_cobranca.sql'), 'utf8');
+const MIG2_SQL = MIG2.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n');
+checar(/-- APPLY/.test(MIG2) && /-- VERIFY/.test(MIG2) && /-- ROLLBACK/.test(MIG2), 'APPLY · VERIFY · ROLLBACK escritos');
+const ups2 = MIG2_SQL.split(/;\s*\n/).filter((s) => /\bupdate\b/i.test(s));
+checar(ups2.length === 3 && ups2.every((u) => /^\s*update public\.auxiliary_templates set faq = '/.test(u) && /md5\(faq::text\) = '[0-9a-f]{32}'/.test(u)) &&
+  !/\b(alter|create|drop|insert|delete|truncate|grant)\b/i.test(MIG2_SQL),
+  '3 UPDATEs só de `faq` em auxiliary_templates, cada um só casa o texto ANTIGO exato (md5) — idempotente');
+const faq2 = Object.fromEntries([...MIG2_SQL.matchAll(/set faq = '(\[[\s\S]*?\])'::jsonb[\s\S]*?where slug = '([a-z0-9-]+)'/g)].map((m) => [m[2], JSON.parse(m[1].replace(/''/g, "'"))]));
+const respCob = (faq2['cobranca-feita'] || []).find((d) => /sai sozinho/.test(d.pergunta))?.resposta ?? '';
+checar(['Teste', 'Somente relatório', 'Encaminhar para minha equipe', 'Enviar diretamente ao cliente'].every((m) => respCob.includes(m)) && /só para o seu número de teste/.test(respCob)
+  && /nada é enviado/.test(respCob) && /a atendente/.test(respCob) && /depois que você confirma, o segurado/.test(respCob),
+  'a Dúvida da Cobrança responde POR MODO: teste → só o número de teste · relatório → nada · equipe → a atendente · cliente confirmado → o segurado', respCob);
+const textoMig2 = JSON.stringify(faq2);
+checar(!/Allianz|Porto Seguro|Mapfre|Tokio|Yelum|HDI|Zurich|Bradesco|SulAm/i.test(textoMig2) && !/(Resulta|AutoFleet|Amandus)/i.test(MIG2),
+  'nenhum nome de seguradora fixo nem de corretora (CLAUDE.md §13.9): as seguradoras vêm do portal conectado');
+checar(!/às 6h|três itens|canal que você escolher|olha as fontes todo dia|Sim, quando o aplicativo está ligado/.test(textoMig2) && !JARGAO.test(textoMig2.replace(/"pergunta"|"resposta"/g, '')),
+  'as promessas falsas saíram, e o texto novo não tem jargão');
+checar(/Sim, quando o aplicativo está ligado/.test(MIG2) && /Hoje, da Allianz/.test(MIG2), 'CONTROLE: o ROLLBACK guarda o texto antigo literal (o detector acha a promessa falsa nele)');
+checar(Object.keys(faq2).sort().join(',') === 'checklist-6h,cobranca-feita,radar-mercado-regulacao' && Object.values(faq2).every((a) => a.every((d) => typeof d.pergunta === 'string' && d.pergunta.endsWith('?') && typeof d.resposta === 'string')),
+  'as 3 listas são JSON válido, com pergunta (?) e resposta', Object.keys(faq2).join(','));
 
 console.log(falhas === 0 ? '\nA LOJA E A CASCA: TODOS OS GUARDAS VERDES\n' : `\n${falhas} GUARDA(S) VERMELHO(S)\n`);
 process.exit(falhas === 0 ? 0 : 1);
