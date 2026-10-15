@@ -189,7 +189,24 @@ class IntegrationService:
     # ele, e a corretora perderia o silêncio que pediu ao parear.
     #
     # Última prioridade não protege. Só a proibição protege.
-    PROPOSITOS_QUE_NUNCA_ENVIAM = frozenset({"observer"})
+    #
+    # 🔴 SPEC-131-0-B2 (conserto) — a LINHA DO USUÁRIO (`purpose='linha_do_usuario'`)
+    # é o WhatsApp PESSOAL de um corretor, pareado para ele falar com o AutoBrokers
+    # na conversa consigo mesmo. Ela nasce como qualquer linha de `integrations`
+    # (`is_active`, `evolution-go`, `agent_id NULL`) e, sem esta linha, era o ÚNICO
+    # canal que passava aqui nas corretoras que só têm o observador: cobrança,
+    # rotina, follow-up e alerta sairiam a SEGURADOS pelo celular pessoal do
+    # corretor (laudo do juiz e do red team, B1). A saída da própria linha não
+    # passa por aqui (`atalho.envio.enviar`, o cinto que só fala com o dono).
+    # (literal, e não o `channel_identity.PURPOSE_DA_LINHA`: este bloco é carregado SOZINHO pelos guardas da
+    # proibição; `test_spec1310b2_a_linha_nao_vaza` confere que os dois são o mesmo texto)
+    PROPOSITOS_QUE_NUNCA_ENVIAM = frozenset({"observer", "linha_do_usuario"})
+
+    # E, diferente do observador, a linha NUNCA é liberada pela autorização de
+    # auxiliar (`permite_envio_de_auxiliar`): a coluna é a corretora decidindo
+    # sobre o número DELA; a linha é de uma PESSOA. Quem um dia abrir a linha
+    # para outro uso (fase 2) abre aqui, com o governador — não por uma coluna.
+    PROPOSITOS_QUE_NENHUMA_AUTORIZACAO_LIBERA = frozenset({"linha_do_usuario"})
 
     # SPEC-078 Bloco B — a coluna que transforma o envio numa DECISÃO da corretora.
     #
@@ -247,6 +264,8 @@ class IntegrationService:
         purpose = str(integracao.get("purpose") or "").strip().lower()
         if purpose not in cls.PROPOSITOS_QUE_NUNCA_ENVIAM:
             return True
+        if purpose in cls.PROPOSITOS_QUE_NENHUMA_AUTORIZACAO_LIBERA:
+            return False
         # Daqui para baixo, a integração é um observador.
         if str(para or "").strip().lower() != cls.ENVIO_DE_AUXILIAR:
             return False
@@ -357,6 +376,13 @@ class IntegrationService:
                 # Normaliza provider
                 provider_db = str(integ.get("provider", "")).lower().strip()
                 if provider_db not in VALID_PROVIDERS:
+                    continue
+                # 🔴 SPEC-131-0-B2 (conserto B1) — a linha PESSOAL de um corretor tem
+                # `agent_id NULL` e cairia no CASO 2 abaixo como "a global da
+                # corretora" (acompanhamento ao segurado, fallback do acionamento,
+                # portal). Ela nunca é canal da corretora: não é candidata aqui.
+                if (str(integ.get("purpose") or "").strip().lower()
+                        in self.PROPOSITOS_QUE_NENHUMA_AUTORIZACAO_LIBERA):
                     continue
 
                 db_agent_id = integ.get("agent_id")
