@@ -77,7 +77,16 @@ for (const irma of ['galeria', 'meus', 'execucoes']) {
 // ---------------------------------------------------------------------------
 console.log('\n2 - O painel mora dentro do Auxiliar, e sabe de quem e');
 
-const painel = ler(PAINEL);
+// 🔴 SPEC-139 · L2 (CLAUDE.md §9.3 — o fato mudou, a lição migra): o FORMULÁRIO do modal foi extraído para
+// `components/aplicativos/cobranca-feita/` (o modal e a aba Configurar da Cobrança usam o mesmo). As regras abaixo
+// continuam valendo palavra por palavra — agora sobre o painel E as peças que ele importa. Sem as peças, o guarda
+// leria só o painel e ficaria vermelho por mudança de endereço, não de regra.
+const PECAS_DO_PAINEL = [
+  'components/aplicativos/cobranca-feita/formulario.ts',
+  'components/aplicativos/cobranca-feita/useFormularioDaRotina.ts',
+  'components/aplicativos/cobranca-feita/FormularioDaRotina.tsx',
+];
+const painel = [PAINEL, ...PECAS_DO_PAINEL].map((rel) => (existsSync(join(RAIZ, rel)) ? ler(rel) : '')).join('\n');
 const detalhe = ler(DETALHE);
 
 conferir('a tela do Auxiliar RENDERIZA o painel (nao linka para outra pagina)',
@@ -161,7 +170,8 @@ conferir('o campo `approval_required` sumiu da tela',
 // existe"), e um arquivo vazio passaria em todas. Esta linha exige que o
 // seletor de modo de envio EXISTA e esteja ligado ao motor.
 conferir('CONTROLE: o seletor de modo de envio existe e grava `send_mode`',
-  /setBillingConfig\(\{ send_mode: e\.target\.value \}\)/.test(painel)
+  // SPEC-139: o seletor virou cartões de rádio (laudo §4) — cada cartão grava o `valor` dele em `send_mode`
+  /setBillingConfig\(\{ send_mode: (?:e\.target\.value|m\.valor) \}\)/.test(painel)
   && /MODOS_COM_MOTOR\.map/.test(painel));
 
 // ---------------------------------------------------------------------------
