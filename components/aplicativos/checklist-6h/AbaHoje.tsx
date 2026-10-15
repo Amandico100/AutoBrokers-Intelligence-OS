@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
+import { Selo, type TomDoSelo } from '@/components/aplicativos/casca/Selo';
 
 // Conserto B da SPEC-139 (juiz de design, Checklist · Hoje 80): o seletor interno dizia "Hoje" logo abaixo da ABA "Hoje"
 // do aplicativo — virou "Agora" (a pergunta da tela: o que precisa de mim agora?). Os rótulos de 11 px em caixa alta e
@@ -120,13 +121,18 @@ function periodoDaSemana(p: Publicacao): string {
   return p.period_start && p.period_end ? `De ${dataCurta(p.period_start)} a ${dataCurta(p.period_end)}` : 'Esta semana';
 }
 
-function faixaDePrioridade(score?: number): { rotulo: string; classe: string } {
+// Juiz de design 139 R2 (Checklist 2): "Crítico" saía como texto vermelho solto (`bg-destructive/15` não gera cor:
+// o token é `hsl(var(--…))` sem canal alfa) e "Médio" com pílula — agora todas as faixas são o MESMO `Selo` da casca.
+function faixaDePrioridade(score?: number): { rotulo: string; tom: TomDoSelo } {
   const s = Number(score || 0);
-  if (s >= 85) return { rotulo: 'Crítico', classe: 'bg-destructive/15 text-destructive' };
-  if (s >= 70) return { rotulo: 'Alto', classe: 'bg-warning/15 text-foreground' };
-  if (s >= 50) return { rotulo: 'Médio', classe: 'bg-secondary text-muted-foreground' };
-  return { rotulo: 'Informativo', classe: 'bg-secondary text-muted-foreground' };
+  if (s >= 85) return { rotulo: 'Crítico', tom: 'danger' };
+  if (s >= 70) return { rotulo: 'Alto', tom: 'warning' };
+  if (s >= 50) return { rotulo: 'Médio', tom: 'neutral' };
+  return { rotulo: 'Informativo', tom: 'neutral' };
 }
+
+/** abaixo de `sm` o seletor rola: a borda direita esmaece para dizer que há mais (o mesmo da galeria) */
+const ESMAECE_ROLAGEM = '[mask-image:linear-gradient(to_right,#000_82%,transparent)] sm:[mask-image:none]';
 
 export default function AbaHoje() {
   const [aba, setAba] = useState<string>('hoje');
@@ -177,7 +183,8 @@ export default function AbaHoje() {
         Todo número aqui vem do que aconteceu na sua corretora — nada é estimado.
       </p>
 
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1">
+      <div className="rounded-xl border border-border bg-card p-1">
+       <div className={`flex gap-1 overflow-x-auto ${ESMAECE_ROLAGEM}`}>
         {ABAS.map((a) => (
           <button
             key={a.id}
@@ -191,6 +198,7 @@ export default function AbaHoje() {
             {a.rotulo}
           </button>
         ))}
+       </div>
       </div>
 
       {erro && (
@@ -220,9 +228,9 @@ export default function AbaHoje() {
 
 function Metrica({ rotulo, valor, nota }: { rotulo: string; valor: string | number; nota?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <p className={ROTULO}>{rotulo}</p>
-      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">{valor}</p>
+    <div className="min-w-0 rounded-xl border border-border bg-card p-3 sm:p-4">
+      <p className="text-xs font-medium leading-snug text-muted-foreground sm:text-sm">{rotulo}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground sm:mt-1.5">{valor}</p>
       {nota && <p className="mt-0.5 text-xs text-muted-foreground">{nota}</p>}
     </div>
   );
@@ -273,7 +281,9 @@ function Hoje({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-3">
+      {/* juiz de design 139 R2 (Checklist 1): no celular os 3 cartões empilhados ocupavam ~330 px antes do conteúdo —
+          agora uma faixa de 3 colunas, compacta abaixo de sm */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Metrica rotulo="Esperando você" valor={findings.length} />
         <Metrica rotulo="Crítico" valor={criticos} nota={criticos ? 'olhe primeiro' : 'nada urgente'} />
         <Metrica rotulo="Com ação disponível" valor={recomendacoes.length} />
@@ -358,9 +368,7 @@ function CartaoDeFinding({
       <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${faixa.classe}`}>
-              {faixa.rotulo}
-            </span>
+            <Selo tom={faixa.tom} rotulo={faixa.rotulo} />
             {finding.confidence != null && (
               <span className="text-xs text-muted-foreground">
                 confiança {Math.round(Number(finding.confidence) * 100)}%
@@ -566,9 +574,7 @@ function Oportunidades({
           <article key={r.id} className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="px-5 py-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${faixa.classe}`}>
-                  {faixa.rotulo}
-                </span>
+                <Selo tom={faixa.tom} rotulo={faixa.rotulo} />
                 {r.confidence != null && (
                   <span className="text-xs text-muted-foreground">
                     confiança {Math.round(Number(r.confidence) * 100)}%
