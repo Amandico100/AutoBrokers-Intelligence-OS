@@ -61,8 +61,10 @@ def teste_a_proibicao_existe_e_e_uma_so():
     print("\n[D1] Existe UMA proibição, num lugar só")
     fonte = _ler("backend", "app", "services", "integration_service.py")
     checar("PROPOSITOS_QUE_NUNCA_ENVIAM" in fonte, "a proibição está nomeada")
-    checar('frozenset({"observer"})' in fonte,
-           "e o observador está nela",
+    # SPEC-131-0-B2 (conserto B1): a linha do usuário (o WhatsApp PESSOAL do corretor) entrou na proibição.
+    # A lição migra (CLAUDE.md §9.3): o observador continua nela, num frozenset literal.
+    checar('frozenset({"observer", "linha_do_usuario"})' in fonte,
+           "e o observador está nela (com a linha do usuário)",
            "imutável de propósito: não é lista que alguém acrescenta em runtime")
     checar("def pode_enviar" in fonte, "há um único jeito de perguntar")
 
@@ -117,6 +119,13 @@ def teste_a_prova_funcional():
     # canal por um detalhe de schema — o defeito trocaria de lugar.
     checar(S.pode_enviar({"id": "x", "provider": "evolution-go"}) is True,
            "integração legada sem rótulo continua podendo enviar")
+    # SPEC-131-0-B2 (conserto B1): a linha PESSOAL do corretor nunca envia — nem com a autorização de auxiliar,
+    # que libera o observador (CONTROLE logo abaixo: a mesma autorização abre o observador).
+    linha = {"purpose": "linha_do_usuario", "permite_envio_de_auxiliar": True}
+    checar(S.pode_enviar(linha) is False and S.pode_enviar(linha, para="auxiliar") is False,
+           "a LINHA DO USUÁRIO não pode — nem autorizada")
+    checar(S.pode_enviar({"purpose": "observer", "permite_envio_de_auxiliar": True}, para="auxiliar") is True,
+           "CONTROLE — a autorização de auxiliar continua abrindo o observador")
 
 
 def teste_todo_seletor_de_saida_respeita():
