@@ -102,7 +102,7 @@ export function actionIsSensitive(action: string): boolean {
 
 const SUBJECT_LABELS: Record<string, string> = {
   autobrokers: 'Chat Principal',
-  atendimento: 'Atendimento (Even)',
+  atendimento: 'Agente de atendimento',
   tenant_auxiliary: 'Auxiliares',
 };
 export function subjectLabel(subject: string): string {
