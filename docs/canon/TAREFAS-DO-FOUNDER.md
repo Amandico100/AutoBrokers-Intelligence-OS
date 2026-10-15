@@ -508,7 +508,12 @@
       uma pergunta ali recebe a resposta do AutoBrokers; nenhuma outra conversa sua é respondida. **Se der errado:** o botão não aparece →
       confira a variável e o Implantar; a resposta não chega → print e a hora no chat. **Para desligar:** apague a linha
       `LINHA_DO_USUARIO_LIGADA=1` e Implantar o `smith-api`; para soltar o celular: Meu perfil → **Desconectar** (desligar a variável não
-      solta o aparelho). · *de:* S131-0-B2 §6 · D-1310B2-09
+      solta o aparelho).
+      **Para ligar só para você** (o 1º teste pela tela de verdade, o canário e a medição M1–M6, sem ninguém mais ver o botão): no lugar do
+      `1`, use `LINHA_DO_USUARIO_LIGADA=` seguido de o seu user_id (o gerente manda no chat) → **Salvar** → **Implantar** o `smith-api`. Só
+      quem estiver na lista vê o bloco, conecta, recebe resposta e recebe avisos; para mais de uma pessoa, separe os user_id por vírgula.
+      Um valor errado (letra a mais, pedaço faltando) **não liga ninguém** — o botão simplesmente não aparece; confira o que colou.
+      · *de:* S131-0-B2 §6 · D-1310B2-09 · fix/linha-por-pessoa
 - [ ] **T-182** ⏳ 🧑 **ainda NÃO — a execução avisa quando** · **Ligar os avisos do sistema pelo WhatsApp, por tipo** (D-132F-04, D-1310B2-14)
       — quando for a hora: EasyPanel → `smith-api` → **Ambiente** → `AVISOS_WHATSAPP_LIGADO=renovacoes_calculadas` → **Implantar** o
       `smith-api`. Os tipos são `renovacoes_calculadas`, `licenca_do_agger` e `falha_de_conexao`, separados por vírgula; `true`, `1` ou
