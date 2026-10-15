@@ -92,8 +92,9 @@ export function CardDoAplicativo({ item }: { item: ItemDoCatalogo }) {
         'group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-surface transition',
         // juiz de design 139 R2: `motion-reduce:transform-none` perdia para `hover:-translate-y-0.5` (o hover tem mais
         // especificidade) e o card subia 2 px mesmo com movimento reduzido — o `motion-reduce:hover:` anula o hover no
-        // mesmo nível. A sombra fica: ela não move nada.
-        'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card motion-reduce:hover:translate-y-0 motion-reduce:transition-none',
+        // mesmo nível. A sombra fica: ela não move nada. ⚠️ shadow-card NÃO serve: o nome colide com a COR card e o
+        // Tailwind gera também --tw-shadow-color: hsl(var(--card)) — a sombra saía na cor do card (branca no claro).
+        'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:hover:translate-y-0 motion-reduce:transition-none',
         FOCO,
       )}
     >
