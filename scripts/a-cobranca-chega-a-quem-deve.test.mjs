@@ -72,7 +72,16 @@ const pular = (nome, razao) => { pulados++; console.log(`  --   PULADO ${nome}\n
 // ---------------------------------------------------------------------------
 console.log('\n1 - O seletor oferece os QUATRO modos que tem motor');
 
-const painel = ler(PAINEL);
+// 🔴 SPEC-139 · L2 (CLAUDE.md §9.3 — o fato mudou, a lição migra): o formulário do modal e a fila de pendências foram
+// EXTRAÍDOS para `components/aplicativos/cobranca-feita/` (a aba Configurar e a aba Cobranças da Cobrança usam as
+// mesmas peças). As regras abaixo continuam valendo — agora sobre o painel E as peças que ele importa.
+const PECAS_DO_PAINEL = [
+  'components/aplicativos/cobranca-feita/formulario.ts',
+  'components/aplicativos/cobranca-feita/useFormularioDaRotina.ts',
+  'components/aplicativos/cobranca-feita/FormularioDaRotina.tsx',
+  'components/aplicativos/cobranca-feita/PendenciasDaCobranca.tsx',
+];
+const painel = ler(PAINEL) ? [PAINEL, ...PECAS_DO_PAINEL].map(ler).join('\n') : '';
 if (!painel) {
   conferir(`\`${PAINEL}\` existe`, false, 'sem o painel nao ha nada a medir');
 } else {
@@ -102,7 +111,8 @@ if (!painel) {
     'o veneno entrou e a leitura nao viu — a assercao acima e carimbo');
 
   console.log('\n2 - E cada modo real grava o que o motor exige');
-  conferir('o modo de envio continua sendo gravado', /setBillingConfig\(\{ send_mode: e\.target\.value \}\)/.test(painel));
+  // SPEC-139: o seletor virou cartões de rádio (laudo §4) — cada cartão grava o `valor` dele em `send_mode`
+  conferir('o modo de envio continua sendo gravado', /setBillingConfig\(\{ send_mode: (?:e\.target\.value|m\.valor) \}\)/.test(painel));
   conferir('`equipe` grava o `team_number` da corretora', /setBillingConfig\(\{\s*team_number/.test(semComentarios(painel)),
     'sem ele o modo `equipe` nao tem para quem mandar');
   conferir('`cliente` grava a confirmacao explicita', /setBillingConfig\(\{\s*confirmacao_cliente/.test(semComentarios(painel)),
