@@ -19,10 +19,9 @@ O FIO .......... /dashboard/auxiliares → AuxiliaresClient → CardDoAplicativo
                  → [slug]?aba=configurar → ABAS_DO_APLICATIVO['cobranca-feita'] → o formulário EXTRAÍDO → a MESMA rota de gravação
                  (corpo idêntico) → ?aba=cobrancas → leitura de billing_sent_log só da corretora · endereços antigos → 307 → ?aba=
 UNIDADES ....... L1 capas · L2 Cobrança · L3 telas no lugar (P-16) · L4 casca para todos + migration · L5 EXTRA-001.9 · L6 costura + design
-COESÃO ......... a capa é o MESMO CapaGerada; o formulário é UM (modal e aba usam o mesmo hook); redirect = page.tsx antiga
-PARALELISMO REAL L1 ‖ L2 ‖ L3 ‖ L4 ‖ L5 em worktrees próprios (arquivos disjuntos), enquanto a B2 esperava o celular → L6 costura
-TIME ........... 5 builders · 1 costura · juiz ‖ red team ‖ design · conserto A ‖ conserto B · confirmação · design R2 · conserto de
-                 design 2 · verificação R3 · bateria · atualizador
+COESÃO ......... o MESMO CapaGerada; UM formulário (modal e aba, o mesmo hook); redirect = page.tsx antiga
+PARALELISMO REAL L1 ‖ L2 ‖ L3 ‖ L4 ‖ L5 em worktrees próprios (arquivos disjuntos) → L6 costura
+TIME ........... 5 builders · costura · juiz ‖ red team ‖ design · conserto A ‖ B · confirmação · design R2 · conserto 2 · R3 · bateria
 REFERÊNCIA ..... interna: a casca da 131-B, laudo DESIGN-DO-PADRAO §2–§6; externa: as 5 da SPEC §8 — o juiz de design NÃO as abriu
 GATES .......... fio · dourado do corpo da Cobrança · guarda de links · rotas-montam + next build + next start + requisições · tsc ·
                  6 mutações · 2 corretoras · design ≥ 90 · bateria
