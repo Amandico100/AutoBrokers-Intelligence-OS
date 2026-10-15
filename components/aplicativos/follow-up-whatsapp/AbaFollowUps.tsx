@@ -240,7 +240,7 @@ export default function AbaFollowUps() {
                 active={selectedId === c.id}
                 onClick={() => selectConversation(c)}
                 title={c.title}
-                subtitle={[typeof c.message_count === 'number' ? `${c.message_count} msgs` : '', fmtDateShort(c.updated_at || c.created_at)].filter(Boolean).join(' · ')}
+                subtitle={[typeof c.message_count === 'number' ? `${c.message_count} ${c.message_count === 1 ? 'mensagem' : 'mensagens'}` : '', fmtDateShort(c.updated_at || c.created_at)].filter(Boolean).join(' · ')}
               />
             ))}
           </div>
