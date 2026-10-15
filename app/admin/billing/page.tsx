@@ -13,5 +13,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RedirecionaParaPlano() {
-  redirect('/dashboard/personalizacao/custos');
+  redirect('/dashboard/personalizacao/corretora/custos');
 }
