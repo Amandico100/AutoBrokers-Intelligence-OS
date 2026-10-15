@@ -14532,3 +14532,9 @@ parece defeito.
 | P-131B-14 | 🟡 CONTINUA — o juiz de design da 139 também não avaliou a barra Salvar (item 18) nem rodou axe |
 | P-131B-15 | 🟡 PARCIAL — as telas antigas: o Checklist foi movido com 📊 0 `text-[10/11px]`/`emerald-`/`amber-` (grep 15/10) e `checklist-6h/hoje/page.tsx` virou redirect; os tokens globais seguem intocados (D-131-45) |
 | P-132D-01 | 🟡 CONTINUA — T-174 antes do Implantar do `smith-web` (T-183) |
+
+## P-LPP-01..03 · 🤖 a chave da linha por pessoa (fix/linha-por-pessoa, 15/10; juiz fresco APROVADO 90, 161 passed)
+- **P-LPP-01** `pareamento.qr()` não confere se a pessoa é membro ativo (ela só vê a própria tentativa, que o `conectar` já barrou) — alinhar com o `estado` por coerência. Custo de esquecer: baixo.
+- **P-LPP-02** tirar alguém da lista com a linha conectada: os eventos de queda daquela linha passam a ser ignorados e o estado gravado envelhece (igual à chave ausente). Destrava: desconectar ANTES de tirar da lista (T-181).
+- **P-LPP-03** `entrada.ligada` ainda exportado — tirar do `__all__` ou um guarda que obrigue `ligada_para` (evita uso futuro como decisão).
+
