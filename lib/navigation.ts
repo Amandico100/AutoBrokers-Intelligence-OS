@@ -104,6 +104,15 @@ export const SECONDARY: NavItem[] = [];
  *   /dashboard/atividades      → /dashboard/entregas
  *   /dashboard/historico       → /dashboard/entregas?tipo=conversa
  *   /dashboard/conversas       → /dashboard/atendimentos/conversas
+ *   SPEC-139 (EXTRA-001.9) — o que é da CORRETORA mora dentro de Corretora:
+ *   /dashboard/personalizacao/agentes/even → …/personalizacao/corretora/agente-de-atendimento
+ *   /dashboard/personalizacao/equipe       → …/personalizacao/corretora/equipe
+ *   /dashboard/personalizacao/conhecimento → …/personalizacao/corretora/conhecimento
+ *   /dashboard/personalizacao/custos       → …/personalizacao/corretora/custos
+ *
+ * Toda mudança de casa deixa o endereço antigo com `redirect()` (307) e passa no
+ * guarda `scripts/links-internos-casam-rotas.test.mjs`, que casa TODO link
+ * interno literal com a tabela de rotas do disco (o `rotas-montam` não vê links).
  */
 export const MENU_NAO_CRESCE = 5 as const;
 
