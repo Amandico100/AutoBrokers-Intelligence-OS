@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: backendHeaders(),
       cache: 'no-store',
-      body: JSON.stringify({ company_id: companyId, user_id: userId }),
+      body: JSON.stringify({ company_id: companyId, user_id: userId, por_user_id: userId }),
     });
     const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     const corpo = res.ok

@@ -166,6 +166,12 @@ for (const nome of Object.keys(ROTAS)) {
     assert.equal(ids.user_id, SESSAO_A.userId, 'o backend recebeu outra pessoa que não a da sessão');
     assert.ok(!ids.tudo.includes(FORJADA_B.company_id) && !ids.tudo.includes(FORJADA_B.user_id),
       'o valor FORJADO (corretora B) chegou ao backend');
+    // costura com a L1 (gerente, 15/10): o backend RECUSA (422) o POST sem `por_user_id` igual ao `user_id`
+    // (`backend/app/api/linha_do_usuario.py`) — sem ele, "Conectar" e "Desconectar" morriam na tela.
+    if (ROTAS[nome].metodo === 'POST') {
+      const corpoPost = JSON.parse(c.init.body || '{}');
+      assert.equal(corpoPost.por_user_id, SESSAO_A.userId, 'o POST tem de mandar por_user_id = a pessoa da sessão');
+    }
     // a chave interna e o "sem cache"
     const h = c.init.headers ?? {};
     assert.equal(h['X-AutoBrokers-Internal-Key'], 'chave-interna-de-teste', 'falta a X-AutoBrokers-Internal-Key');
