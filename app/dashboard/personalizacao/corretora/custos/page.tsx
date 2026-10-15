@@ -12,7 +12,11 @@ export default function CustosPage() {
           icon={icons.cobranca}
           title="Custos e Uso"
           subtitle="Saldo e consumo reais da sua corretora, por agente e por modelo (últimos 30 dias)."
-          breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Custos e Uso' }]}
+          breadcrumb={[
+            { label: 'Personalização', href: '/dashboard/personalizacao' },
+            { label: 'Corretora', href: '/dashboard/personalizacao/corretora' },
+            { label: 'Custos e Uso' },
+          ]}
         />
         <UsageClient />
       </div>
