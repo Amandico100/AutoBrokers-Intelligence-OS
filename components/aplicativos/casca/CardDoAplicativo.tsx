@@ -7,12 +7,13 @@
 // palavras (`provaDoCard`) — nunca estrela, nunca contagem inventada (D-131-26). Cor de estado só pelo `Selo` da casca
 // (nunca emerald/amber cru); texto informativo em `muted-foreground` (nunca `faint`, que reprova AA).
 
+import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { provaDoCard, seloDoEstado, type EstadoDoCard, type ItemDoCatalogo } from '@/lib/auxiliaries/catalog';
-import { CapaGerada, estiloDaMatiz } from './CapaGerada';
+import { CapaGerada } from './CapaGerada';
 import { Selo } from './Selo';
 import { iconeDoAplicativo } from './icones';
 
@@ -22,16 +23,30 @@ export function SeloDoAplicativo({ estado, className }: { estado: EstadoDoCard; 
   return <Selo tom={selo.tom} rotulo={selo.rotulo} className={className} />;
 }
 
-/** O tile do ícone: 48 px no card, 40 no "em breve", 72 no cabeçalho. */
+/**
+ * SPEC-139 · L4 — o PONTO ÚNICO da cor do tile do ícone (o card, a linha do "Em breve" e o cabeçalho passam todos
+ * por `TileDoIcone`, que lê SÓ daqui). Hoje: a matiz do catálogo em `--app-h`, que `.icone-aplicativo` (globals.css)
+ * transforma na cor do ícone nos dois temas.
+ *
+ * 🧵 COSTURA (L1 × L4): quando a paleta nova existir (`components/aplicativos/casca/capas/paleta.ts`, da L1), é o
+ * corpo DESTA função que passa a ler a cor da paleta pelo `slug` (com a matiz como reserva para o slug que a paleta
+ * não conhece). Nenhum outro arquivo calcula a cor do tile — o teste da loja confere.
+ */
+export function estiloDoTile({ slug, matiz }: { slug?: string | null; matiz: number }): CSSProperties {
+  void slug; // a paleta da L1 lê por slug (costura); até lá a matiz decide
+  return { ['--app-h' as string]: String(matiz) } as CSSProperties;
+}
+
+/** O tile do ícone: 48 px no card, 40 no "em breve", 72 no cabeçalho. A cor vem de `estiloDoTile` (ponto único). */
 export function TileDoIcone({
-  icone, matiz, tamanho = 48, className, apagado = false,
-}: { icone: string; matiz: number; tamanho?: 40 | 48 | 72; className?: string; apagado?: boolean }) {
+  icone, matiz, slug, tamanho = 48, className, apagado = false,
+}: { icone: string; matiz: number; slug?: string | null; tamanho?: 40 | 48 | 72; className?: string; apagado?: boolean }) {
   const Icone = iconeDoAplicativo(icone);
   const lado = tamanho === 72 ? 'h-[72px] w-[72px] rounded-2xl' : tamanho === 48 ? 'h-12 w-12 rounded-xl' : 'h-10 w-10 rounded-lg';
   const tamIcone = tamanho === 72 ? 34 : tamanho === 48 ? 24 : 20;
   return (
     <span
-      style={estiloDaMatiz(matiz)}
+      style={estiloDoTile({ slug, matiz })}
       className={cn(
         'flex shrink-0 items-center justify-center border border-border bg-surface-2',
         lado,
@@ -83,7 +98,7 @@ export function CardDoAplicativo({ item }: { item: ItemDoCatalogo }) {
         )}
       </div>
 
-      <TileDoIcone icone={item.icone} matiz={item.matiz} className="-mt-6 ml-4 ring-4 ring-surface relative" />
+      <TileDoIcone icone={item.icone} matiz={item.matiz} slug={item.slug} className="-mt-6 ml-4 ring-4 ring-surface relative" />
 
       <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
         <h3 className="line-clamp-1 text-base font-semibold tracking-tight text-foreground">{item.nome}</h3>
@@ -115,7 +130,7 @@ export function LinhaEmBreve({ item }: { item: ItemDoCatalogo }) {
         FOCO,
       )}
     >
-      <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={40} apagado />
+      <TileDoIcone icone={item.icone} matiz={item.matiz} slug={item.slug} tamanho={40} apagado />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{item.nome}</span>
         <span className="line-clamp-2 text-sm text-muted-foreground">{item.headline || item.resumo}</span>
