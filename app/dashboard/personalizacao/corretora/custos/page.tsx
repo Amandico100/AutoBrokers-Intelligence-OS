@@ -11,7 +11,7 @@ export default function CustosPage() {
         <DetailHeader
           icon={icons.cobranca}
           title="Custos e Uso"
-          subtitle="Saldo e consumo reais da sua corretora, por agente e por modelo (últimos 30 dias)."
+          subtitle="Quanto a IA trabalhou para a sua corretora nos últimos 30 dias — por assistente, por pessoa e por modelo — e o que já foi cobrado."
           breadcrumb={[
             { label: 'Personalização', href: '/dashboard/personalizacao' },
             { label: 'Corretora', href: '/dashboard/personalizacao/corretora' },

@@ -1,73 +1,72 @@
-// TA2-C — coleta real de uso/custos (últimos 30 dias). Server-only. Sem custo fictício.
+// TA2-C + SPEC-131-0-B3 F4 — coleta real de uso/custos (últimos 30 dias). Server-only. Sem custo fictício.
+// 🔴 Toda consulta filtra `company_id` no código (CLAUDE.md §7: o backend usa service role; RLS não protege).
+// ⛔ Só leitura. Dinheiro só do razão (credit_transactions); o custo do provedor nem é lido.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildUsageView, type UsageRow } from '@/lib/admin/tenant-usage-view';
+import {
+  buildUsoDaCorretora,
+  type AgentRow, type CreditsRow, type LedgerRow, type LogRow, type PersonRow, type UsoDaCorretora,
+} from '@/lib/admin/tenant-usage-view';
 
-export async function gatherUsage(supabase: SupabaseClient, companyId: string) {
+const PAGINA = 1000;      // o PostgREST devolve no máximo 1.000 linhas por pedido
+const MAX_PAGINAS = 50;   // teto de 50 mil chamadas em 30 dias por corretora
+
+export async function gatherUsage(supabase: SupabaseClient, companyId: string): Promise<UsoDaCorretora> {
   const sinceISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  let balance_brl = 0, alert_80 = false, alert_100 = false;
+  let credits: CreditsRow | null = null;
   try {
-    const { data } = await supabase.from('company_credits').select('balance_brl, alert_80_sent, alert_100_sent').eq('company_id', companyId).maybeSingle();
-    balance_brl = Number(data?.balance_brl ?? 0);
-    alert_80 = Boolean(data?.alert_80_sent); alert_100 = Boolean(data?.alert_100_sent);
-  } catch { /* honest zero */ }
+    const { data } = await supabase.from('company_credits')
+      .select('balance_brl, alert_80_sent, alert_100_sent')
+      .eq('company_id', companyId).maybeSingle();
+    credits = (data as CreditsRow | null) ?? null; // sem linha → sem cartão de saldo (nunca um R$ 0,00 que parece real)
+  } catch { /* honesto: sem saldo */ }
 
-  // mapa agent_id → rótulo humano (core/even); demais por nome real.
-  const agentLabel = new Map<string, string>();
+  let agents: AgentRow[] = [];
   try {
-    const { data: agents } = await supabase.from('agents').select('id, name, agent_role').eq('company_id', companyId);
-    for (const a of agents ?? []) {
-      const role = (a as any).agent_role;
-      agentLabel.set((a as any).id, role === 'core' ? 'AutoBrokers' : role === 'attendance' ? 'Even' : ((a as any).name ?? 'Agente'));
-    }
-  } catch { /* segue */ }
+    const { data } = await supabase.from('agents').select('id, name, agent_role, company_id').eq('company_id', companyId);
+    agents = (data ?? []) as AgentRow[];
+  } catch { /* segue: tudo vira "Outros usos" */ }
 
-  const rows: UsageRow[] = [];
+  let ledger: LedgerRow[] = [];
+  let cobrancaJaComecou = false;
   try {
-    // credit_transactions = consumo já precificado em BRL (fonte canônica de custo).
-    const { data: txns } = await supabase.from('credit_transactions')
-      .select('agent_id, type, amount_brl, model_name, tokens_input, tokens_output, created_at')
+    const { data } = await supabase.from('credit_transactions')
+      .select('company_id, agent_id, type, amount_brl, model_name, created_at')
       .eq('company_id', companyId).gte('created_at', sinceISO).limit(5000);
-    for (const t of txns ?? []) {
-      const amt = Number((t as any).amount_brl ?? 0);
-      // consumo = débito (amount negativo) ou type de uso.
-      const isUsage = amt < 0 || /usage|consumo|debit|token/i.test(String((t as any).type ?? ''));
-      if (!isUsage) continue;
-      rows.push({
-        agent_label: agentLabel.get((t as any).agent_id) ?? 'Geral',
-        model_name: (t as any).model_name ?? null,
-        cost_brl: Math.abs(amt),
-        tokens: Number((t as any).tokens_input ?? 0) + Number((t as any).tokens_output ?? 0),
-      });
-    }
-  } catch { /* segue */ }
+    ledger = (data ?? []) as LedgerRow[];
+    // houve débito de uso em QUALQUER data? (então "R$ 0,00 nos 30 dias" é verdade, e a frase não)
+    const { data: algum } = await supabase.from('credit_transactions')
+      .select('id').eq('company_id', companyId).lt('amount_brl', 0).limit(1);
+    cobrancaJaComecou = (algum ?? []).length > 0;
+  } catch { /* honesto: cobrança não começou */ }
 
-  // SPEC-044: quebra POR PESSOA (30d) — atribuição vem do token_usage_logs
-  // (details.user_id, gravado por requisição via request_context no backend).
-  const per_user: { user_id: string; name: string; tokens: number; cost_usd: number }[] = [];
+  const logs: LogRow[] = [];
   try {
-    const { data: logs } = await supabase.from('token_usage_logs')
-      .select('details, input_tokens, output_tokens, total_cost_usd')
-      .eq('company_id', companyId).gte('created_at', sinceISO).limit(8000);
-    const byUser = new Map<string, { tokens: number; cost_usd: number }>();
-    for (const l of logs ?? []) {
-      const uid = String(((l as any).details ?? {})?.user_id ?? '');
-      if (!uid) continue;
-      const cur = byUser.get(uid) ?? { tokens: 0, cost_usd: 0 };
-      cur.tokens += Number((l as any).input_tokens ?? 0) + Number((l as any).output_tokens ?? 0);
-      cur.cost_usd += Number((l as any).total_cost_usd ?? 0);
-      byUser.set(uid, cur);
+    for (let p = 0; p < MAX_PAGINAS; p++) {
+      const de = p * PAGINA;
+      const { data, error } = await supabase.from('token_usage_logs')
+        .select('company_id, agent_id, model_name, input_tokens, output_tokens, details')
+        .eq('company_id', companyId).gte('created_at', sinceISO)
+        .order('created_at', { ascending: true }).order('id', { ascending: true })
+        .range(de, de + PAGINA - 1);
+      if (error) break;
+      const lote = (data ?? []) as LogRow[];
+      logs.push(...lote);
+      if (lote.length < PAGINA) break;
     }
-    if (byUser.size) {
-      const { data: users } = await supabase.from('users_v2')
-        .select('id, first_name, last_name').in('id', Array.from(byUser.keys()));
-      const nameOf = new Map((users ?? []).map((u: any) => [u.id, `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() || 'Usuário']));
-      byUser.forEach((v, uid) => {
-        per_user.push({ user_id: uid, name: nameOf.get(uid) ?? 'Usuário', tokens: v.tokens, cost_usd: Number(v.cost_usd.toFixed(4)) });
-      });
-      per_user.sort((a, b) => b.tokens - a.tokens);
-    }
-  } catch { /* honesto: sem quebra por pessoa */ }
+  } catch { /* honesto: o que veio até aqui */ }
 
-  return { ...buildUsageView({ balance_brl, alert_80, alert_100, rows }), per_user };
+  // quebra POR PESSOA: só quando o medidor gravou details.user_id (SPEC-044).
+  const people: PersonRow[] = [];
+  const ids = Array.from(new Set(logs.map((l) => String((l.details ?? {})?.user_id ?? '')).filter(Boolean)));
+  if (ids.length) {
+    try {
+      const { data: users } = await supabase.from('users_v2').select('id, first_name, last_name').in('id', ids);
+      for (const u of (users ?? []) as { id: string; first_name: string | null; last_name: string | null }[]) {
+        people.push({ id: u.id, nome: `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() });
+      }
+    } catch { /* segue: "Pessoa da equipe" */ }
+  }
+
+  return buildUsoDaCorretora({ companyId, credits, ledger, logs, agents, people, cobrancaJaComecou });
 }
