@@ -370,6 +370,78 @@ if (F) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+console.log('\n[1b] O QUE SE DIGITA — os números da Cobrança gravam o MESMO valor que o modal de antes (conserto A, red team B3)');
+// O dourado acima compara CLIQUES. Os dois números (máximo de boletos, dias entre cobranças) também se DIGITAM — e o
+// campo novo (`NumeroComBotoes`) fazia `Number(v.replace(/\D/g,''))`: "2,5" virava 25 boletos por execução. Aqui o
+// texto digitado passa pelo handler REAL da peça (`numeroDoCampo`, de pecas.tsx, transpilado e CHAMADO) com o
+// `lerDigitado` que o formulário passa, e o resultado é comparado com o handler do modal de 5f9bdac.
+const LINHAS_DO_HANDLER_DO_MODAL = [
+  "onChange={(e) => setBillingConfig({ max_boletos_por_execucao: parseInt(e.target.value || '10', 10) })}",
+  "dias_entre_cobrancas_do_mesmo_segurado: parseInt(e.target.value || '7', 10),",
+];
+if (fonteBase) {
+  const base = normalizar(fonteBase);
+  const faltam = LINHAS_DO_HANDLER_DO_MODAL.filter((l) => !base.includes(normalizar(l)));
+  conferir(`o handler dos números no modal de ${BASE} é o \`parseInt(v || padrão)\` transcrito abaixo`, faltam.length === 0, faltam.join(' | '));
+}
+/**
+ * A REFERÊNCIA: o que o modal gravava para um texto digitado. O campo dele era `<input type="number">`: o navegador só
+ * entrega ao handler um texto que é número; texto com letra chega VAZIO (a sanitização do HTML) → o padrão.
+ */
+const valorDoInputNumber = (texto) => (/\d/.test(texto) ? texto : '');
+const doModal = (texto, padrao) => parseInt(valorDoInputNumber(texto) || padrao, 10);
+const FONTE_PECAS = 'components/aplicativos/configurar/pecas.tsx';
+const pecasSrc = ler(FONTE_PECAS).replace(/\r\n/g, '\n');
+const carregarPecas = (src) => {
+  const js = ts.transpileModule(src, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
+    fileName: 'pecas.tsx',
+  }).outputText;
+  const mod = { exports: {} };
+  const dubles = { 'react/jsx-runtime': { jsx: () => null, jsxs: () => null, Fragment: null }, 'lucide-react': {},
+    '@/components/ui/popover': {}, '@/components/aplicativos/casca/CardDoAplicativo': { BOTAO_PRIMARIO: '' }, '@/lib/utils': { cn: () => '' } };
+  // eslint-disable-next-line no-new-func
+  new Function('require', 'module', 'exports', js)((m) => {
+    if (m in dubles) return dubles[m];
+    throw new Error(`pecas.tsx importou ${m}, que este teste não oferece`);
+  }, mod, mod.exports);
+  return mod.exports;
+};
+const P = pecasSrc ? carregarPecas(pecasSrc) : {};
+const vistaSemComentarios = semComentarios(ler(VISTA));
+const CAMPOS_NUMERICOS = [
+  { chave: 'max_boletos_por_execucao', padrao: '10', min: 1, max: 50, id: "id('max')" },
+  { chave: 'dias_entre_cobrancas_do_mesmo_segurado', padrao: '7', min: 1, max: 30, id: "id('dias')" },
+];
+const DIGITADOS = ['', '0', '1', '7', '07', '50', '51', '100', '-5', '1.5', '2,5', 'abc'];
+if (conferir('a peça REAL tem o handler exportado (`numeroDoCampo`) e o campo o usa', typeof P.numeroDoCampo === 'function'
+    && /const n = numeroDoCampo\(e\.target\.value, min, max, lerDigitado\);/.test(pecasSrc)) && F) {
+  for (const c of CAMPOS_NUMERICOS) {
+    // a fiação: o formulário passa ESTE `lerDigitado` para ESTE campo
+    const bloco = new RegExp(`<NumeroComBotoes id=\\{${c.id.replace(/[()']/g, (x) => `\\${x}`)}\\}[^<]*?lerDigitado=\\{\\(t\\) => numeroDigitadoNoModal\\(t, '${c.padrao}'\\)\\}[^<]*?${c.chave}: n`);
+    conferir(`o campo "${c.chave}" passa \`lerDigitado = numeroDigitadoNoModal(t, '${c.padrao}')\``, bloco.test(vistaSemComentarios.replace(/\s+/g, ' ')));
+    const lerDigitado = (t) => F.numeroDigitadoNoModal(t, c.padrao);
+    const difs = [];
+    for (const texto of DIGITADOS) {
+      const agora = P.numeroDoCampo(texto, c.min, c.max, lerDigitado);
+      const antes = doModal(texto, c.padrao);
+      // o CORPO: o mesmo patch nas duas implementações, a partir da mesma rotina
+      const ref = referenciaDoModal('cobranca-feita', 'Cobrança Feita', PORTAIS);
+      ref.abrirRotina(ROTINA_TESTE); ref.cobranca({ [c.chave]: antes });
+      const novo = F.corpoDaGravacao(F.comCobranca(F.formDaRotinaSalva(ROTINA_TESTE), { [c.chave]: agora }), ROTINA_TESTE, 'cobranca-feita', PORTAIS);
+      if (agora !== antes || sha(novo) !== sha(ref.corpo())) difs.push(`${JSON.stringify(texto)}: agora ${agora} · modal ${antes}`);
+    }
+    conferir(`${c.chave}: os ${DIGITADOS.length} textos digitados gravam o MESMO número e o MESMO corpo (sha256) do modal`, difs.length === 0, difs.join(' | '));
+  }
+  // PAR — o handler que a casca tinha (sem `lerDigitado`: só dígitos + faixa) fica VERMELHO
+  const semLer = DIGITADOS.filter((t) => P.numeroDoCampo(t, 1, 50) !== doModal(t, '10'));
+  par('o handler antigo da peça (só dígitos, na faixa) grava outro número ("2,5" → 25)', semLer.includes('2,5') && P.numeroDoCampo('2,5', 1, 50) === 25,
+    `diferem: ${semLer.join(', ')}`);
+  conferir('CONTROLE: sem `lerDigitado`, a Renovação e a Cotação continuam como eram (vazio não muda; fora da faixa prende)',
+    P.numeroDoCampo('', 1, 50) === null && P.numeroDoCampo('80', 1, 50) === 50 && P.numeroDoCampo('7', 1, 50) === 7);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 console.log('\n[2] A FIAÇÃO — os controles escrevem as mesmas chaves, e as duas telas gravam pelo mesmo caminho');
 
 const chavesDaCobranca = (src) => new Set(Array.from(semComentarios(src).matchAll(/setBillingConfig\(\{\s*([a-z_]+):/g)).map((m) => m[1]));
@@ -431,6 +503,9 @@ const LINHAS = [
   { id: 'a2', company_id: 'corretora-a', status: 'entregue', send_mode: 'test', modalidade: 'test', portal_key: 'mapfre_corretor', recibo: '222', cliente_nome: 'Beltrano Exemplo', to_phone: '5547900000098', to_last4: '0098', sent_at: diasAtras(2), created_at: diasAtras(2), encaminhado_ao_cliente_em: null, canario: false },
   { id: 'b1', company_id: 'corretora-b', status: 'aceito_pelo_canal', send_mode: 'real', modalidade: 'cliente', portal_key: 'hdi_corretor', recibo: '333', cliente_nome: 'Cicrano Da Outra', to_phone: '5547900000097', to_last4: '0097', sent_at: diasAtras(1), created_at: diasAtras(1), encaminhado_ao_cliente_em: null, canario: false },
   { id: 'a0', company_id: 'corretora-a', status: 'aceito_pelo_canal', send_mode: 'real', modalidade: 'cliente', portal_key: 'allianz_corretor', recibo: '000', cliente_nome: 'Antiga Demais', to_phone: '5547900000096', to_last4: '0096', sent_at: diasAtras(200), created_at: diasAtras(200), encaminhado_ao_cliente_em: null, canario: false },
+  // conserto A: como o MOTOR grava (billing_collection.py) — `equipe` e o canário também são send_mode='real'
+  { id: 'a3', company_id: 'corretora-a', status: 'entregue_equipe', send_mode: 'real', modalidade: 'equipe', portal_key: 'mapfre_corretor', recibo: '444', cliente_nome: 'Ciclana Equipe Exemplo', to_phone: '5547900000095', to_last4: '0095', sent_at: diasAtras(3), created_at: diasAtras(3), encaminhado_ao_cliente_em: null, canario: false },
+  { id: 'a4', company_id: 'corretora-a', status: 'aceito_pelo_canal', send_mode: 'real', modalidade: 'cliente', portal_key: 'allianz_corretor', recibo: '555', cliente_nome: 'Canaria Exemplo', to_phone: '5547900000094', to_last4: '0094', sent_at: diasAtras(4), created_at: diasAtras(4), encaminhado_ao_cliente_em: null, canario: true },
 ];
 
 /** Um banco de mentira que HONRA os filtros (eq, gte, in, order, limit) e anota o que foi pedido. */
@@ -492,7 +567,11 @@ if (conferir(`a rota de leitura existe (${ROTA})`, fonteRota.length > 0) && conf
   conferir('a corretora B vê só a linha dela', JSON.stringify(idsB) === JSON.stringify(['b1']), `ids: ${idsB.join(', ')}`);
   const pedido = A.banco.pedidos.find((p) => p.tabela === 'billing_sent_log');
   conferir('a rota lê `billing_sent_log` filtrando `company_id` pela SESSÃO', !!pedido && pedido.filtros.some(([op, c, v]) => op === 'eq' && c === 'company_id' && v === 'corretora-a'));
-  conferir('a rota não pede o telefone inteiro (`to_phone`) nem o canário', !!pedido && !/to_phone|canario/.test(pedido.colunas), pedido?.colunas);
+  // §9.3 — a verdade migrou (conserto A): a rota passa a LER `canario` (para dizer que a linha não foi ao segurado),
+  // e a lição que fica é a que importa: ela não DEVOLVE o canário nem pede o telefone inteiro.
+  conferir('a rota não pede o telefone inteiro (`to_phone`)', !!pedido && !/to_phone/.test(pedido.colunas), pedido?.colunas);
+  conferir('a rota lê `canario` só para decidir o destino — e a resposta NÃO o devolve',
+    !!pedido && /\bcanario\b/.test(pedido.colunas) && !/canario/.test(JSON.stringify(A.corpo)));
   const texto = JSON.stringify(A.corpo);
   conferir('o nome do segurado sai MASCARADO (nada do sobrenome inteiro)', !/Fulana de Tal|Tal Exemplo|Beltrano Exemplo/.test(texto) && /Fulana T\. E\./.test(texto), texto.slice(0, 300));
   conferir('nenhum telefone inteiro na resposta', !/\d{10,}/.test(texto.replace(/"(?:sent_at|quando|created_at)":"[^"]*"/g, '')));
@@ -503,6 +582,40 @@ if (conferir(`a rota de leitura existe (${ROTA})`, fonteRota.length > 0) && conf
   conferir('sem sessão: 401 e nenhuma leitura', sem.status === 401 && sem.banco.pedidos.length === 0);
   conferir('o leitor mascara do jeito certo', L.mascararNome('Ana Maria Ribeiro') === 'Ana M. R.' && L.mascararNome('  ') === null && L.mascararNome('Prince') === 'Prince');
   conferir('o "desde" do período é calculado do relógio recebido', L.desdeDoPeriodo(7, new Date(AGORA_FIXO)) === '2026-10-08T12:00:00.000Z');
+
+  // ── conserto A (juiz B2 · red team B1/B2): PARA QUEM foi, e o campo que dizia "parcela" sendo o RECIBO ────────────
+  const porId = Object.fromEntries((A.corpo?.itens || []).map((x) => [x.id, x]));
+  conferir('cada linha diz PARA QUEM foi: cliente → segurado · teste → teste · equipe → equipe · canário → teste',
+    porId.a1?.destino === 'segurado' && porId.a2?.destino === 'teste' && porId.a3?.destino === 'equipe' && porId.a4?.destino === 'teste' && porId.a4?.teste === true,
+    JSON.stringify(Object.values(porId).map((x) => [x.id, x.destino, x.teste])));
+  conferir('o campo se chama `recibo` (CLAUDE.md §12.1) — nenhum `parcela` na resposta', porId.a1?.recibo === '111' && !(A.corpo?.itens || []).some((x) => 'parcela' in x),
+    JSON.stringify(porId.a1));
+  // A frase da tela, pelo leitor REAL (`resumoDoQueSaiu`): o cenário do red team — 2 pacotes à equipe + 1 teste
+  const linhaRT = (id, o) => ({ id, status: 'aceito_pelo_canal', send_mode: 'real', modalidade: 'cliente', portal_key: 'allianz_corretor', recibo: '987654', cliente_nome: 'Fulana de Tal Exemplo', to_last4: '0000', sent_at: diasAtras(1), created_at: diasAtras(1), encaminhado_ao_cliente_em: null, canario: false, ...o });
+  const CENARIO_RT = [linhaRT('e1', { modalidade: 'equipe', status: 'entregue_equipe' }), linhaRT('e2', { modalidade: 'equipe', status: 'entregue_equipe' }),
+    linhaRT('t1', { send_mode: 'test', modalidade: 'test', status: 'entregue' })];
+  const fraseRT = (Lx) => Lx.resumoDoQueSaiu(CENARIO_RT.map(Lx.paraATela), 30);
+  conferir('2 pacotes à equipe + 1 teste → "0 a segurados" (a equipe e o teste têm nome)', /· 0 a segurados, 2 à equipe, 1 em teste\.$/.test(fraseRT(L)), fraseRT(L));
+  conferir('CONTROLE: 1 ao cliente + 1 teste → "1 a segurado"', /· 1 a segurado, 1 em teste\.$/.test(L.resumoDoQueSaiu([linhaRT('c1', {}), linhaRT('t2', { send_mode: 'test' })].map(L.paraATela), 30)));
+  conferir('CONTROLE: o canário ao "cliente" NÃO conta como segurado', /· 0 a segurados, 1 em teste\.$/.test(L.resumoDoQueSaiu([linhaRT('k1', { canario: true })].map(L.paraATela), 30)));
+  conferir('todas ao segurado → "todas a segurados"', L.resumoDoQueSaiu([linhaRT('c1', {}), linhaRT('c2', {})].map(L.paraATela), 7) === '2 cobranças nos últimos 7 dias, todas a segurados.');
+  const fonteLeitura = ler(LEITURA).replace(/\r\n/g, '\n');
+  const REGRA = "  if (l.send_mode === 'test' || l.canario === true) return 'teste';\n  if (l.modalidade === 'equipe') return 'equipe';\n  if (l.modalidade === 'cliente') return 'segurado';\n  return 'outro';";
+  if (conferir('a âncora da regra do destino existe no leitor', fonteLeitura.includes(REGRA))) {
+    // a regra ANTIGA da tela: `reais = !c.teste` — tudo o que não é teste "foi a segurados"
+    const ANTIGA = carregar(fonteLeitura.replace(REGRA, "  return l.send_mode === 'test' ? 'teste' : 'segurado';"), 'leitura-antiga.ts');
+    par('a regra antiga (todo envio real = segurado) diz "2 a segurados" e fica VERMELHA', !/· 0 a segurados/.test(fraseRT(ANTIGA)), fraseRT(ANTIGA));
+  }
+  const ANCORA_RECIBO = 'recibo: l.recibo ? String(l.recibo) : null,';
+  if (conferir('a âncora do campo `recibo` existe no leitor', fonteLeitura.includes(ANCORA_RECIBO))) {
+    const ANTIGO = carregar(fonteLeitura.replace(ANCORA_RECIBO, 'parcela: l.recibo ? String(l.recibo) : null,'), 'leitura-parcela.ts');
+    const x = ANTIGO.paraATela(linhaRT('p1', {}));
+    par('o campo antigo (`parcela: l.recibo`) fica VERMELHO', 'parcela' in x || x.recibo !== '987654');
+  }
+  conferir('a seguradora na tela é nome próprio, a mesma grafia do Configurar ("Allianz", nunca "ALLIANZ")',
+    L.nomeDaSeguradora('allianz_corretor') === 'Allianz' && L.nomeDaSeguradora('hdi_corretor') === 'HDI Seguros'
+    && L.nomeDaSeguradora('sancor_corretor') === 'Sancor' && L.nomeDaSeguradora('') === 'Seguradora não identificada',
+    [L.nomeDaSeguradora('allianz_corretor'), L.nomeDaSeguradora('sancor_corretor')].join(' · '));
 
   // MUTAÇÃO 3 da SPEC: "Cobranças mostra linha de OUTRA corretora" — o filtro some do código
   const ancora = ".eq('company_id', ctx.companyId)";
@@ -520,6 +633,14 @@ if (conferir(`a aba Cobranças existe (${COBRANCAS})`, cobrancas.length > 0)) {
   conferir('ela lê da rota de leitura (e de nenhuma outra tabela)', /auxiliaries\/cobranca\/enviadas/.test(s) && !/supabase|\.from\('/.test(s));
   conferir('ela é só leitura (nenhum POST)', !/method:\s*'POST'/.test(s));
   conferir('ela tem filtro de período e estado vazio humano', /periodo/.test(s) && /Nenhuma cobrança/.test(s));
+  // conserto A: a contagem é a do leitor (nenhuma conta própria na tela) e o rótulo diz "recibo"
+  conferir('a contagem da tela é `resumoDoQueSaiu` (o leitor testado acima) — nenhum "!c.teste" contado como segurado',
+    /resumoDoQueSaiu\(itens, periodo\)/.test(s) && !/filter\(\(c\) => !c\.teste\)/.test(s));
+  conferir('a linha diz "recibo" e lê `c.recibo` — nada de "parcela <recibo>"', /` · recibo \$\{c\.recibo\}`/.test(s) && !/parcela \$\{/.test(s) && !/c\.parcela/.test(s));
+  const pendSrc = semComentarios(ler(PENDENCIAS));
+  conferir('a fila "Precisa de você" usa o MESMO nome de seguradora (o leitor) e diz "recibo"',
+    /import \{ nomeDaSeguradora \} from '@\/app\/api\/dashboard\/auxiliaries\/cobranca\/enviadas\/leitura'/.test(pendSrc)
+    && !/'ALLIANZ'/.test(pendSrc) && /` · recibo \$\{p\.recibo\}`/.test(pendSrc) && !/parcela\/recibo/.test(pendSrc));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -536,6 +657,25 @@ conferir('a fila mora na aba Cobranças também ("Precisa de você")', /<Pendenc
 const pend = semComentarios(ler(PENDENCIAS));
 conferir('a fila continua com as mesmas três rotas', /cobranca\/pendencias/.test(pend) && /auxiliaries\/cobranca\/\$\{acao\}/.test(pend)
   && /'encaminhado'/.test(pend) && /'liberar'/.test(pend));
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+console.log('\n[5] A TELA fala de gente — "rotina" fora do que a corretora lê (conserto A, juiz de design: Configurar §1)');
+/** O texto que a TELA mostra: strings e texto de JSX, sem comentários, caminhos, ids e nomes de arquivo. */
+const textoDaTela = (src) => {
+  const s = semComentarios(src);
+  const literais = [...s.matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+  const jsx = [...s.matchAll(/>([^<>{}]+)</g)].map((m) => m[1]);
+  return [...literais, ...jsx].filter((t) => !/^(\.{0,2}\/|@\/|[a-z0-9_-]+$)/.test(t.trim()));
+};
+const ROTINA_NA_TELA = /\brotinas?\b/i;
+for (const rel of [CONFIGURAR, VISTA, PENDENCIAS, COBRANCAS]) {
+  const achados = textoDaTela(ler(rel)).filter((t) => ROTINA_NA_TELA.test(t));
+  conferir(`${path.basename(rel)}: nenhuma frase da tela diz "rotina"`, achados.length === 0, achados.join(' | '));
+}
+const motivos = [F?.motivoParaNaoSalvar(F.formEmBranco('X'), []), F?.erroDaGravacao({})].join(' | ');
+conferir('as mensagens do Salvar (que a barra mostra) também não dizem "rotina"', !ROTINA_NA_TELA.test(motivos), motivos);
+conferir('CONTROLE: o detector acha "rotina" num rótulo de tela', textoDaTela('<Linha rotulo="Esta rotina">x</Linha>').some((t) => ROTINA_NA_TELA.test(t))
+  && !textoDaTela("import { x } from './useFormularioDaRotina'; fetch('/api/dashboard/rotinas');").some((t) => ROTINA_NA_TELA.test(t)));
 
 console.log(falhas === 0
   ? `\nTODOS OS GUARDAS VERDES${pulados ? ` (${pulados} pulado(s))` : ''}\n`
