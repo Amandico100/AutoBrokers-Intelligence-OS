@@ -7,6 +7,15 @@ Contrato com as outras fatias (SPEC §5):
     registrar_conexao(db, integration, evento)     o webhook (L2) e o pareamento chamam ao CONECTAR
     registrar_desconexao(db, integration, motivo)  o webhook (L2) e o Desconectar chamam ao CAIR
 
+A CHAVE — `LINHA_DO_USUARIO_LIGADA` (o ponto ÚNICO é `ligada_para(user_id)`; todo chamador passa o DONO/a pessoa):
+
+    ausente / vazia / "0" / lixo             DESLIGADA para todos (falha fechada): o bloco some, nada se pareia (nem o
+                                             Evolution é chamado), o webhook só conta e cala, nenhum aviso sai
+    "1" / "true" / "on" / "sim" ...          LIGADA para TODAS as pessoas de todas as corretoras (como antes)
+    "<uuid>,<uuid>"                          LIGADA SÓ para esses user_id (vírgula, ponto e vírgula ou espaço; maiúsculas
+                                             e espaços normalizados) — o 1º teste de uma pessoa pela TELA DE VERDADE
+    ⛔ um item que não é uuid derruba a LISTA INTEIRA (ninguém): um erro de digitação nunca liga gente por engano.
+
 🔴 Toda consulta filtra `company_id` (quando a pergunta é de uma corretora), `purpose='linha_do_usuario'` e o DONO no
 código — o backend usa service role e RLS sem policy não protege nada contra erro de filtro (CLAUDE.md §7). E o
 resultado é conferido de novo em Python (`_mesma`): um dublê ou um filtro esquecido não vira vazamento.
@@ -46,6 +55,8 @@ _CAMPOS = ("id, company_id, owner_user_id, provider, purpose, instance_id, ident
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _MOTIVO = re.compile(r"[^a-z0-9_]+")
 _LIGADO = frozenset({"1", "true", "sim", "on", "yes", "ligado", "ligada"})
+_SEPARADOR = re.compile(r"[\s,;]+")
+CHAVE_LIGADA = "LINHA_DO_USUARIO_LIGADA"
 
 
 class Recusa(ValueError):
@@ -55,9 +66,30 @@ class Recusa(ValueError):
 # ---------------------------------------------------------------------------------------------------------------------
 # as chaves
 # ---------------------------------------------------------------------------------------------------------------------
+def _quem_esta_ligado() -> Optional[frozenset]:
+    """None = TODOS (um valor de `_LIGADO`) · frozenset = SÓ esses user_id (vazio = ninguém). Ver o cabeçalho."""
+    bruto = str(os.getenv(CHAVE_LIGADA) or "").strip().lower()
+    if bruto in _LIGADO:
+        return None
+    itens = [x for x in _SEPARADOR.split(bruto) if x]
+    if not itens or not all(_UUID.match(x) for x in itens):
+        return frozenset()          # ausente, "0", "abc", ou um item torto no meio → ninguém
+    return frozenset(itens)
+
+
+def ligada_para(user_id: Any) -> bool:
+    """A linha está ligada para ESTA pessoa? O ponto ÚNICO da chave — tela (estado/conectar/qr), webhook (o DONO da
+    integração), envio, boas-vindas e avisos passam por aqui. Pessoa sem id válido → False."""
+    lista = _quem_esta_ligado()
+    if lista is None:
+        return True
+    return str(user_id or "").strip().lower() in lista
+
+
 def ligada() -> bool:
-    """`LINHA_DO_USUARIO_LIGADA` ausente = o botão não aparece e nada se pareia (nem o Evolution é chamado)."""
-    return str(os.getenv("LINHA_DO_USUARIO_LIGADA") or "").strip().lower() in _LIGADO
+    """Existe ALGUÉM com a linha ligada? (todos, ou uma lista não vazia). Para decidir por pessoa: `ligada_para`."""
+    lista = _quem_esta_ligado()
+    return lista is None or bool(lista)
 
 
 def max_linhas() -> int:
@@ -365,7 +397,7 @@ def registrar_desconexao(db: Any, integration: Dict[str, Any], motivo: Any) -> D
 
 __all__ = [
     "PURPOSE", "ESTADOS", "Recusa", "FRASE_LIMITE", "FRASE_DESLIGADA", "MAX_LINHAS_PADRAO",
-    "ligada", "max_linhas", "linha_da_instancia", "linha_do_dono", "linha_crua_do_dono",
+    "CHAVE_LIGADA", "ligada", "ligada_para", "max_linhas", "linha_da_instancia", "linha_do_dono", "linha_crua_do_dono",
     "contar_linhas_ativas", "teto_cheio", "membro_ativo", "ativa_em_outra_corretora", "calcular_estado",
     "registrar_conexao", "registrar_conexao_da_instancia", "registrar_desconexao",
 ]
