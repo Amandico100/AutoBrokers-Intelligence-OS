@@ -574,7 +574,7 @@ checar(/router\.push\(`\/dashboard\/auxiliares\/\$\{item\.slug\}\?aba=configurar
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 console.log('\n[15] SPEC-139 · L4 × L1 — a cor do tile tem UM ponto de leitura (`estiloDoTile`); nenhum import de arquivo que não existe');
 const CARD = fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/CardDoAplicativo.tsx'), 'utf8');
-checar(/export function estiloDoTile\(/.test(CARD) && /style=\{estiloDoTile\(\{ slug, matiz \}\)\}/.test(CARD), 'TileDoIcone lê a cor SÓ de estiloDoTile');
+checar(/export function estiloDoTile\(/.test(CARD) && /style=\{estiloDoTile\(\{ slug, matiz, icone \}\)\}/.test(CARD), 'TileDoIcone lê a cor SÓ de estiloDoTile');
 const casca = listar('components/aplicativos/casca');
 const outrosCalculam = casca.filter((rel) => {
   const c = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
