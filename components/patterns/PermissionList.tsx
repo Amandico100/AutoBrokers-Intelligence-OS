@@ -20,7 +20,9 @@ export function PermissionList({ groups }: { groups: PermissionGroup[] }) {
       {groups.map((g, gi) => (
         <div key={gi} className="space-y-2">
           {g.title && (
-            <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-faint">{g.title}</p>
+            // SPEC-139 (juiz de design R2, Resumos): o rótulo era mono 10 px em caixa alta e `faint` (reprova AA e o
+            // checklist §6 itens 14/16) — agora o padrão de rótulo da casca, legível nos dois temas
+            <p className="text-sm font-medium text-foreground-2">{g.title}</p>
           )}
           <ul className="space-y-1.5">
             {g.items.map((it, i) => {
