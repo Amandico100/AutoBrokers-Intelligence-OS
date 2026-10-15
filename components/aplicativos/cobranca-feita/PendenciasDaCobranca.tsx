@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
+import { nomeDaSeguradora } from '@/app/api/dashboard/auxiliaries/cobranca/enviadas/leitura';
 import { Selo, type TomDoSelo } from '@/components/aplicativos/casca/Selo';
 import { cn } from '@/lib/utils';
 
@@ -35,36 +36,8 @@ interface PendenciaDaCobranca {
   motivo: string | null;
 }
 
-/**
- * O nome que a corretora lê no lugar da chave do portal. 📊 Cópia de `NOME_DA_SEGURADORA` (`billing_collection.py`),
- * com o mesmo fallback: portal novo sem entrada vira o prefixo em maiúsculas (`sancor_corretor` → "SANCOR") —
- * nunca a palavra genérica "seguradora", que parece defeito para quem lê.
- */
-export const NOME_DA_SEGURADORA: Record<string, string> = {
-  allianz_corretor: 'ALLIANZ',
-  hdi_corretor: 'HDI SEGUROS',
-  porto_corretor: 'PORTO SEGURO',
-  yelum_corretor: 'YELUM',
-  tokiomarine_corretor: 'TOKIO MARINE',
-  bradesco_corretor: 'BRADESCO SEGUROS',
-  mapfre_corretor: 'MAPFRE',
-  azul_corretor: 'AZUL SEGUROS',
-  alfa_corretor: 'ALFA SEGURADORA',
-  sulamerica_corretor: 'SULAMERICA',
-  sompo_corretor: 'SOMPO SEGUROS',
-  suhai_corretor: 'SUHAI',
-  sura_corretor: 'SURA',
-  zurich_corretor: 'ZURICH',
-  segurosunimed_corretor: 'SEGUROS UNIMED',
-};
-
-export function nomeDaSeguradora(portalKey: string): string {
-  const chave = String(portalKey || '').trim().toLowerCase();
-  if (!chave) return 'seguradora não identificada';
-  if (NOME_DA_SEGURADORA[chave]) return NOME_DA_SEGURADORA[chave];
-  if (chave.endsWith('_corretor')) return chave.slice(0, -'_corretor'.length).replace(/_/g, ' ').toUpperCase();
-  return chave.toUpperCase();
-}
+// O nome da seguradora NA TELA vem do MESMO leitor da lista "O que saiu" (`nomeDaSeguradora` de `leitura.ts`): a fila
+// e a lista escrevem "Allianz" igual (juiz de design 139, Cobranças §2). A cópia em maiúsculas que morava aqui saiu.
 
 /**
  * O que a corretora vê no lugar do estado do ledger — SPEC-EXTRA-001 §2. `parcial` diz "o texto foi e o PDF não";
@@ -86,7 +59,7 @@ const SITUACAO_HUMANA: Record<string, string> = {
   suprimido: 'Cliente pediu para não receber',
   falhou: 'Não saiu',
   adiado: 'Adiado — tenta na próxima execução',
-  liberado: 'Liberada — sai na próxima execução da rotina, pela modalidade configurada',
+  liberado: 'Liberada — sai na próxima execução, pelo modo de envio configurado',
 };
 
 function situacaoEmPortugues(item: PendenciaDaCobranca): string {
@@ -104,7 +77,7 @@ function situacaoEmPortugues(item: PendenciaDaCobranca): string {
 const NAO_LIBERA: Record<string, string> = {
   suprimido: 'O cliente pediu para não receber. Essa decisão é dele.',
   incerto: 'Confira antes: liberar sem saber se saiu pode cobrar o cliente duas vezes.',
-  liberado: 'Já liberada — sai na próxima execução da rotina.',
+  liberado: 'Já liberada — sai na próxima execução.',
 };
 
 function fmt(iso: string | null) {
@@ -161,7 +134,7 @@ export function PendenciasDaCobranca({ titulo = 'Pendências da cobrança', clas
     }
     if (acao === 'liberar' && !confirm(
       'Liberar esta parcela para ser cobrada de novo?\n\n'
-      + 'A próxima execução da rotina vai tentar entregá-la outra vez.',
+      + 'A próxima execução vai tentar entregá-la outra vez.',
     )) return;
     setAgindoNaPendencia(item.id);
     setErroPendencias('');
@@ -214,8 +187,8 @@ export function PendenciasDaCobranca({ titulo = 'Pendências da cobrança', clas
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{p.cliente_nome || 'Cliente sem nome no portal'}</p>
                     <p className="mt-0.5 text-sm text-muted-foreground">
-                      {nomeDaSeguradora(String(p.portal_key || ''))}
-                      {p.recibo ? ` · parcela/recibo ${p.recibo}` : ''}
+                      {nomeDaSeguradora(p.portal_key)}
+                      {p.recibo ? ` · recibo ${p.recibo}` : ''}
                       {/* ⛔ O telefone NUNCA aparece inteiro — só os últimos 4 dígitos (CLAUDE.md §7). */}
                       {p.to_last4 ? ` · para …${p.to_last4}` : ''}
                       {' · '}{fmt(p.sent_at || p.updated_at)}
