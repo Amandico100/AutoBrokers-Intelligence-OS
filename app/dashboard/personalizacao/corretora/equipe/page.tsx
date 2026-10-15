@@ -14,7 +14,11 @@ export default function EquipePage() {
           icon={icons.equipe}
           title="Equipe"
           subtitle="Quem tem acesso à sua corretora, com papel e status."
-          breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Equipe' }]}
+          breadcrumb={[
+            { label: 'Personalização', href: '/dashboard/personalizacao' },
+            { label: 'Corretora', href: '/dashboard/personalizacao/corretora' },
+            { label: 'Equipe' },
+          ]}
         />
         <TeamClient />
         {/* SPEC-131-B G3 (D-131-07): Agger · WhatsApp de trabalho · ausência de cada pessoa (só o admin vê) */}
