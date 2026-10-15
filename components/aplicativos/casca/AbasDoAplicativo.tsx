@@ -118,7 +118,9 @@ export function AbasDoAplicativo({ item, abas, abaAtual, conteudo, marcadas = []
   return (
     <Tabs ref={raiz} value={abaAtual} onValueChange={trocar} className="mt-6"
       style={{ '--altura-das-abas': ALTURA_INICIAL_DAS_ABAS } as CSSProperties}>
-      <div ref={barra} className="sticky top-0 z-10 -mx-4 border-b border-border bg-background/95 px-4 sm:-mx-6 sm:px-6 sm:backdrop-blur">
+      {/* Conserto B (juiz de design, Renovação item 1): a barra e o traço dela ficam NA coluna do conteúdo — o `-mx` com
+          `px` sangrava ~22 px para cada lado, além da capa, das seções e do cabeçalho */}
+      <div ref={barra} className="sticky top-0 z-10 border-b border-border bg-background/95 sm:backdrop-blur">
         <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0">
           {abas.map((a) => (
             <TabsTrigger
