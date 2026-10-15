@@ -59,7 +59,8 @@ DESCARREGAR_A_CADA = 50
 DESCARREGAR_APOS_S = 60.0
 
 #: os motivos que são PRIVACIDADE (o aparelho inteiro) — só estes contam em `descartadas_total`
-MOTIVOS_DE_OUTRA_CONVERSA = frozenset({"outra_conversa", "grupo_ou_status", "sem_mensagem", "history_sync"})
+MOTIVOS_DE_OUTRA_CONVERSA = frozenset({"outra_conversa", "grupo_ou_status", "sem_mensagem", "history_sync",
+                                       "sem_chat"})
 _SUFIXOS_QUE_NAO_SAO_CONVERSA = ("@g.us", "@broadcast", "@newsletter", "@call")
 _SERVIDORES_DE_TELEFONE = ("s.whatsapp.net", "c.us")
 
@@ -185,15 +186,43 @@ def _eco_no_banco(db: Any, linha: Dict[str, Any], message_id: Optional[str], tex
     return None
 
 
-def filtrar(linha: Optional[Dict[str, Any]], envelope: Any, *, db: Any = None
+def _corpo_go_sem_chat(corpo: Any) -> bool:
+    """O corpo CRU do Evolution GO é uma mensagem (`data.Info`) SEM o `Chat`? (SPEC-131-0-B2, conserto P1)
+
+    O conversor comum (`evolution_go_events.go_event_to_v2_envelope`) faz `remoteJid = Chat or Sender`. Numa mensagem
+    `fromMe`, o `Sender` é a PRÓPRIA conta — então um evento sem `Chat` (para quem quer que tenha ido) viraria "a
+    conversa consigo mesmo" e passaria no portão. A linha não usa esse fallback: sem `Chat` explícito, não passa."""
+    if not isinstance(corpo, dict):
+        return False
+    dados = corpo.get("data")
+    info = dados.get("Info") if isinstance(dados, dict) else None
+    if not isinstance(info, dict):
+        info = dados.get("info") if isinstance(dados, dict) else None
+    if not isinstance(info, dict):
+        return False
+    return not str(info.get("Chat") or info.get("chat") or "").strip()
+
+
+def filtrar(linha: Optional[Dict[str, Any]], envelope: Any, *, db: Any = None, corpo: Any = None
             ) -> Tuple[Optional[Dict[str, Any]], str]:
     """`(normalizado, "")` quando a mensagem é da pessoa, na conversa consigo mesma, e não é eco do sistema;
     `(None, motivo)` quando morre aqui. NUNCA loga, NUNCA grava; para outra conversa não passa nem pelo normalizador.
 
     O normalizado devolvido leva `phone` = o número da PRÓPRIA linha (o destino da resposta é sempre a conta dela).
-    Com `db`: as camadas de banco do anti-eco (id e hash); banco ilegível → `(None, 'eco_nao_conferido')`."""
+    Com `db`: as camadas de banco do anti-eco (id e hash); banco ilegível → `(None, 'eco_nao_conferido')`.
+
+    `corpo` = o corpo CRU do Evolution GO (o webhook o passa): mensagem sem `Info.Chat` → `(None, 'sem_chat')`. O
+    `envelope` também pode ser o próprio corpo cru do GO (`data.Info`): o portão confere o `Chat` e converte aqui."""
     if not linha:
         return None, "linha_nao_confirmada"
+    if isinstance(envelope, dict) and isinstance(envelope.get("data"), dict) and (
+            isinstance(envelope["data"].get("Info"), dict) or isinstance(envelope["data"].get("info"), dict)):
+        from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
+
+        corpo = envelope if corpo is None else corpo
+        envelope = go_event_to_v2_envelope(envelope)
+    if _corpo_go_sem_chat(corpo):
+        return None, "sem_chat"
     if not isinstance(envelope, dict) or str(envelope.get("event") or "") != "messages.upsert":
         return None, "sem_mensagem"
     dados = envelope.get("data")
@@ -556,7 +585,7 @@ async def desviar(db: Any, integration: Dict[str, Any], body: Dict[str, Any], ba
         if tipo != "mensagem":
             return {"status": "ignored", "reason": "linha_evento_ignorado"}
 
-        normalizado, motivo = await asyncio.to_thread(filtrar, linha, envelope, db=db)
+        normalizado, motivo = await asyncio.to_thread(filtrar, linha, envelope, db=db, corpo=corpo)
         if normalizado is None:
             if motivo in MOTIVOS_DE_OUTRA_CONVERSA and contar_descartada(linha):
                 background_tasks.add_task(descarregar_descartadas, db)
