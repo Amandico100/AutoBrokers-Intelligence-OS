@@ -14,6 +14,7 @@ import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { provaDoCard, seloDoEstado, type EstadoDoCard, type ItemDoCatalogo } from '@/lib/auxiliaries/catalog';
 import { CapaGerada } from './CapaGerada';
+import { tokensDaCapa, visualDoPedido } from './capas/paleta';
 import { Selo } from './Selo';
 import { iconeDoAplicativo } from './icones';
 
@@ -23,18 +24,28 @@ export function SeloDoAplicativo({ estado, className }: { estado: EstadoDoCard; 
   return <Selo tom={selo.tom} rotulo={selo.rotulo} className={className} />;
 }
 
+/** A tinta de cada matiz de capa, nos dois temas (uma conta por matiz — a paleta é determinística). */
+const TINTA_POR_MATIZ = new Map<number, { claro: string; escuro: string }>();
+function tintaDaMatiz(h: number): { claro: string; escuro: string } {
+  let t = TINTA_POR_MATIZ.get(h);
+  if (!t) {
+    t = { claro: tokensDaCapa(h, 'claro').tinta, escuro: tokensDaCapa(h, 'escuro').tinta };
+    TINTA_POR_MATIZ.set(h, t);
+  }
+  return t;
+}
+
 /**
- * SPEC-139 · L4 — o PONTO ÚNICO da cor do tile do ícone (o card, a linha do "Em breve" e o cabeçalho passam todos
- * por `TileDoIcone`, que lê SÓ daqui). Hoje: a matiz do catálogo em `--app-h`, que `.icone-aplicativo` (globals.css)
- * transforma na cor do ícone nos dois temas.
- *
- * 🧵 COSTURA (L1 × L4): quando a paleta nova existir (`components/aplicativos/casca/capas/paleta.ts`, da L1), é o
- * corpo DESTA função que passa a ler a cor da paleta pelo `slug` (com a matiz como reserva para o slug que a paleta
- * não conhece). Nenhum outro arquivo calcula a cor do tile — o teste da loja confere.
+ * SPEC-139 — o PONTO ÚNICO da cor do tile do ícone (o card, a linha do "Em breve" e o cabeçalho passam todos por
+ * `TileDoIcone`, que lê SÓ daqui). A cor é a `tinta` da paleta das capas (`capas/paleta.ts`) na MESMA linha que a capa
+ * usa (`visualDoPedido`: o slug; sem ele, o par ícone + matiz) — o tile bate com a capa (ex.: o Radar, 262° no laudo,
+ * é 300° na capa e no tile). `--tile-claro` / `--tile-escuro` viram a cor em `.icone-aplicativo` (globals.css);
+ * `--app-h` (a matiz do laudo) fica só como reserva do CSS. 📊 contraste do ícone sobre `surface-2` ≥ 5,6:1 nos dois
+ * temas (o pior: quem-cobra-menos no claro — `scripts/a-loja-de-aplicativos.test.mjs`, 15/10/2026).
  */
-export function estiloDoTile({ slug, matiz }: { slug?: string | null; matiz: number }): CSSProperties {
-  void slug; // a paleta da L1 lê por slug (costura); até lá a matiz decide
-  return { ['--app-h' as string]: String(matiz) } as CSSProperties;
+export function estiloDoTile({ slug, matiz, icone }: { slug?: string | null; matiz: number; icone?: string }): CSSProperties {
+  const { claro, escuro } = tintaDaMatiz(visualDoPedido({ slug, icone, matiz }).h);
+  return { ['--app-h' as string]: String(matiz), ['--tile-claro' as string]: claro, ['--tile-escuro' as string]: escuro } as CSSProperties;
 }
 
 /** O tile do ícone: 48 px no card, 40 no "em breve", 72 no cabeçalho. A cor vem de `estiloDoTile` (ponto único). */
@@ -46,7 +57,7 @@ export function TileDoIcone({
   const tamIcone = tamanho === 72 ? 34 : tamanho === 48 ? 24 : 20;
   return (
     <span
-      style={estiloDoTile({ slug, matiz })}
+      style={estiloDoTile({ slug, matiz, icone })}
       className={cn(
         'flex shrink-0 items-center justify-center border border-border bg-surface-2',
         lado,
@@ -84,6 +95,7 @@ export function CardDoAplicativo({ item }: { item: ItemDoCatalogo }) {
     >
       <div className="relative">
         <CapaGerada
+          slug={item.slug}
           icone={item.icone}
           matiz={item.matiz}
           coverUrl={item.cover_url}
@@ -149,6 +161,7 @@ export function DestaqueDoAplicativo({ item }: { item: ItemDoCatalogo }) {
       className={cn('group relative block overflow-hidden rounded-2xl border border-border bg-surface', FOCO)}
     >
       <CapaGerada
+        slug={item.slug}
         icone={item.icone}
         matiz={item.matiz}
         coverUrl={item.cover_url}
