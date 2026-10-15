@@ -308,7 +308,9 @@ def test_a_corretora_a_nao_le_a_linha_da_b(mesa):
     assert _run(P.estado(mesa.banco, BETA, U3))["estado"] == "conectada"
     # a MESMA pessoa/consulta pela corretora errada não enxerga nada
     assert E.linha_do_dono(mesa.banco, ALFA, U3) is None
-    assert _run(P.estado(mesa.banco, ALFA, U3))["estado"] == "nao_conectada"
+    # quem não é membro da Alfa: o bloco SOME (`desligada`) — antes dizia `nao_conectada` e o botão aparecia
+    # para um conectar que o próprio `conectar` recusa (fix/linha-por-pessoa)
+    assert _run(P.estado(mesa.banco, ALFA, U3))["estado"] == "desligada"
     assert _run(P.qr(mesa.banco, ALFA, U3))["qr"] is None
     assert _run(P.estado(mesa.banco, ALFA, U1))["estado"] == "nao_conectada"
     with pytest.raises(E.Recusa):                                    # quem não é da Alfa não pareia na Alfa
