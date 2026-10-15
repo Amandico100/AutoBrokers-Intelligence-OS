@@ -43,7 +43,8 @@ FALHAS: list[str] = []
 
 # Rota antiga -> destino. Toda entrada aqui foi um endereço real do produto.
 ROTAS_QUE_MUDARAM = {
-    "app/dashboard/briefing": "/dashboard/auxiliares/checklist-6h/hoje",
+    # SPEC-139 · L6 (§9.3): o briefing aponta DIRETO para a aba Hoje — antes eram dois saltos (briefing → /hoje → ?aba=hoje)
+    "app/dashboard/briefing": "/dashboard/auxiliares/checklist-6h?aba=hoje",
     "app/dashboard/pesquisas": "/dashboard/entregas/pesquisas",
     "app/dashboard/memorias": "/dashboard/personalizacao/memorias",
     "app/dashboard/atividades": "/dashboard/entregas",
