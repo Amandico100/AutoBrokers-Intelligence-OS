@@ -16,7 +16,8 @@
 //   B · Traço — o ícone ampliado 3×, só linha, cortado pela borda direita, sobre a grade de construção do lucide e
 //               uma malha de pontos acesa por uma luz.
 //   C · Cena  — três peças do TRABALHO do aplicativo (documento, cartão, mensagem, calendário, gráfico, recibo, lista) em
-//               perspectiva leve, e o ícone num selo.
+//               perspectiva leve, e o ícone num selo. A ESCOLHIDA pelo Founder (15/10/2026) — e a única com
+//               enquadramentos (card · cabecalho · destaque, `QUADROS_C` abaixo).
 
 import { PALETA, tokensDaCapa, visualDaCapa, visualDoPedido, type Tema, type TokensDaCapa } from './paleta';
 import { ICONES_SVG } from './icones-svg';
@@ -24,10 +25,10 @@ import { ICONES_SVG } from './icones-svg';
 export type Direcao = 'A' | 'B' | 'C';
 
 /**
- * A direção que o PRODUTO desenha (CapaGerada). SPEC-139 §3 / D-139-03: a prancha foi ao Founder e, sem resposta, vai a de
- * maior nota — A · Placa. Trocar de direção é mudar só esta linha.
+ * A direção que o PRODUTO desenha (CapaGerada). SPEC-139 §3 / D-139-03: a prancha foi ao Founder; em 15/10/2026 ELE ESCOLHEU
+ * a C · Cena (conserto B). Trocar de direção é mudar só esta linha.
  */
-export const DIRECAO_DO_PRODUTO: Direcao = 'A';
+export const DIRECAO_DO_PRODUTO: Direcao = 'C';
 export type { Tema };
 
 export interface PedidoDaCapa {
@@ -37,6 +38,8 @@ export interface PedidoDaCapa {
   matiz?: number;
   direcao: Direcao;
   tema: Tema;
+  /** onde a capa aparece (só a C muda o quadro): card (padrão) · cabecalho · destaque */
+  enquadramento?: Enquadramento;
 }
 
 export const LARGURA = 1600;
@@ -207,19 +210,25 @@ function direcaoB(p: string, nome: string, t: TokensDaCapa, tema: Tema, r: () =>
 
 // ── C · Cena ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-type Peca = 'documento' | 'cartao' | 'bolha' | 'calendario' | 'grafico' | 'recibo' | 'lista';
+export type Peca = 'documento' | 'cartao' | 'bolha' | 'calendario' | 'grafico' | 'recibo' | 'lista';
 
-/** As três peças do trabalho de cada aplicativo (o fundo, o meio, a frente). */
-const CENA: Readonly<Record<string, [Peca, Peca, Peca]>> = {
-  renovacao: ['calendario', 'grafico', 'documento'],
-  'renovacao-maxima': ['calendario', 'grafico', 'documento'],
+/**
+ * As três peças do trabalho de cada aplicativo (o fundo, o meio, a frente) — o que ele FAZ, em objetos. No card (pequeno)
+ * só entram as duas da FRENTE (meio e frente), maiores: a cena que se lê a 300 px. Conserto B: a Renovação mostra a
+ * apresentação sobre o calendário de vencimentos; o Checklist, a lista do dia sobre o calendário; o Follow-up e as
+ * Tarefas, o lembrete no calendário; o Radar, a norma e o aviso; o Resumo, a conversa e a lista do que
+ * ficou pendente. 📊 Dois cards vizinhos nunca repetem o par (capas.test.mjs, 5b).
+ */
+export const CENA: Readonly<Record<string, [Peca, Peca, Peca]>> = {
+  renovacao: ['grafico', 'calendario', 'documento'],
+  'renovacao-maxima': ['grafico', 'calendario', 'documento'],
   'cobranca-feita': ['cartao', 'recibo', 'bolha'],
-  'checklist-6h': ['calendario', 'bolha', 'lista'],
+  'checklist-6h': ['bolha', 'calendario', 'lista'],
   'sinistralidade-avancada': ['documento', 'lista', 'grafico'],
-  'follow-up-whatsapp': ['calendario', 'lista', 'bolha'],
-  'radar-mercado-regulacao': ['documento', 'bolha', 'grafico'],
-  'resumo-atendimentos': ['bolha', 'lista', 'documento'],
-  'tarefas-agendadas': ['lista', 'bolha', 'calendario'],
+  'follow-up-whatsapp': ['lista', 'calendario', 'bolha'],
+  'radar-mercado-regulacao': ['grafico', 'documento', 'bolha'],
+  'resumo-atendimentos': ['documento', 'bolha', 'lista'],
+  'tarefas-agendadas': ['bolha', 'lista', 'calendario'],
   cotacao: ['documento', 'recibo', 'grafico'],
   'quem-cobra-menos': ['cartao', 'recibo', 'grafico'],
   'caca-comissao': ['grafico', 'cartao', 'recibo'],
@@ -227,11 +236,11 @@ const CENA: Readonly<Record<string, [Peca, Peca, Peca]>> = {
   'clientes-perdidos': ['cartao', 'lista', 'bolha'],
   'contabilidade-pronta': ['grafico', 'documento', 'recibo'],
   'digitacao-zero': ['cartao', 'lista', 'documento'],
-  'organizacao-completa': ['calendario', 'documento', 'lista'],
+  'organizacao-completa': ['documento', 'calendario', 'lista'],
   'protecao-completa': ['lista', 'cartao', 'documento'],
   'resgatar-cliente': ['calendario', 'cartao', 'bolha'],
 };
-const CENA_PADRAO: [Peca, Peca, Peca] = ['documento', 'lista', 'grafico'];
+export const CENA_PADRAO: [Peca, Peca, Peca] = ['documento', 'lista', 'grafico'];
 
 const TAMANHO: Record<Peca, [number, number]> = {
   documento: [240, 300], cartao: [340, 212], bolha: [330, 150], calendario: [260, 250], grafico: [340, 224],
@@ -242,9 +251,9 @@ const TAMANHO: Record<Peca, [number, number]> = {
 function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
   const claro = tema === 'claro';
   const [w, h] = TAMANHO[tipo];
-  const borda = `stroke="#fff" stroke-opacity="${claro ? '.95' : '.1'}" stroke-width="2"`;
+  const borda = `stroke="#fff" stroke-opacity="${claro ? '.95' : '.3'}" stroke-width="2"`;
   const base = (extra = '') => `<rect width="${w}" height="${h}" rx="22" fill="url(#${p}v)" ${borda}${extra}/>`;
-  const linhas = (d: string, op = claro ? 0.2 : 0.26, larg = 10) =>
+  const linhas = (d: string, op = claro ? 0.2 : 0.42, larg = 10) =>
     `<path d="${d}" stroke="${t.tinta}" stroke-opacity="${n(op)}" stroke-width="${larg}" stroke-linecap="round" fill="none"/>`;
   const visto = (d: string, cor: string, larg = 6) =>
     `<path d="${d}" fill="none" stroke="${cor}" stroke-width="${larg}" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -259,7 +268,7 @@ function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
         `<rect x="30" y="58" width="54" height="40" rx="9" fill="${t.acento}"/>` +
         `<path d="M36 150h150M36 176h86" stroke="#fff" stroke-opacity=".6" stroke-width="12" stroke-linecap="round"/>` +
         `<circle cx="266" cy="166" r="24" fill="#fff" opacity=".42"/><circle cx="292" cy="166" r="24" fill="#fff" opacity=".22"/>` +
-        `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="23" fill="none" ${borda} stroke-opacity="${claro ? '.5' : '.18'}"/>`;
+        `<rect x="1" y="1" width="${w - 2}" height="${h - 2}" rx="23" fill="none" ${borda} stroke-opacity="${claro ? '.5' : '.32'}"/>`;
     case 'bolha':
       return `<path d="M24 0h282a24 24 0 0 1 24 24v78a24 24 0 0 1-24 24H62l-34 24 6-24h-10A24 24 0 0 1 0 102V24A24 24 0 0 1 24 0z" fill="url(#${p}v)" ${borda}/>` +
         `<circle cx="50" cy="56" r="24" fill="${t.cor}"/>` + linhas('M94 44h190M94 72h120') +
@@ -269,11 +278,11 @@ function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
       for (let j = 0; j < 3; j += 1) for (let i = 0; i < 4; i += 1) if (!(i === 2 && j === 1)) celulas += `M${26 + i * 54} ${86 + j * 50}h42v34h-42z`;
       return base() + `<path d="M0 22a22 22 0 0 1 22-22h216a22 22 0 0 1 22 22v40H0z" fill="${t.cor}"/>` +
         `<path d="M72 -12v32M188 -12v32" stroke="${t.forte}" stroke-width="12" stroke-linecap="round"/>` +
-        `<path d="${celulas}" fill="${t.tinta}" opacity="${claro ? '.1' : '.16'}"/>` +
+        `<path d="${celulas}" fill="${t.tinta}" opacity="${claro ? '.1' : '.26'}"/>` +
         `<rect x="134" y="136" width="42" height="34" rx="6" fill="${t.forte}"/>`;
     }
     case 'grafico':
-      return base() + linhas('M26 188h288M26 140h288M26 92h288', claro ? 0.1 : 0.14, 2) +
+      return base() + linhas('M26 188h288M26 140h288M26 92h288', claro ? 0.1 : 0.22, 2) +
         `<path d="M26 170L84 132L142 148L200 98L258 112L314 58V188H26z" fill="url(#${p}pa)"/>` +
         `<path d="M26 170L84 132L142 148L200 98L258 112L314 58" fill="none" stroke="${t.forte}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>` +
         `<circle cx="314" cy="58" r="20" fill="${t.cor}" opacity=".35"/><circle cx="314" cy="58" r="9" fill="${t.forte}"/>`;
@@ -296,43 +305,74 @@ function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
   }
 }
 
-function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: Tema, r: () => number, semente: number): string {
+/**
+ * Os ENQUADRAMENTOS da C (conserto B da SPEC-139, D-139-CB-02): a mesma cena, montada para o lugar onde ela aparece.
+ *   card      — o card da loja (16:9, ~300 px): o selo maior (o tile saiu do card) e SÓ as duas peças da frente,
+ *               grandes — a cena que se lê pequena (a prancha mostrou três peças embaralhadas no card);
+ *   cabecalho — o topo da página (4:1 no computador = y 250..650; 5:2 no celular): selo e as três peças DENTRO da
+ *               faixa, com a sombra — nada corta;
+ *   destaque  — a vitrine do topo da loja: o selo e a cena à DIREITA, a esquerda limpa para o texto. O SVG ancora à
+ *               direita (`xMaxYMid`): no celular (4:3) o corte come a esquerda vazia, nunca a cena.
+ * Cada lugar: [centro x, centro y, escala] da peça; o selo: centro e lado.
+ */
+export type Enquadramento = 'card' | 'cabecalho' | 'destaque';
+
+interface QuadroDaCena {
+  selo: { cx: number; cy: number; lado: number };
+  /** [x, y, escala] — com duas entradas, entram só as peças do meio e da frente */
+  lugares: Array<[number, number, number]>;
+  /** a luz da cena (o segundo tom) e o chão */
+  luz: [number, number];
+  chao: [number, number, number];
+}
+
+const QUADROS_C: Readonly<Record<Enquadramento, QuadroDaCena>> = {
+  card: { selo: { cx: 480, cy: 420, lado: 320 }, lugares: [[1060, 345, 1.45], [1310, 535, 1.5]], luz: [1150, 760], chao: [1190, 720, 420] },
+  cabecalho: { selo: { cx: 520, cy: 450, lado: 220 }, lugares: [[1010, 430, 0.76], [1240, 445, 0.8], [1455, 455, 0.72]], luz: [1200, 760], chao: [1230, 610, 440] },
+  destaque: { selo: { cx: 900, cy: 450, lado: 280 }, lugares: [[1215, 355, 0.88], [1435, 490, 0.94], [1175, 560, 0.86]], luz: [1250, 800], chao: [1260, 700, 380] },
+};
+
+function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: Tema, r: () => number, semente: number, enquadramento: Enquadramento): string {
   const claro = tema === 'claro';
-  const cx = 565; // como na A: o selo à direita do tile do cabeçalho
-  const cy = 450;
-  const lado = 260;
-  const pecas = CENA[slug] ?? CENA_PADRAO;
-  // os três lugares da cena (fundo, meio, frente): o CENTRO de cada peça na tela e a escala. Cada peça leva a mesma
-  // perspectiva leve em torno do próprio centro — o plano "deitado" para trás, como cartas sobre uma mesa de luz.
-  const lugares: Array<[number, number, number]> = [[1180, 325, 0.98], [1390, 505, 1.04], [990, 560, 1.1]];
-  const jitter = () => Math.round((r() - 0.5) * 36);
+  const q = QUADROS_C[enquadramento] ?? QUADROS_C.card;
+  const { cx, cy, lado } = q.selo;
+  const todas = CENA[slug] ?? CENA_PADRAO;
+  // com dois lugares, as duas peças da FRENTE (meio e frente): o que o aplicativo entrega, sem o pano de fundo
+  const pecas = q.lugares.length === 2 ? todas.slice(1) : todas;
+  // cada peça leva a mesma perspectiva leve em torno do próprio centro — o plano "deitado" para trás, como cartas
+  // sobre uma mesa de luz
+  const jitter = () => Math.round((r() - 0.5) * 28);
   let cena = '';
-  for (let i = 0; i < 3; i += 1) {
-    const [lx, ly, s] = lugares[i];
+  for (let i = 0; i < pecas.length; i += 1) {
+    const [lx, ly, s] = q.lugares[i];
     const [w, h] = TAMANHO[pecas[i]];
     cena += `<g transform="translate(${lx + jitter()} ${ly + jitter()}) matrix(.97 -.16 .1 .96 0 0) scale(${s}) translate(${-w / 2} ${-h / 2})">` +
-      `<rect x="14" y="40" width="${w}" height="${h}" rx="24" fill="${t.sombra}" opacity="${claro ? '.32' : '.8'}" filter="url(#${p}b)"/>` +
+      `<rect x="14" y="36" width="${w}" height="${h}" rx="24" fill="${t.sombra}" opacity="${claro ? '.3' : '.62'}" filter="url(#${p}b)"/>` +
       peca(pecas[i], p, t, tema) + '</g>';
   }
   const pl = placa(p, 's', cx - lado / 2, cy - lado / 2, lado, lado / 2, t, tema, true);
+  // o ícone ocupa ~49 % do disco (128 em 260, a proporção da prancha)
+  const g = Math.round(lado * 0.49);
+  const [chx, chy, chr] = q.chao;
   return (
     `<defs>${linear(`${p}f`, t.fundo, t.fundo2, 'x1="0" y1="0" x2="1" y2="1"')}` +
-    radial(`${p}h`, cx, cy, 420, claro ? t.luz : t.cor, claro ? 0.75 : 0.42) +
-    radial(`${p}k`, 1150, 120 + Math.round(r() * 200), 820, t.acento, claro ? 0.55 : 0.42) +
-    radial(`${p}m`, 1100, 900, 640, t.cor, claro ? 0.35 : 0.32) +
+    radial(`${p}h`, cx, cy, lado * 1.6, claro ? t.luz : t.cor, claro ? 0.75 : 0.5) +
+    radial(`${p}k`, q.luz[0], 120 + Math.round(r() * 200), q.luz[1], t.acento, claro ? 0.55 : 0.5) +
+    // no escuro, uma luz da cor do aplicativo ATRÁS das peças: o vidro sai do fundo (antes ficava abafado)
+    radial(`${p}m`, chx, chy - 220, chr * 1.5, claro ? t.cor : t.luz, claro ? 0.35 : 0.22) +
     linear(`${p}pt`, t.cor, t.forte, 'x1="0" y1="0" x2="1" y2="1"') +
     linear(`${p}pa`, t.cor, t.cor, 'x2="0" y2="1"', 0.55, 0) +
     linear(`${p}v`, t.vidro, t.vidro2) +
-    desfoque(`${p}b`, 26) + pl.defs + grao(p, semente) + '</defs>' +
+    desfoque(`${p}b`, 24) + pl.defs + grao(p, semente) + '</defs>' +
     `<rect ${TELA} fill="url(#${p}f)"/><rect ${TELA} fill="url(#${p}k)"/><rect ${TELA} fill="url(#${p}m)"/><rect ${TELA} fill="url(#${p}h)"/>` +
-    // o chão da cena: uma elipse de luz sob as peças
-    `<ellipse cx="1180" cy="720" rx="460" ry="70" fill="${t.sombra}" opacity="${claro ? '.05' : '.25'}" filter="url(#${p}b)"/>` +
+    // o chão da cena: uma elipse de sombra sob as peças
+    `<ellipse cx="${chx}" cy="${chy}" rx="${chr}" ry="60" fill="${t.sombra}" opacity="${claro ? '.05' : '.2'}" filter="url(#${p}b)"/>` +
     cena +
-    // o selo: um anel de vidro e o disco de esmalte com o ícone
-    `<circle cx="${cx}" cy="${cy}" r="${lado / 2 + 30}" fill="${t.vidro}" fill-opacity="${claro ? '.55' : '.4'}" stroke="#fff" stroke-opacity="${claro ? '.95' : '.12'}" stroke-width="2"/>` +
+    // o selo: um anel de vidro (com borda de luz também no escuro) e o disco de esmalte com o ícone
+    `<circle cx="${cx}" cy="${cy}" r="${Math.round(lado * 0.62)}" fill="${t.vidro}" fill-opacity="${claro ? '.55' : '.5'}" stroke="#fff" stroke-opacity="${claro ? '.95' : '.3'}" stroke-width="2"/>` +
     pl.corpo +
-    glifo(nome, cx - 64, cy - 64 + 5, 128, `stroke="${t.sombra}" stroke-opacity="${claro ? '.35' : '.6'}" stroke-width="1.6"`) +
-    glifo(nome, cx - 64, cy - 64, 128, `stroke="${t.glifo}" stroke-width="1.6"`, `${p}i`) +
+    glifo(nome, cx - g / 2, cy - g / 2 + 5, g, `stroke="${t.sombra}" stroke-opacity="${claro ? '.35' : '.6'}" stroke-width="1.6"`) +
+    glifo(nome, cx - g / 2, cy - g / 2, g, `stroke="${t.glifo}" stroke-width="1.6"`, `${p}i`) +
     camadaDeGrao(p, tema)
   );
 }
@@ -340,7 +380,7 @@ function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: 
 // ── a entrada ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** O <svg> inteiro da capa. Mesmo pedido → mesmos bytes (o teste confere). */
-export function capaSvg({ slug, icone: iconePedido, matiz, direcao, tema }: PedidoDaCapa): string {
+export function capaSvg({ slug, icone: iconePedido, matiz, direcao, tema, enquadramento = 'card' }: PedidoDaCapa): string {
   // com slug: a linha da tabela. Sem slug: o par ícone + matiz do catálogo (a mesma capa sempre para o mesmo par)
   // (um slug que a tabela ainda não conhece também cai no par: o aplicativo novo ganha a cor do laudo, não a padrão)
   const porSlug = slug ? visualDaCapa(slug) : null;
@@ -352,11 +392,15 @@ export function capaSvg({ slug, icone: iconePedido, matiz, direcao, tema }: Pedi
   const t = tokensDaCapa(visual.h, tema);
   const semente = hash(chave);
   const r = sorteio(semente);
-  // o prefixo dos ids: único por capa, para várias capas conviverem na mesma página
-  const p = `c${hash(`${chave}|${direcao}|${tema}`).toString(36)}`;
+  // só a C tem enquadramentos; A e B desenham sempre o mesmo quadro
+  const quadro: Enquadramento = direcao === 'C' && enquadramento in QUADROS_C ? enquadramento : 'card';
+  // o prefixo dos ids: único por capa E por enquadramento, para várias capas conviverem na mesma página (a Renovação
+  // aparece no destaque e no card ao mesmo tempo)
+  const p = `c${hash(`${chave}|${direcao}|${tema}${quadro === 'card' ? '' : `|${quadro}`}`).toString(36)}`;
   const corpo =
     direcao === 'A' ? direcaoA(p, visual.icone, t, tema, r, semente)
       : direcao === 'B' ? direcaoB(p, visual.icone, t, tema, r, semente)
-        : direcaoC(p, daTabela ?? '', visual.icone, t, tema, r, semente);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LARGURA} ${ALTURA}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${corpo}</svg>`;
+        : direcaoC(p, daTabela ?? '', visual.icone, t, tema, r, semente, quadro);
+  const ancora = quadro === 'destaque' ? 'xMaxYMid' : 'xMidYMid';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LARGURA} ${ALTURA}" preserveAspectRatio="${ancora} slice" aria-hidden="true" focusable="false">${corpo}</svg>`;
 }
