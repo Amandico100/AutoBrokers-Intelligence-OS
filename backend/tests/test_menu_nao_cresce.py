@@ -52,13 +52,24 @@ ROTAS_QUE_MUDARAM = {
     "app/dashboard/auxiliares/meus": "/dashboard/auxiliares",
     "app/dashboard/auxiliares/execucoes": "/dashboard/entregas",
     "app/dashboard/auxiliares/galeria/[slug]": "/dashboard/auxiliares/",
+    # SPEC-139 · L3 (P-16): as telas de trabalho viraram a aba do aplicativo na casca `[slug]?aba=`
+    "app/dashboard/auxiliares/checklist-6h/hoje": "/dashboard/auxiliares/checklist-6h?aba=hoje",
+    "app/dashboard/auxiliares/galeria/follow-up-whatsapp": "/dashboard/auxiliares/follow-up-whatsapp?aba=follow-ups",
+    "app/dashboard/auxiliares/galeria/resumo-atendimentos": "/dashboard/auxiliares/resumo-atendimentos?aba=resumos",
 }
 
 # As telas que MUDARAM DE CASA com conteúdo — o destino tem de existir de
 # verdade, e não pode ser uma casca. Redirecionar para uma tela que não existe
 # é trocar um 404 por outro.
+#
+# SPEC-139 · L3 (CLAUDE.md §9.3 — a lição migra, não morre): o briefing mudou de casa DE NOVO. A página
+# `checklist-6h/hoje/page.tsx` virou redirect para a aba "Hoje" do aplicativo, e a tela inteira mora agora no
+# componente que a casca carrega por import dinâmico (sem `from '@/components/...'` na página — por isso o caminho do
+# componente entra aqui direto). 📊 15/10/2026, `wc -l`: AbaHoje 711 · AbaFollowUps 368 · AbaResumos 303.
 CONTEUDO_MUDOU_DE_CASA = {
-    "app/dashboard/auxiliares/checklist-6h/hoje/page.tsx": 400,
+    "components/aplicativos/checklist-6h/AbaHoje.tsx": 400,
+    "components/aplicativos/follow-up-whatsapp/AbaFollowUps.tsx": 250,
+    "components/aplicativos/resumo-atendimentos/AbaResumos.tsx": 200,
     "app/dashboard/entregas/pesquisas/page.tsx": 300,
     "app/dashboard/personalizacao/memorias/page.tsx": 200,
 }
