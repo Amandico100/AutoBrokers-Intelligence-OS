@@ -244,8 +244,13 @@ const propsCab = { item: itemRadar, botao: C.botaoPrincipal(itemRadar), conexoes
 const cab = html(CAB.CabecalhoDoAplicativo, propsCab);
 const cabCompacto = html(CAB.CabecalhoDoAplicativo, { ...propsCab, compacto: true });
 checar(cab.includes(COMPOSICOES.capaSvg({ slug: 'radar-mercado-regulacao', direcao: 'A', tema: 'escuro' })), 'o cabeçalho desenha a capa da linha do slug');
-const tilesCab = [cab, cabCompacto].map((h) => varDoTile(tileDo(h), 'escuro'));
-checar(tilesCab.every((t) => t === tintaDe('radar-mercado-regulacao', 'escuro')), 'o tile do cabeçalho (completo e compacto) tem a tinta do slug', tilesCab.join(' · '));
+// D-139-L6-01: com a capa GERADA o cabeçalho completo não repete o ícone num tile (a placa da capa É o ícone); com a
+// capa do Founder (cover_url) o tile volta; o compacto (sem capa) sempre tem o tile — e todo tile tem a tinta do slug
+const cabRadarFoto = html(CAB.CabecalhoDoAplicativo, { ...propsCab, item: { ...itemRadar, cover_url: 'https://exemplo.invalid/r.webp' } });
+checar(tileDo(cab) === '', 'capa gerada: o cabeçalho completo NÃO repete o ícone num tile ao lado da placa (D-139-L6-01)');
+const tilesCab = [cabRadarFoto, cabCompacto].map((h) => varDoTile(tileDo(h), 'escuro'));
+checar(tilesCab.every((t) => t === tintaDe('radar-mercado-regulacao', 'escuro')),
+  'o tile do cabeçalho (com cover_url, e no compacto) existe e tem a tinta do slug', tilesCab.join(' · '));
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // [2] A Cobrança: ?aba=configurar → o arquivo que a casca carrega → o MESMO corpo do modal → a rota → a corretora
