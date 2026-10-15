@@ -3,32 +3,22 @@
 // SPEC-139 · L2 — a aba Cobranças: o TRABALHO FEITO da Cobrança (laudo de design §5, na forma de lista por dia).
 //
 //   Precisa de você   a fila que já existia (`PendenciasDaCobranca`): o que saiu e ainda espera alguém
-//   O que saiu        cada parcela enviada, por dia: segurado mascarado, seguradora, parcela, situação
+//   O que saiu        cada boleto enviado, por dia: segurado mascarado, seguradora, recibo, situação
 //
 // Só LEITURA: a lista vem de `/api/dashboard/auxiliaries/cobranca/enviadas` (só a corretora da sessão, nome mascarado,
-// nada de telefone — o filtro e a máscara moram no servidor). Nenhum número aqui é inventado: a contagem é a da lista.
+// nada de telefone — o filtro e a máscara moram no servidor). Nenhum número aqui é inventado: a contagem é a da lista,
+// e "N a segurados" conta só o que chegou ao SEGURADO (`resumoDoQueSaiu` — o pacote da equipe e o teste têm nome).
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
+import { resumoDoQueSaiu, type CobrancaQueSaiu } from '@/app/api/dashboard/auxiliaries/cobranca/enviadas/leitura';
 import { Selo } from '@/components/aplicativos/casca/Selo';
 import { Segmentado } from '@/components/aplicativos/configurar/pecas';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { PropsDaAba } from '@/lib/auxiliaries/catalog';
 
 import { PendenciasDaCobranca } from './PendenciasDaCobranca';
-
-interface CobrancaQueSaiu {
-  id: string;
-  quando: string;
-  segurado: string | null;
-  seguradora: string;
-  parcela: string | null;
-  situacao: string;
-  tom: 'success' | 'warning' | 'neutral';
-  teste: boolean;
-  para_final: string | null;
-}
 
 type Periodo = '7' | '30' | '90';
 const FUSO = 'America/Sao_Paulo';
@@ -95,7 +85,6 @@ export function AbaCobrancas(_props: Partial<PropsDaAba> = {}) {
 
   const agora = new Date();
   const total = itens?.length ?? 0;
-  const reais = (itens || []).filter((c) => !c.teste).length;
 
   return (
     <div className="space-y-10 pb-6">
@@ -106,11 +95,7 @@ export function AbaCobrancas(_props: Partial<PropsDaAba> = {}) {
           <div className="space-y-1">
             <h2 id="cobrancas-o-que-saiu" className="text-lg font-semibold text-foreground">O que saiu</h2>
             <p className="text-sm text-muted-foreground" data-contagem>
-              {itens === null
-                ? 'Carregando…'
-                : total === 0
-                  ? `Nos últimos ${periodo} dias.`
-                  : `${total === 1 ? '1 cobrança' : `${total} cobranças`} nos últimos ${periodo} dias${reais !== total ? ` · ${reais === 1 ? '1 a segurado' : `${reais} a segurados`}, o resto em teste` : ''}.`}
+              {itens === null ? 'Carregando…' : resumoDoQueSaiu(itens, periodo)}
             </p>
           </div>
           <Segmentado<Periodo> rotulo="Período" valor={periodo} onChange={setPeriodo}
@@ -133,8 +118,8 @@ export function AbaCobrancas(_props: Partial<PropsDaAba> = {}) {
           <div className="rounded-xl border border-border bg-surface p-8 text-center">
             <p className="text-base font-medium text-foreground">Nenhuma cobrança saiu nos últimos {periodo} dias.</p>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-              Quando a rotina rodar, cada boleto enviado aparece aqui, separado por dia — o segurado, a parcela e o que
-              aconteceu com ela.
+              Quando a cobrança rodar, cada boleto enviado aparece aqui, separado por dia — o segurado, o recibo e o que
+              aconteceu com ele.
             </p>
           </div>
         ) : (
@@ -147,19 +132,22 @@ export function AbaCobrancas(_props: Partial<PropsDaAba> = {}) {
                 </h3>
                 <ul className="divide-y divide-border-soft rounded-xl border border-border bg-surface">
                   {lista.map((c) => (
-                    <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4 sm:flex-nowrap" data-cobranca={c.id}>
+                    // juiz de design 139 (Cobranças §1): no celular EMPILHA — o nome em cima, sozinho na largura; o
+                    // recibo, a situação e a hora embaixo. A partir de 640 px volta a ser uma linha.
+                    <li key={c.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4" data-cobranca={c.id}>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-foreground">{c.segurado || 'Segurado sem nome no portal'}</p>
                         <p className="mt-0.5 text-sm text-muted-foreground">
                           {c.seguradora}
-                          {c.parcela ? ` · parcela ${c.parcela}` : ''}
+                          {c.recibo ? ` · recibo ${c.recibo}` : ''}
+                          {c.destino === 'equipe' ? ' · para a equipe' : ''}
                           {c.para_final ? ` · para …${c.para_final}` : ''}
                         </p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap">
                         {c.teste && <Selo tom="info" rotulo="Teste" />}
                         <Selo tom={c.tom} rotulo={c.situacao} />
-                        <span className="w-12 text-right text-sm tabular-nums text-muted-foreground">{hora(c.quando)}</span>
+                        <span className="text-sm tabular-nums text-muted-foreground sm:w-12 sm:text-right">{hora(c.quando)}</span>
                       </div>
                     </li>
                   ))}
