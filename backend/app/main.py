@@ -485,6 +485,12 @@ from app.api.cotacoes import router as cotacoes_router  # noqa: E402
 
 app.include_router(cotacoes_router)
 
+# === SPEC-131-0-B2 · L1 — a linha do usuário (o WhatsApp do próprio corretor): conectar, QR, estado, desconectar.
+# Interna (chave Next↔backend), company_id/user_id do BFF (da sessão).
+from app.api.linha_do_usuario import router as linha_do_usuario_router  # noqa: E402
+
+app.include_router(linha_do_usuario_router)
+
 # SPEC-055 - Work OS: execucao duravel
 try:
     from app.api.work_runs import router as work_runs_router
