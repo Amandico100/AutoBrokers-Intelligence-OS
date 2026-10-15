@@ -8,6 +8,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
+
 export default function AbaConfigurar() {
   const [dados, setDados] = useState<any>(null);
   const [carregando, setCarregando] = useState(true);
@@ -156,14 +158,14 @@ function Preferencias({
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={salvar}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            className={`inline-flex h-11 items-center rounded-lg px-4 text-sm font-medium sm:h-9 ${BOTAO_PRIMARIO}`}
           >
             Salvar
           </button>
           {salvo && <span className="text-xs text-muted-foreground">Salvo.</span>}
         </div>
 
-        <p className="mt-4 text-[11px] text-muted-foreground">
+        <p className="mt-4 text-xs text-muted-foreground">
           Alerta de segurança e risco crítico continua chegando mesmo com o briefing pausado.
         </p>
       </section>
