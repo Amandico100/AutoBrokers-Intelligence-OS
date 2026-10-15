@@ -57,7 +57,9 @@ logger = logging.getLogger(__name__)
 
 # Canais que o Bloco E sabe executar. `push` fica de fora de propósito: sem
 # service worker registrado, prometer push seria inventar entrega.
-CANAIS_CONHECIDOS = ("dashboard", "email", "whatsapp")
+# `linha_do_usuario` (SPEC-131-0-B2, D-1310B2-06): o WhatsApp da PRÓPRIA pessoa —
+# pronto e DESLIGADO por `AVISOS_WHATSAPP_LIGADO` (quem decide é `avisos.avisar`).
+CANAIS_CONHECIDOS = ("dashboard", "email", "whatsapp", "linha_do_usuario")
 
 # O vocabulário da coluna, copiado do CHECK `briefing_publications_delivery_ck`.
 # Escrever um valor fora daqui não vira erro de lógica: vira exceção do banco
@@ -165,6 +167,8 @@ class DeliveryExecutor:
                 return self._email(publicacao, perfil)
             if canal == "whatsapp":
                 return self._whatsapp(publicacao, perfil, decisao)
+            if canal == "linha_do_usuario":
+                return self._linha_do_usuario(publicacao, perfil)
         except Exception as exc:  # noqa: BLE001
             # Uma exceção num canal não pode derrubar os outros — nem virar
             # `pending`. Ela vira motivo.
@@ -342,6 +346,42 @@ class DeliveryExecutor:
             if len(digitos) >= 10:
                 saida.append(digitos)
         return saida
+
+    def _linha_do_usuario(self, publicacao: dict, perfil: dict) -> ResultadoDeCanal:
+        """O aviso pela LINHA DO USUÁRIO — o WhatsApp da própria pessoa, na conversa
+        consigo mesmo. SPEC-131-0-B2 (D-132F-04, D-1310B2-06).
+
+        Leva só a manchete e o link, como o canal `whatsapp`. Nunca vai a cliente:
+        o destino é sempre a própria conta de quem é dono da publicação.
+
+        Pronto e DESLIGADO: quem decide se sai é `linha_do_usuario.avisos.avisar`
+        (`AVISOS_WHATSAPP_LIGADO`, por tipo). Desligado, não é falha silenciosa:
+        o motivo é escrito aqui e o registro anota "teria enviado".
+        """
+        from app.services.linha_do_usuario import avisos
+
+        company_id, user_id = publicacao.get("company_id"), publicacao.get("user_id")
+        if not company_id or not user_id:
+            return ResultadoDeCanal(
+                "linha_do_usuario", False,
+                "a publicação é da corretora, não de uma pessoa — a linha do "
+                "usuário é pessoal, não há de quem é o WhatsApp")
+        tipo = avisos.tipo_da_publicacao(publicacao, perfil)
+        if not tipo:
+            return ResultadoDeCanal(
+                "linha_do_usuario", False,
+                "a publicação não é de nenhum tipo de aviso que sai pela linha "
+                "do usuário")
+        r = self._esperar(avisos.avisar(
+            self.db, company_id=company_id, user_id=user_id, tipo=tipo,
+            texto_markdown=self._manchete_curta(publicacao)))
+        if r.get("enviado"):
+            return ResultadoDeCanal("linha_do_usuario", True,
+                                    "o aviso saiu pelo WhatsApp da pessoa",
+                                    {"tipo": tipo})
+        return ResultadoDeCanal("linha_do_usuario", False,
+                                avisos.frase_do_motivo(r.get("motivo")),
+                                {"tipo": tipo, "motivo": r.get("motivo")})
 
     # ------------------------------------------------------------------
 
