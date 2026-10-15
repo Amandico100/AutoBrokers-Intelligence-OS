@@ -156,11 +156,11 @@ function PendenciasDaConta({
   }
   if (conta === 'responsavel') {
     if (comerciais.length === 0) {
-      faltas.push({ texto: 'Ninguém marcado como comercial na equipe', href: '/dashboard/personalizacao/equipe', acao: 'ver equipe' });
+      faltas.push({ texto: 'Ninguém marcado como comercial na equipe', href: '/dashboard/personalizacao/corretora/equipe', acao: 'ver equipe' });
     } else if (semAgger.length > 0) {
       faltas.push({
         texto: `${semAgger.length} ${semAgger.length === 1 ? 'comercial' : 'comerciais'} sem Agger próprio`,
-        href: '/dashboard/personalizacao/equipe', acao: 'ver equipe',
+        href: '/dashboard/personalizacao/corretora/equipe', acao: 'ver equipe',
       });
     }
   }
