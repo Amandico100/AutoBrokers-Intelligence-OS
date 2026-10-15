@@ -43,7 +43,7 @@ class Conflito(Exception):
 
 #: os links de cada passo da ordem guiada (telas que já existem)
 _LINK_CONECTORES = "/dashboard/personalizacao/conectores"
-_LINK_EQUIPE = "/dashboard/personalizacao/equipe"
+_LINK_EQUIPE = "/dashboard/personalizacao/corretora/equipe"
 #: SPEC-131-B (D-131-06): as regras moram na aba Configurar do aplicativo — DIRETO, sem passar pelo redirect antigo
 _LINK_SERVICOS = "/dashboard/auxiliares/renovacao?aba=configurar"
 
