@@ -51,7 +51,11 @@ MOTIVOS_DEFINITIVOS = MOTIVOS_DA_PESSOA | frozenset({
 
 _CAMPOS = ("id, company_id, owner_user_id, provider, purpose, instance_id, identifier, is_active, channel_status, "
            "paired_phone_e164, paired_jid, linha_jid, linha_lid, linha_conectada_em, linha_desconectada_em, "
-           "linha_motivo, descartadas_total, last_seen_at, created_at, token")
+           "linha_motivo, descartadas_total, last_seen_at, created_at, token, base_url")
+# 🔴 15/10 (canário do Founder): sem `base_url` aqui o EvolutionGoProvider recusava a config (`ProviderConfigError`, 📊
+# reproduzido no caminho do produto contra o GO real) — as boas-vindas e TODA resposta da linha morriam antes de sair. O
+# pareamento não sentia (ele usa o EVOLUTION_GO_BASE_URL do ambiente); os testes não sentiam (o provedor era dublê).
+# Guarda: tests/test_linha_por_pessoa.py::test_a_linha_crua_traz_o_que_o_provedor_real_exige.
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _MOTIVO = re.compile(r"[^a-z0-9_]+")
 _LIGADO = frozenset({"1", "true", "sim", "on", "yes", "ligado", "ligada"})
