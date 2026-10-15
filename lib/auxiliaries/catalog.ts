@@ -488,6 +488,11 @@ export interface PassoDoComoComecar {
   estado: EstadoDoPasso;
   link: string | null;
   rotuloDoLink: string | null;
+  /**
+   * Conserto A da 139 (juiz de design, Cobrança não instalada §1): o passo cuja ação é a MESMA do botão principal
+   * ("Instalar"). A casca desenha um botão que chama `onAcao` do maestro — nunca um segundo caminho de instalar.
+   */
+  acao?: 'install';
 }
 
 /** Um passo como o backend devolve (`/api/servicos-da-corretora/prontidao` — a régua ÚNICA da configuração). */
@@ -506,6 +511,43 @@ export interface FontesDoComoComecar {
   prontidao: PassoDaProntidao[] | null;
   /** o Agger DA PESSOA da sessão está conectado? null = não deu para ler */
   meuAgger: boolean | null;
+  /**
+   * Conserto A da 139 (red team B4): o que o Configurar do Checklist das 6h GRAVA — as preferências do briefing
+   * (`POST /api/dashboard/briefing` com `acao: 'preferencias'` → `briefing_profiles`). `null`/ausente = não lido.
+   */
+  briefing?: PreferenciasDoBriefing | null;
+}
+
+/** As preferências do briefing diário da corretora, como o "Como começar" do Checklist as lê. */
+export interface PreferenciasDoBriefing {
+  /** a corretora já salvou as preferências pelo Configurar (o perfil foi alterado depois de criado) */
+  salvo: boolean;
+  /** "08:00" — o horário em que o briefing chega (o do perfil; sem perfil, o padrão do backend) */
+  horario: string;
+  /** o "Briefing diário ligado" do Configurar */
+  ativo: boolean;
+}
+
+/** O horário padrão do briefing quando a corretora não escolheu (📊 `briefing_service.perfil`: `{"time": "08:00"}`). */
+export const HORARIO_PADRAO_DO_BRIEFING = '08:00';
+
+/**
+ * A linha de `briefing_profiles` (a do briefing DIÁRIO da corretora, `user_id` nulo) → as preferências. Pura.
+ * `salvo` = `updated_at` depois de `created_at`: o backend cria o perfil padrão na primeira leitura (e o gatilho
+ * `tg_briefing_profiles_updated_at` só move `updated_at` num UPDATE — o que o Configurar faz ao salvar).
+ * Sem linha: nada salvo, o horário padrão, ligado.
+ */
+export function preferenciasDoBriefing(
+  linha: { schedule_spec?: { time?: string } | null; is_active?: boolean | null; created_at?: string | null; updated_at?: string | null } | null,
+): PreferenciasDoBriefing {
+  if (!linha) return { salvo: false, horario: HORARIO_PADRAO_DO_BRIEFING, ativo: true };
+  const criado = new Date(String(linha.created_at || '')).getTime();
+  const mudado = new Date(String(linha.updated_at || '')).getTime();
+  return {
+    salvo: Number.isFinite(criado) && Number.isFinite(mudado) && mudado - criado > 1000,
+    horario: String(linha.schedule_spec?.time || HORARIO_PADRAO_DO_BRIEFING),
+    ativo: linha.is_active !== false,
+  };
 }
 
 /** Meu perfil — onde a pessoa conecta o Agger dela e o WhatsApp de trabalho (G3). */
@@ -667,6 +709,26 @@ export function passosDoComoComecar(
     };
     return [...conexoes, usar, passoLigar];
   }
+  if (item.slug === 'checklist-6h') {
+    // Conserto A da 139 (red team B4): o Configurar do Checklist é o PERFIL do briefing (não cria rotina), e a aba não
+    // exige instalar — então o passo é medido pelo que ESSE Configurar grava, e o link existe com ou sem instalação.
+    const b = fontes.briefing;
+    const configurar: PassoDoComoComecar = {
+      chave: 'configurar',
+      titulo: 'Escolher o horário e os avisos',
+      detalhe: !b
+        ? 'Não deu para conferir agora.'
+        : !b.ativo
+          ? 'O briefing diário está pausado em Configurar.'
+          : b.salvo
+            ? `O briefing chega todo dia às ${b.horario}.`
+            : `Sem escolher, ele chega às ${b.horario}. Escolha o horário e quantos avisos por dia.`,
+      estado: !b ? 'nao_sei' : !b.ativo ? 'atencao' : b.salvo ? 'pronto' : 'falta',
+      link: `${aqui}?aba=configurar`,
+      rotuloDoLink: 'Configurar',
+    };
+    return [...conexoes, configurar, passoLigar];
+  }
   const regrasDaCobranca = item.slug === 'cobranca-feita';
   const configurar: PassoDoComoComecar = {
     chave: 'configurar',
@@ -682,6 +744,13 @@ export function passosDoComoComecar(
     link: item.instalado ? `${aqui}?aba=configurar` : null,
     rotuloDoLink: item.instalado ? 'Configurar' : null,
   };
+  // Conserto A da 139 (juiz de design, Cobrança não instalada §1): antes de instalar, o Configurar da Cobrança não existe
+  // (CONFIGURAR_EXIGE_INSTALAR) e o passo era uma linha morta. Ele ganha a MESMA ação do botão principal — "Instalar" —
+  // só quando o botão principal é esse ("disponível"); falta conectar → o servidor recusaria, e os passos de cima dizem o quê.
+  if (!item.instalado && item.estado === 'disponivel' && CONFIGURAR_EXIGE_INSTALAR.has(item.slug)) {
+    configurar.acao = 'install';
+    configurar.rotuloDoLink = 'Instalar';
+  }
   return [...conexoes, configurar, passoLigar];
 }
 
