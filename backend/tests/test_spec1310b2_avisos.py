@@ -237,6 +237,14 @@ def envio(monkeypatch):
     return dublê
 
 
+@pytest.fixture(autouse=True)
+def _linha_ligada(monkeypatch):
+    """A PREMISSA deste arquivo: a linha está LIGADA para todos (`LINHA_DO_USUARIO_LIGADA=1`) e só a chave dos AVISOS
+    varia. (fix/linha-por-pessoa: o aviso agora confere `estado.ligada_para(user_id)` antes da chave dos avisos — a
+    pessoa fora da lista é `linha_desligada`, provado em `test_linha_por_pessoa.py`.)"""
+    monkeypatch.setenv("LINHA_DO_USUARIO_LIGADA", "1")
+
+
 @pytest.fixture
 def A():
     from app.services.linha_do_usuario import avisos
