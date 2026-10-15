@@ -378,14 +378,20 @@ def teste_paginas_das_specs_recentes_estao_no_menu():
                "tela sem link é tela que não existe para quem usa")
 
     # As duas que saíram do menu: continuam alcançáveis, por dentro do pilar.
+    #
+    # SPEC-139 · L6 (CLAUDE.md §9.3 — a lição migra, não morre): o briefing virou a ABA "Hoje" do Checklist das 6h
+    # (`[slug]?aba=hoje`); `/checklist-6h/hoje` é só um redirect. O que se cobra continua sendo "alcançável": o endereço
+    # novo tem de estar escrito em algum lugar que o corretor clica — e quem o escreve é o catálogo (`TELA_DE_EXECUCAO`,
+    # o "Abrir agora" da ficha e as Entregas), em lib/. Por isso a busca olha app/, components/ e lib/.
     for rota, de_onde, spec in (
-        ("/dashboard/auxiliares/checklist-6h/hoje",
-         "da ficha do Auxiliar 'Checklist das 6h'", "SPEC-059 → 064"),
+        ("/dashboard/auxiliares/checklist-6h?aba=hoje",
+         "da ficha do aplicativo 'Checklist das 6h' (Abrir agora)", "SPEC-059 → 064 → 139"),
         ("/dashboard/entregas/pesquisas",
          "do filtro 'Pesquisas' em Entregas", "SPEC-060 → 064"),
     ):
         achou = False
-        for pasta, _, arquivos in os.walk(os.path.join(RAIZ, "app")):
+        for pasta, _, arquivos in (t for raiz in ("app", "components", "lib")
+                                   for t in os.walk(os.path.join(RAIZ, raiz))):
             if "node_modules" in pasta:
                 continue
             for arq in arquivos:
