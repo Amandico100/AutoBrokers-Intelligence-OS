@@ -4209,3 +4209,20 @@ filtro de canal. **Evidência:** juiz P2 — a conversa privada do corretor com 
 `.neq('channel','whatsapp_assistente')` nas duas leituras (+6/−2 linhas). ⚠️ `neq` também exclui `channel IS NULL` — 📊 0 nulos em 14/10
 (default `'web'`), então hoje nada muda além do filtro (blindagem FUTURA em P-132C-01). **Autorização:** conserto de privacidade, dentro
 do escopo.
+
+## 15/10/2026 · SPEC-131-0-B2 · a caixa do chat que subia a cada resposta, e a largura — ESSENCIAL · ✅ EXECUTADA (`6775ee9`)
+**Problema:** no chat principal, a caixa de texto subia um pouco a cada resposta, até ficar no meio da tela; no notebook a caixa e a coluna
+das mensagens tinham larguras diferentes. **Evidência:** causa MEDIDA no Chromium 1280×800 (réplica com o Tailwind real): o `sr-only` do
+"Copiado" (`absolute`) escapava da lista e o `scrollIntoView` rolava o `<main overflow-hidden>`; 📊 a caixa foi de 730 a 40 px em 5
+perguntas. **Consequência:** lista `relative` + linha de ações `relative` + `scrollTo` só na lista → 📊 730 px nas 5 perguntas; guarda
+`scripts/a-caixa-fica-no-rodape.test.mjs` (📊 4 vermelhos no código antigo, 5 verdes). Composer e coluna na MESMA régua `max-w-3xl` (768
+px): no notebook a caixa tem 2 linhas (📊 768×118); no celular igual (📊 366×58). Só tela; nenhum dado muda. **Autorização:** pedido do
+Founder em 15/10, no chat da SPEC; fora do texto da SPEC-131-0-B2.
+
+## 15/10/2026 · SPEC-131-0-B2 · o botão "Pesquisa na web" sai do chat (D-1310B2-07) — ESSENCIAL · ✅ EXECUTADA (`6775ee9`)
+**Problema:** o botão prometia uma pesquisa que não acontecia. **Evidência:** ele só acrescentava ao prompt "Use a tool 'web_search'", e
+com `RESEARCH_CUTOVER=1` (o padrão, `legacy_adapter.py:41`) essa ferramenta não existe no Core; a pesquisa de verdade é
+`pesquisar_na_web`, que o modelo decide usar sozinho (o juiz conferiu: `web_search` só entra no modo legado, `graph.py:295-302`).
+**Consequência:** o botão some do "+"; o modelo continua pesquisando quando a pergunta pede. Sobram props mortas `pesquisaNaWeb` em
+`Composer.tsx`/`FolhaDoMais.tsx` (P-1310B2-08). Alternativas: Pesquisa profunda própria 60 (exige SPEC) · ligada por padrão 20 · como
+estava 10. **Autorização:** junto do conserto do chat pedido pelo Founder em 15/10; decisão do gerente com nota 85.
