@@ -39,7 +39,7 @@ por fatia, em PARALELO só com arquivos disjuntos (as tabelas das SPECs); juiz �
 §7.3 do protocolo. Nenhum subagente muta a árvore de outro (restaura por cópia). Só UM `next build` por vez (8 GB nesta máquina).
 
 SPEC-131-0-B2 · O BLOCO 0 COMEÇA PELO FOUNDER. Antes de qualquer código: monte a instância de MEDIÇÃO e o receptor temporário da
-SPEC §2.1 (só campos de roteamento, nunca o texto de outra conversa, nunca serviço de terceiros); gere o QR, salve como imagem no
+SPEC §2.1 (só campos de roteamento, nunca o texto de outra conversa; o receptor fica na máquina de trabalho e o Evolution GO o alcança por um túnel TEMPORÁRIO de uso único — `cloudflared tunnel --url`, sem conta, desligado ao fim da medição; decisão do gerente da 132, nota 80 × esperar um Implantar 60); gere o QR, salve como imagem no
 scratchpad e ABRA na tela do computador; então escreva ao Founder, exatamente assim, e espere a resposta dele:
 
   "Preciso de 10 minutos seus com o celular do número de teste. É para medir se o AutoBrokers consegue conversar com você na
