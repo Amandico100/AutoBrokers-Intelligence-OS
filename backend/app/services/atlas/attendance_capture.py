@@ -427,6 +427,10 @@ async def check_attendance_purge() -> int:
         deleted = await asyncio.to_thread(purge_expired_sync, None)
         if deleted:
             logger.info(f"[ESPELHO ATENDIMENTO] purge de retencao: {deleted} registros")
+        # SPEC-131-0-B2 (P-132C-04): a retenção do anti-eco da linha do usuário (> 7 dias) mora no MESMO job diário —
+        # nenhum scheduler novo (CLAUDE.md §5). `limpar_anti_eco` nunca levanta.
+        from app.services.linha_do_usuario.avisos import limpar_anti_eco
+        await asyncio.to_thread(limpar_anti_eco, None)
         await _beat(0)  # pulso sem acao: mostra o agente vivo na Central
         return deleted
     except Exception as e:  # noqa: BLE001 — nunca derruba o scheduler
