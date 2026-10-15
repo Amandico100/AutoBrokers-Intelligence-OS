@@ -61,7 +61,7 @@ assert('o mínimo 6 sumiu', !/length\s*<\s*6/.test(rota));
 assert('a senha gerada no servidor passa da regra (randomBytes(12) base64url = 16)', /randomBytes\(12\)\.toString\('base64url'\)/.test(rota));
 
 // ⑥ a TELA mostra a senha devolvida, uma vez, com o botão copiar
-const tela = readFileSync(join(RAIZ, 'app/dashboard/personalizacao/equipe/TeamClient.tsx'), 'utf8');
+const tela = readFileSync(join(RAIZ, 'app/dashboard/personalizacao/corretora/equipe/TeamClient.tsx'), 'utf8');
 assert('a tela lê senha_provisoria', /j\.senha_provisoria/.test(tela));
 assert('a tela mostra a senha', /data-senha-provisoria/.test(tela) && /\{criada\.senha\}/.test(tela));
 assert('a tela tem o botão copiar', /navigator\.clipboard\.writeText\(criada\.senha\)/.test(tela));
