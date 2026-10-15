@@ -478,7 +478,7 @@ async function exigir(sessao, write, banco) {
 
 // ⑤ A TELA — etiquetas clicáveis, a ajuda, os rótulos da política, o aviso do Agger pendente
 {
-  const tela = fs.readFileSync(path.join(RAIZ, 'app/dashboard/personalizacao/equipe/TeamClient.tsx'), 'utf8');
+  const tela = fs.readFileSync(path.join(RAIZ, 'app/dashboard/personalizacao/corretora/equipe/TeamClient.tsx'), 'utf8');
   assert('⑤ a tela usa as listas e rótulos da política', /from '@\/lib\/admin\/admin-auth-policy'/.test(tela)
     && /FUNCOES_DE_TRABALHO\.map/.test(tela) && /PAPEIS_QUE_A_EQUIPE_DA\.map/.test(tela) && /ROTULO_DO_PAPEL\[p\]/.test(tela));
   assert('⑤ as funções são botões que alternam (aria-pressed)', /aria-pressed=\{marcada\}/.test(tela) && /alternarFuncao\(f\)/.test(tela));
