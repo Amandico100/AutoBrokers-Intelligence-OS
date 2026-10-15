@@ -231,7 +231,7 @@ export function AggerDaCorretoraModal({
             Meu perfil → Minhas conexões
           </Link>
           : cada um conecta o seu. Quem ainda não conectou aparece em{' '}
-          <Link href="/dashboard/personalizacao/equipe" className="font-medium text-primary underline-offset-4 hover:underline">
+          <Link href="/dashboard/personalizacao/corretora/equipe" className="font-medium text-primary underline-offset-4 hover:underline">
             Equipe
           </Link>
           .
