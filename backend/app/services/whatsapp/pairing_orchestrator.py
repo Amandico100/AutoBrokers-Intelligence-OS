@@ -3,6 +3,13 @@
 Uma tentativa é isolada por ``company_id + purpose``, vive no Redis e emite no
 máximo um ``/instance/connect``. O Supabase recebe apenas a integração final;
 credenciais nunca entram na resposta pública.
+
+SPEC-131-0-B2 — a linha do usuário (``purpose='linha_do_usuario'``) é a única
+família com DONO: para ela a tentativa é isolada por ``company_id + purpose +
+owner_user_id`` (chave do Redis, linha do banco, nome da instância), e o connect
+assina SÓ ``MESSAGE, CONNECTION, QRCODE`` — nunca ``HISTORY_SYNC`` (o histórico
+do aparelho de uma pessoa não entra no produto). Para os outros purposes nenhum
+argumento novo é passado adiante: chave, nome, linha e eventos são os de antes.
 """
 
 from __future__ import annotations
@@ -26,6 +33,11 @@ SETUP_DEADLINE_SECONDS = 30.0
 ATTEMPT_TTL_SECONDS = 10 * 60
 REDIS_TTL_SECONDS = 12 * 60
 PASSKEY_CONFIRMATION_TIMEOUT_SECONDS = 90
+
+# SPEC-131-0-B2 — o que a linha do usuário assina no `/instance/connect`. 🔴 SEM `HISTORY_SYNC`: o histórico do
+# aparelho inteiro de uma pessoa nunca é pedido (D-1310B2-05). O `EVENTOS_DO_CANAL` dos números de corretora continua
+# como está — este é um corpo PRÓPRIO, não um afrouxamento do de hoje.
+EVENTOS_DA_LINHA_DO_USUARIO = ("MESSAGE", "CONNECTION", "QRCODE")
 
 PAIRING_STATES = frozenset({
     "idle",
@@ -427,8 +439,9 @@ def normalize_provider_state(qr_payload: Dict[str, Any], status_payload: Dict[st
             "error_code": error_code or ("passkey_failed" if state == "passkey_failed" else None),
         }
 
+    # `Qrcode`: 📊 a grafia que o GO devolveu no `GET /instance/qr` medido em 15/10 (SPEC-131-0-B2 §2 do pacote).
     raw_qr = (
-        qr.get("QRCode") or qr.get("qrcode") or qr.get("qr")
+        qr.get("QRCode") or qr.get("Qrcode") or qr.get("qrcode") or qr.get("qr")
         or qr.get("base64") or qr.get("qr_base64")
     )
     if raw_qr:
@@ -472,6 +485,40 @@ class PairingOrchestrator:
     def _mutation_key(attempt_id: str) -> str:
         return f"whatsapp:pairing:mutation:{attempt_id}"
 
+    # ------------------------------------------------------------------ SPEC-131-0-B2 · o DONO (só da linha do usuário)
+    @staticmethod
+    def _dono(purpose: str, owner_user_id: Any = None) -> Optional[str]:
+        """O dono desta tentativa — ou ``None`` para todo purpose que não é a linha do usuário.
+
+        Para a linha, o dono é OBRIGATÓRIO (`ValueError` sem ele): uma tentativa sem dono cairia na chave de
+        outra pessoa da mesma corretora, e o QR dela seria entregue a quem pediu. Para os outros purposes o
+        argumento é ignorado — chave, nome e linha continuam os de antes.
+        """
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA, dono_canonico
+
+        if purpose != PURPOSE_DA_LINHA:
+            return None
+        return dono_canonico(owner_user_id)
+
+    @staticmethod
+    def _escopo_da_chave(purpose: str, dono: Optional[str]) -> str:
+        """O pedaço `purpose` das chaves do Redis: o próprio purpose, ou `purpose:dono` para a linha do usuário."""
+        return f"{purpose}:{dono}" if dono else purpose
+
+    @staticmethod
+    def _kw_dono(dono: Optional[str]) -> Dict[str, Any]:
+        """O argumento `owner_user_id` SÓ quando há dono — os outros purposes chamam com a assinatura de antes."""
+        return {"owner_user_id": dono} if dono else {}
+
+    @staticmethod
+    def _mesma_tentativa(state: Optional[Dict[str, Any]], company_id: str, purpose: str,
+                         dono: Optional[str]) -> bool:
+        """A tentativa guardada é DESTA corretora, deste purpose e — na linha do usuário — DESTE dono?
+        (Fora da linha, `dono` é None e a tentativa não tem dono: a conferência é exatamente a de antes.)"""
+        if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
+            return False
+        return (state.get("owner_user_id") or None) == (dono or None)
+
     async def _redis(self):
         from app.core.redis import get_async_redis_client
 
@@ -485,7 +532,8 @@ class PairingOrchestrator:
         redis = await self._redis()
         raw = json.dumps(candidate, ensure_ascii=False, separators=(",", ":"))
         attempt_key = self._attempt_key(str(state["attempt_id"]))
-        scope_key = self._key(str(state["company_id"]), str(state["purpose"]))
+        scope_key = self._key(str(state["company_id"]),
+                              self._escopo_da_chave(str(state["purpose"]), state.get("owner_user_id")))
         result = await redis.eval(
             """
             local current = redis.call('get', KEYS[1])
@@ -618,30 +666,56 @@ class PairingOrchestrator:
             raise ValueError("assistente_so_na_plataforma")
 
     @staticmethod
-    def _instance_name(company_id: str, purpose: str) -> str:
+    def _instance_name(company_id: str, purpose: str, owner_user_id: Optional[str] = None) -> str:
         """Delega para `channel_identity` — o nome nasce num lugar só.
 
         A versão anterior morava aqui e produzia `ab-{base}-attendance` para
         atendimento: um SEGUNDO nome, logo uma segunda instância, logo um segundo
         QR, para o mesmo WhatsApp da corretora. Ver `channel_identity`.
+        SPEC-131-0-B2: o dono só é repassado quando existe (a linha do usuário).
         """
         from app.services.whatsapp.channel_identity import nome_da_instancia
 
+        if owner_user_id:
+            return nome_da_instancia(company_id, purpose, dono=owner_user_id)
         return nome_da_instancia(company_id, purpose)
 
-    async def _integration(self, company_id: str, purpose: str) -> Optional[Dict[str, Any]]:
+    @staticmethod
+    def _corpo_do_connect(webhook_url: str, purpose: str) -> Dict[str, Any]:
+        """O corpo do `/instance/connect` — o ÚNICO (`channel_security.corpo_do_connect`), que recusa URL vazia.
+
+        SPEC-131-0-B2: para a linha do usuário a assinatura troca para `EVENTOS_DA_LINHA_DO_USUARIO` — sem
+        `HISTORY_SYNC`. A URL de entrega continua obrigatória (o connect sobrescreve; sem URL o canal fica surdo).
+        Os outros purposes recebem o corpo de sempre, sem um byte de diferença.
+        """
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+        from app.services.whatsapp.channel_security import corpo_do_connect
+
+        corpo = corpo_do_connect(webhook_url)
+        if purpose == PURPOSE_DA_LINHA:
+            corpo = {**corpo, "subscribe": list(EVENTOS_DA_LINHA_DO_USUARIO)}
+        return corpo
+
+    async def _integration(self, company_id: str, purpose: str,
+                           owner_user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         from app.core.database import get_supabase_client
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
         from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 
+        if purpose == PURPOSE_DA_LINHA and not owner_user_id:
+            # A linha do usuário sem dono é a linha de NINGUÉM: devolver a de outra pessoa seria o vazamento.
+            return None
         db = get_supabase_client()
 
         def _query() -> list:
-            return (
+            consulta = (
                 db.client.table("integrations").select("*")
                 .eq("company_id", company_id).eq("provider", "evolution-go")
                 .eq("purpose", purpose).eq("is_active", True)
-                .order("last_seen_at", desc=True).limit(1).execute().data or []
             )
+            if owner_user_id:
+                consulta = consulta.eq("owner_user_id", owner_user_id)
+            return consulta.order("last_seen_at", desc=True).limit(1).execute().data or []
 
         rows = await asyncio.to_thread(_query)
         return prepare_integration_for_runtime(rows[0]) if rows else None
@@ -666,9 +740,15 @@ class PairingOrchestrator:
 
         Desconectar é uma pausa, não um esquecimento. A escolha de quem pode ser
         gravado pertence à corretora e sobrevive ao botão de desconectar.
+
+        SPEC-131-0-B2: a linha do usuário não tem escopo de observação (nada dela é observado) — e ler a "memória"
+        de outra pessoa da mesma corretora seria herdar a escolha dela. Devolve ``None``.
         """
         from app.core.database import get_supabase_client
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
 
+        if purpose == PURPOSE_DA_LINHA:
+            return None
         db = get_supabase_client()
 
         def _query() -> list:
@@ -691,7 +771,8 @@ class PairingOrchestrator:
                 return alvo
         return None
 
-    async def _instancia_lembrada(self, company_id: str, purpose: str
+    async def _instancia_lembrada(self, company_id: str, purpose: str,
+                                  owner_user_id: Optional[str] = None,
                                   ) -> Optional[tuple[str, str]]:
         """A instância e a chave que ESTA corretora já teve — mesmo desligada.
 
@@ -716,19 +797,26 @@ class PairingOrchestrator:
 
         Desconectar é uma pausa, não um esquecimento — vale para o escopo e
         vale para a identidade da instância.
+
+        SPEC-131-0-B2: na linha do usuário a memória é a DO DONO — nunca a instância de outra pessoa da corretora.
         """
         from app.core.database import get_supabase_client
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
         from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 
+        if purpose == PURPOSE_DA_LINHA and not owner_user_id:
+            return None
         db = get_supabase_client()
 
         def _query() -> list:
-            return (
+            consulta = (
                 db.client.table("integrations").select("*")
                 .eq("company_id", company_id).eq("provider", "evolution-go")
                 .eq("purpose", purpose)
-                .order("created_at", desc=True).limit(5).execute().data or []
             )
+            if owner_user_id:
+                consulta = consulta.eq("owner_user_id", owner_user_id)
+            return consulta.order("created_at", desc=True).limit(5).execute().data or []
 
         try:
             linhas = await asyncio.to_thread(_query)
@@ -753,6 +841,7 @@ class PairingOrchestrator:
         webhook_hash: str,
         webhook_prefix: str,
         alert_target: Optional[Dict[str, Any]],
+        owner_user_id: Optional[str] = None,
     ) -> None:
         from app.core.database import get_supabase_client
         from app.services.whatsapp.integration_secrets import prepare_integration_for_storage
@@ -839,6 +928,9 @@ class PairingOrchestrator:
             # O que ZERA a autorização é trocar de NÚMERO — ver
             # `_esquecer_telefone_pareado`, onde a razão está escrita.
         })
+        if owner_user_id:
+            # SPEC-131-0-B2 — a linha do usuário grava QUEM é o dono (o CHECK do banco recusa a linha sem ele).
+            record["owner_user_id"] = owner_user_id
 
         def _upsert() -> None:
             rows = (
@@ -850,9 +942,13 @@ class PairingOrchestrator:
                 db.client.table("integrations").update(record).eq("id", rows[0]["id"]).execute()
             else:
                 db.client.table("integrations").insert(record).execute()
-            db.client.table("integrations").update({"is_active": False}) \
+            aposentar = db.client.table("integrations").update({"is_active": False}) \
                 .eq("company_id", company_id).eq("provider", "evolution-go") \
-                .eq("purpose", purpose).neq("instance_id", instance).execute()
+                .eq("purpose", purpose).neq("instance_id", instance)
+            if owner_user_id:
+                # 🔴 Sem este filtro, parear a linha de uma pessoa DESLIGARIA a linha de todas as outras da corretora.
+                aposentar = aposentar.eq("owner_user_id", owner_user_id)
+            aposentar.execute()
             # O pareamento NÃO mexe no estado do agente de atendimento.
             #
             # Aqui existia um `update({"is_active": False})`. A intenção era
@@ -895,6 +991,14 @@ class PairingOrchestrator:
         from app.services.whatsapp.numero_pareado import dados_de_pareamento, mascarar
 
         db = get_supabase_client()
+        if state.get("owner_user_id"):
+            # SPEC-131-0-B2 — a conexão da linha do usuário é gravada num lugar SÓ (o mesmo que o webhook chama):
+            # número, JID/LID, "conectada desde" — filtrando corretora, purpose, DONO e instância.
+            from app.services.linha_do_usuario.estado import registrar_conexao_da_instancia
+
+            await asyncio.to_thread(registrar_conexao_da_instancia, db.client, state["company_id"],
+                                    state["owner_user_id"], state["instance"], status_payload or {})
+            return
         agora = _iso(_utcnow())
         campos: Dict[str, Any] = {"channel_status": "connected", "last_seen_at": agora}
         try:
@@ -1038,12 +1142,17 @@ class PairingOrchestrator:
         from app.services.whatsapp.numero_pareado import mascarar, telefone_e164
 
         company_id, purpose = state["company_id"], state["purpose"]
-        integration = await self._integration(company_id, purpose)
+        # SPEC-131-0-B2 — o dono (só na linha do usuário) segue a tentativa; os outros purposes chamam como antes.
+        dono = state.get("owner_user_id") or None
+        kw = self._kw_dono(dono)
+        integration = await self._integration(company_id, purpose, **kw)
         # SEM LINHA ATIVA, ANTES DE INVENTAR: pergunte se esta corretora já teve
         # uma. Ver `_instancia_lembrada` e `identidade_da_instancia`.
-        lembrada = None if integration else await self._instancia_lembrada(company_id, purpose)
+        lembrada = None if integration else await self._instancia_lembrada(company_id, purpose, **kw)
         instance, instance_token, tem_identidade = identidade_da_instancia(
             self._instance_name(company_id, purpose), integration, lembrada
+        ) if not dono else identidade_da_instancia(
+            self._instance_name(company_id, purpose, owner_user_id=dono), integration, lembrada
         )
         state["instance"] = instance
         await self._save(state)
@@ -1094,6 +1203,7 @@ class PairingOrchestrator:
                 # corretora. Ver `_escopo_lembrado`.
                 alert_target=(await self._escopo_lembrado(company_id, purpose)
                               or (integration or {}).get("alert_target")),
+                **kw,
             )
 
             # PERGUNTE AO PROVEDOR SE ESTA LINHA JÁ TEM DONO — antes de pedir QR.
@@ -1116,7 +1226,7 @@ class PairingOrchestrator:
                 await client.post(
                     "/instance/connect",
                     headers={"apikey": instance_token, "Content-Type": "application/json"},
-                    json=corpo_do_connect(webhook_url),
+                    json=self._corpo_do_connect(webhook_url, purpose),
                 )
                 state.update(build_pairing_state(
                     "already_connected",
@@ -1149,7 +1259,7 @@ class PairingOrchestrator:
             response = await client.post(
                 "/instance/connect",
                 headers={"apikey": instance_token, "Content-Type": "application/json"},
-                json=corpo_do_connect(webhook_url),
+                json=self._corpo_do_connect(webhook_url, purpose),
             )
             if response.status_code >= 400:
                 raise RuntimeError(f"provider_http_{response.status_code}")
@@ -1176,10 +1286,11 @@ class PairingOrchestrator:
     async def _refresh(self, state: Dict[str, Any]) -> Dict[str, Any]:
         if state.get("state") in TERMINAL_STATES:
             return state
+        kw = self._kw_dono(state.get("owner_user_id"))
         expires_at = _parse_iso(state.get("expires_at"))
         if expires_at and _utcnow() >= expires_at:
             await self._invalidate_incomplete(
-                await self._integration(state["company_id"], state["purpose"])
+                await self._integration(state["company_id"], state["purpose"], **kw)
             )
             state.update(build_pairing_state(
                 "timed_out",
@@ -1190,7 +1301,7 @@ class PairingOrchestrator:
             ))
             return await self._save(state)
 
-        integration = await self._integration(state["company_id"], state["purpose"])
+        integration = await self._integration(state["company_id"], state["purpose"], **kw)
         if not integration:
             raise RuntimeError("configuration_error")
         token = str(integration.get("token") or "")
@@ -1292,6 +1403,7 @@ class PairingOrchestrator:
         correlation_id: Optional[str] = None,
         method: str = "qr",
         phone_number: Optional[str] = None,
+        owner_user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         self._validate_config()
         company_id = str(company_id or "").strip()
@@ -1299,6 +1411,12 @@ class PairingOrchestrator:
         method = "phone" if method == "phone" else "qr"
         if not company_id:
             raise ValueError("invalid_pairing_scope")
+        # SPEC-131-0-B2 — a linha do usuário exige o DONO (ValueError sem ele) e só pareia por QR: o `/instance/pair`
+        # assina a lista dos números de corretora (com HISTORY_SYNC), que a linha de uma pessoa nunca pede.
+        dono = self._dono(purpose, owner_user_id)
+        if dono and method == "phone":
+            raise ValueError("linha_do_usuario_so_por_qr")
+        escopo = self._escopo_da_chave(purpose, dono)
         await self._so_a_plataforma_tem_assistente(company_id, purpose)
         if method == "phone":
             phone_number = "".join(ch for ch in str(phone_number or "") if ch.isdigit())
@@ -1307,7 +1425,7 @@ class PairingOrchestrator:
 
         redis = await self._redis()
         lock_value = secrets.token_hex(12)
-        lock_key = self._lock_key(company_id, purpose)
+        lock_key = self._lock_key(company_id, escopo)
         acquired = await redis.set(
             lock_key,
             lock_value,
@@ -1315,7 +1433,7 @@ class PairingOrchestrator:
             ex=int(SETUP_DEADLINE_SECONDS) + 5,
         )
         if not acquired:
-            current = self._decode(await redis.get(self._key(company_id, purpose)))
+            current = self._decode(await redis.get(self._key(company_id, escopo)))
             if current and current.get("state") not in TERMINAL_STATES:
                 return public_pairing_state(current)
             raise PairingConflictError("pairing_already_starting")
@@ -1323,7 +1441,7 @@ class PairingOrchestrator:
         # The setup lock protects only concurrent calls. A reload or another
         # browser tab can arrive after it is released, so re-read the active
         # scope while holding the lock before issuing another /instance/connect.
-        current = self._decode(await redis.get(self._key(company_id, purpose)))
+        current = self._decode(await redis.get(self._key(company_id, escopo)))
         if current and current.get("state") not in TERMINAL_STATES:
             await self._release_lock(lock_key, lock_value)
             return public_pairing_state(current)
@@ -1339,6 +1457,8 @@ class PairingOrchestrator:
             created_at=_iso(now),
         )
         state.update({"company_id": company_id, "purpose": purpose, "method": method})
+        if dono:
+            state["owner_user_id"] = dono
         await self._save(state)
         try:
             async with asyncio.timeout(SETUP_DEADLINE_SECONDS):
@@ -1375,10 +1495,13 @@ class PairingOrchestrator:
             await self._release_lock(lock_key, lock_value)
         return public_pairing_state(state)
 
-    async def get(self, company_id: str, purpose: str, attempt_id: str) -> Dict[str, Any]:
+    async def get(self, company_id: str, purpose: str, attempt_id: str, *,
+                  owner_user_id: Optional[str] = None) -> Dict[str, Any]:
         purpose = self._escopo(purpose)
+        # SPEC-131-0-B2 — na linha do usuário a tentativa de OUTRO dono (mesmo da mesma corretora) não existe.
+        dono = self._dono(purpose, owner_user_id)
         state = await self._load_attempt(attempt_id)
-        if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
+        if not self._mesma_tentativa(state, company_id, purpose, dono):
             raise PairingNotFoundError("pairing_not_found")
         if state.get("state") in TERMINAL_STATES:
             return public_pairing_state(state)
@@ -1389,7 +1512,7 @@ class PairingOrchestrator:
         try:
             # Cancel may have won between the first read and lock acquisition.
             state = await self._load_attempt(attempt_id)
-            if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
+            if not self._mesma_tentativa(state, company_id, purpose, dono):
                 raise PairingNotFoundError("pairing_not_found")
             if state.get("state") in TERMINAL_STATES:
                 return public_pairing_state(state)
@@ -1419,10 +1542,12 @@ class PairingOrchestrator:
             await self._release_lock(mutation_key, mutation_value)
         return public_pairing_state(state)
 
-    async def retry(self, company_id: str, purpose: str, attempt_id: str, correlation_id: str) -> Dict[str, Any]:
+    async def retry(self, company_id: str, purpose: str, attempt_id: str, correlation_id: str, *,
+                    owner_user_id: Optional[str] = None) -> Dict[str, Any]:
         purpose = self._escopo(purpose)
+        dono = self._dono(purpose, owner_user_id)
         state = await self._load_attempt(attempt_id)
-        if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
+        if not self._mesma_tentativa(state, company_id, purpose, dono):
             raise PairingNotFoundError("pairing_not_found")
         if state.get("state") not in TERMINAL_STATES and state.get("state") != "recoverable_error":
             raise PairingConflictError("pairing_still_active")
@@ -1433,12 +1558,56 @@ class PairingOrchestrator:
             # A retry never reuses a phone number kept in transient state. QR is
             # deterministic and avoids retaining extra PII in Redis.
             method="qr",
+            **self._kw_dono(dono),
         )
 
-    async def cancel(self, company_id: str, purpose: str, attempt_id: str) -> Dict[str, Any]:
+    async def tentativa_atual(self, company_id: str, purpose: str, *,
+                              owner_user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """SPEC-131-0-B2 — a tentativa guardada no escopo (forma PÚBLICA), ou ``None``. Só leitura.
+
+        Para a linha do usuário o escopo é o do DONO: quem pede só enxerga a própria tentativa.
+        """
         purpose = self._escopo(purpose)
+        dono = self._dono(purpose, owner_user_id)
+        redis = await self._redis()
+        state = self._decode(await redis.get(self._key(str(company_id), self._escopo_da_chave(purpose, dono))))
+        if not self._mesma_tentativa(state, str(company_id), purpose, dono):
+            return None
+        return public_pairing_state(state)
+
+    async def status_ao_vivo(self, integration: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """SPEC-131-0-B2 — o `GET /instance/status` de UMA instância (`data`), ou ``None`` se não deu para saber.
+
+        Usa o cliente que já existe aqui (nenhum cliente HTTP novo de WhatsApp). ⚠️ `LoggedIn:false` não prova
+        desconexão (o provedor esquece a memória no restart — ver `_sessao_registrada`): quem lê só confia no SIM.
+        """
+        token = str((integration or {}).get("token") or "")
+        if not self.base_url or not token:
+            return None
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(NETWORK_TIMEOUT_SECONDS), base_url=self.base_url
+            ) as client:
+                resposta = await client.get("/instance/status", headers={"apikey": token})
+            if resposta.status_code >= 400 or not resposta.content:
+                return None
+            corpo = resposta.json() or {}
+            dados = corpo.get("data") if isinstance(corpo.get("data"), dict) else corpo
+            return dados if isinstance(dados, dict) else None
+        except Exception:  # noqa: BLE001 — não saber nunca vira afirmação
+            return None
+
+    async def encerrar_sessao(self, integration: Optional[Dict[str, Any]]) -> None:
+        """SPEC-131-0-B2 — logout da instância (best-effort; o estado local é a autoridade). Mesmo caminho do
+        `_invalidate_incomplete`: um lugar só que fala `/instance/logout`."""
+        await self._invalidate_incomplete(integration)
+
+    async def cancel(self, company_id: str, purpose: str, attempt_id: str, *,
+                     owner_user_id: Optional[str] = None) -> Dict[str, Any]:
+        purpose = self._escopo(purpose)
+        dono = self._dono(purpose, owner_user_id)
         state = await self._load_attempt(attempt_id)
-        if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
+        if not self._mesma_tentativa(state, company_id, purpose, dono):
             raise PairingNotFoundError("pairing_not_found")
         mutation_key, mutation_value = await self._acquire_mutation(
             attempt_id, wait_seconds=12.0
@@ -1447,11 +1616,11 @@ class PairingOrchestrator:
             raise PairingConflictError("pairing_state_busy")
         try:
             state = await self._load_attempt(attempt_id)
-            if not state or state.get("company_id") != company_id or state.get("purpose") != purpose:
+            if not self._mesma_tentativa(state, company_id, purpose, dono):
                 raise PairingNotFoundError("pairing_not_found")
             if state.get("state") in ("connected", "already_connected", "cancelled"):
                 return public_pairing_state(state)
-            integration = await self._integration(company_id, purpose)
+            integration = await self._integration(company_id, purpose, **self._kw_dono(dono))
             if integration:
                 await self._invalidate_incomplete(integration)
             state.update(build_pairing_state(
@@ -1467,9 +1636,12 @@ class PairingOrchestrator:
 
 
     async def liberar_para_novo_numero(
-        self, company_id: str, purpose: str = "observer"
+        self, company_id: str, purpose: str = "observer", *, owner_user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Solta a linha do telefone antigo para que OUTRO possa parear.
+
+        SPEC-131-0-B2: na linha do usuário quem clica é o DONO (Desconectar, ou Conectar de novo depois de uma
+        desconexão) e a instância é a DELE — nunca a de outra pessoa da corretora.
 
         ⚠️ AÇÃO DESTRUTIVA E EXPLÍCITA. Encerra a sessão do número que está
         pareado agora. Nunca é chamada automaticamente — nem pelo heartbeat, nem
@@ -1514,11 +1686,15 @@ class PairingOrchestrator:
         purpose = self._escopo(purpose)
         if not company_id:
             raise ValueError("invalid_pairing_scope")
+        dono = self._dono(purpose, owner_user_id)
+        kw = self._kw_dono(dono)
 
-        integration = await self._integration(company_id, purpose)
-        lembrada = None if integration else await self._instancia_lembrada(company_id, purpose)
+        integration = await self._integration(company_id, purpose, **kw)
+        lembrada = None if integration else await self._instancia_lembrada(company_id, purpose, **kw)
         instance, instance_token, tem_identidade = identidade_da_instancia(
             self._instance_name(company_id, purpose), integration, lembrada
+        ) if not dono else identidade_da_instancia(
+            self._instance_name(company_id, purpose, owner_user_id=dono), integration, lembrada
         )
         if not tem_identidade:
             # Nunca teve instância: não há nada preso, e apagar seria inventar
