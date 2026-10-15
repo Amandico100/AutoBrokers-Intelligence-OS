@@ -232,7 +232,7 @@ checar("if (!r.ok)" not in _sem_ok,
        "🔴 CONTROLE 2: tirando o `r.ok`, a varredura acima FICA VERMELHA")
 
 print("\n[6] a tela tem TRÊS estados, e o vazio é o ÚLTIMO deles")
-TELA = os.path.join(REPO, "app", "dashboard", "personalizacao", "conhecimento",
+TELA = os.path.join(REPO, "app", "dashboard", "personalizacao", "corretora", "conhecimento",
                     "FilaDeCuradoria.tsx")
 bruta = open(TELA, "r", encoding="utf-8").read()
 # ⚠️ As linhas de comentário saem ANTES da medição. 📊 A primeira versão deste
