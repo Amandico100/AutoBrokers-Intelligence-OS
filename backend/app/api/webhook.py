@@ -2924,6 +2924,18 @@ async def evolution_go_webhook_token(token: str, request: Request, background_ta
         logger.warning("[WEBHOOK EVOLUTION-GO] integração do assistente sem a plataforma confirmada — ignorada")
         return {"status": "ignored", "reason": "atalho_nao_confirmado"}
 
+    # 🔴 SPEC-131-0-B2 L2 — A LINHA DO USUÁRIO (o WhatsApp do PRÓPRIO corretor; ele fala com o AutoBrokers na conversa
+    # consigo mesmo). A instância vê o aparelho INTEIRO: tudo dela vai para `linha_do_usuario.entrada.desviar`, que
+    # SEMPRE responde e NUNCA devolve para baixo — nem o observer, nem o QCM, nem o atendimento leem uma linha dela.
+    # Lá: chave ausente = conta e ignora · linha sem dono/inativa/membro inativo = ignora · conexão → estado + as
+    # boas-vindas em 2º plano · QR/QRTimeout = ignorados (o QR é lido pela API) · mensagem → o portão da privacidade
+    # (só a conversa consigo mesmo, fromMe, que não é eco) → dedupe → o turno em 2º plano. O resto: só contado.
+    if str(integration.get("purpose") or "").strip().lower() == "linha_do_usuario":
+        from app.services.linha_do_usuario import entrada as _linha
+
+        return await _linha.desviar(supabase.client, integration, body if isinstance(body, dict) else {},
+                                    background_tasks, _is_duplicate_namespaced)
+
     # 🔴 SPEC-133-A D-133A-02 — O CANAL DE COTAÇÃO NÃO PASSA PELO OBSERVADOR (desvio 1 de 2; o 2º é no turno).
     # O hub pareia TUDO com `purpose='observer'` e o canal não tem agente: sem este desvio o "oi" do convidado
     # morreria no `observer_tap` (BLOCO 0 §1.2). `fromMe` e grupo morrem AQUI (D-133A-06) — antes do espelho/pausa
