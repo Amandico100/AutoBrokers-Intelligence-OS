@@ -19,7 +19,15 @@ const PILULA: Record<EstadoDoPasso, { rotulo: string; tom: StatusTone }> = {
   nao_sei: { rotulo: 'Não deu para conferir', tom: 'neutral' },
 };
 
-export function ComoComecar({ passos }: { passos: PassoDoComoComecar[] }) {
+/**
+ * `onAcao`: o passo com `acao` (ex.: "Instalar" da Cobrança antes de instalar — conserto A da 139) vira um BOTÃO que
+ * chama a MESMA ação do botão principal do cabeçalho (o `agir` do maestro). Sem `onAcao`, o passo fica sem botão.
+ */
+export function ComoComecar({ passos, onAcao, ocupado = false }: {
+  passos: PassoDoComoComecar[];
+  onAcao?: (acao: 'install') => void;
+  ocupado?: boolean;
+}) {
   const { prontos, total } = contagemDosPassos(passos);
   if (total === 0) return null;
   return (
@@ -54,6 +62,19 @@ export function ComoComecar({ passos }: { passos: PassoDoComoComecar[] }) {
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">{p.detalhe}</p>
               </div>
+              {!p.link && p.acao && onAcao && (
+                <div className="basis-full pl-10 sm:basis-auto sm:shrink-0 sm:self-center sm:pl-0">
+                  <button
+                    type="button"
+                    disabled={ocupado}
+                    onClick={() => onAcao(p.acao!)}
+                    data-acao-do-passo={p.acao}
+                    className="-ml-2 inline-flex min-h-[44px] items-center rounded-md px-2 text-sm sm:ml-0 font-medium text-foreground underline-offset-4 hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-primary"
+                  >
+                    {`${p.rotuloDoLink ?? 'Fazer'} →`}
+                  </button>
+                </div>
+              )}
               {p.link && (
                 <div className="basis-full pl-10 sm:basis-auto sm:shrink-0 sm:self-center sm:pl-0">
                   <Link
