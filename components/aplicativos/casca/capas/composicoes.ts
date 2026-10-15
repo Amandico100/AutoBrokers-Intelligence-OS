@@ -18,7 +18,7 @@
 //   C · Cena  — três peças do TRABALHO do aplicativo (documento, cartão, mensagem, calendário, gráfico, recibo, lista) em
 //               perspectiva leve, e o ícone num selo.
 
-import { PALETA, VISUAL_PADRAO_DA_CAPA, tokensDaCapa, visualDaCapa, visualPorIconeEMatiz, type Tema, type TokensDaCapa } from './paleta';
+import { PALETA, tokensDaCapa, visualDaCapa, visualDoPedido, type Tema, type TokensDaCapa } from './paleta';
 import { ICONES_SVG } from './icones-svg';
 
 export type Direcao = 'A' | 'B' | 'C';
@@ -344,9 +344,8 @@ export function capaSvg({ slug, icone: iconePedido, matiz, direcao, tema }: Pedi
   // com slug: a linha da tabela. Sem slug: o par ícone + matiz do catálogo (a mesma capa sempre para o mesmo par)
   // (um slug que a tabela ainda não conhece também cai no par: o aplicativo novo ganha a cor do laudo, não a padrão)
   const porSlug = slug ? visualDaCapa(slug) : null;
-  const visual = porSlug && (porSlug !== VISUAL_PADRAO_DA_CAPA || iconePedido === undefined)
-    ? porSlug
-    : visualPorIconeEMatiz(iconePedido ?? '', matiz ?? Number.NaN);
+  // a regra mora em `visualDoPedido` (paleta.ts): a MESMA que o tile do ícone usa — capa e tile nunca discordam
+  const visual = visualDoPedido({ slug, icone: iconePedido, matiz });
   // o par que É uma linha da tabela vira aquele aplicativo (a mesma capa, com ou sem slug)
   const daTabela = (porSlug === visual ? slug : null) || Object.keys(PALETA).find((k) => PALETA[k] === visual);
   const chave = daTabela || slug || `${visual.icone}|${visual.matiz}`;
