@@ -176,6 +176,8 @@ export default function AuxiliarDetalheClient({ item, podeLigar, atividade, font
               passos={passos}
               atividade={atividade}
               hrefDuvidas={`/dashboard/auxiliares/${item.slug}?aba=duvidas`}
+              onAcao={(acao) => agir(acao)}
+              ocupado={ocupado}
             />
           ),
           configurar: configurarPadrao,
