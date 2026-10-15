@@ -239,10 +239,12 @@ textarea::-webkit-scrollbar-thumb:hover {
 }
 
 /* o ícone no tile e a marca d'água: dark hsl(h 50% 72%), light hsl(h 45% 38%) — contraste >= 3:1 */
+/* SPEC-139 (costura L6): a cor vem da TINTA da paleta das capas (capas/paleta.ts), a mesma linha que a capa usa —
+   `estiloDoTile` (CardDoAplicativo.tsx) escreve --tile-claro/--tile-escuro; a matiz do laudo (--app-h) é só a reserva */
 .icone-aplicativo {
-  color: hsl(var(--app-h, 205) 45% 38%);
+  color: var(--tile-claro, hsl(var(--app-h, 205) 45% 38%));
 }
 
 .dark .icone-aplicativo {
-  color: hsl(var(--app-h, 205) 50% 72%);
+  color: var(--tile-escuro, hsl(var(--app-h, 205) 50% 72%));
 }
