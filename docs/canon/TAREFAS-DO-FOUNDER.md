@@ -254,6 +254,9 @@
 > 12. **14/10 (D-132F-01…08):** **T-174** (swap + parar os serviços antigos, ANTES do próximo Implantar do `smith-web`) → **T-175** (parear o
 >    chip quando o chat da SPEC-131-0-B2 pedir) → **T-177** (a direção das capas, quando o chat da SPEC-139 mandar o link) · **T-176** (KVM4)
 >    antes da primeira corretora pagante.
+> 13. **15/10 (SPEC-131-0-B2 construída, DESLIGADA):** **T-178** (parear o chip e medir — substitui a T-175) · **T-179** (Implantar
+>    `smith-api` e `smith-worker`, nada liga) · **T-180** (Implantar `smith-web`, depois da T-174 e fora do horário de atendimento) →
+>    **T-181** (ligar a linha, só depois da T-178 e do canário) · **T-182** (avisos por tipo — ainda não).
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -448,7 +451,8 @@
       14/10**. **Esperado:** o Implantar do `smith-web` termina sem derrubar o painel, a API nem o WhatsApp. **Se der errado:** o servidor
       cair de novo durante o build → anote a hora e mande no chat; até lá, Implantar o `smith-web` só fora do horário de atendimento.
       · *de:* S132 (incidente de 14/10) · D-132F-08
-- [ ] **T-175** ⏳ 🧑 **quando o chat da SPEC-131-0-B2 pedir, 10 min** · **Parear o chip de teste** (D-132F-06) — com o celular do seu número
+- [ ] **T-175** ↪ **substituída pela T-178** (15/10: o pareamento não aconteceu durante a SPEC-131-0-B2; a medição virou tarefa própria) ·
+      ~~quando o chat da SPEC-131-0-B2 pedir, 10 min~~ · **Parear o chip de teste** (D-132F-06) — com o celular do seu número
       de teste: WhatsApp → **Aparelhos conectados** → **Conectar um aparelho** → aponte para o código que o gerente abrir na tela do
       computador; depois mande, na sua conversa **"Mensagem para você"**, um texto, um áudio curto e uma foto, e diga ao gerente se a resposta
       "▸ AutoBrokers" apareceu e se o celular avisou. O passo a passo completo vem na própria mensagem do gerente. **Esperado:** um aparelho
@@ -461,6 +465,52 @@
       abra a prancha (3 estilos × 4 aplicativos, claro e escuro) e responda no chat *"capas: A"* (ou B, ou C). Sem resposta, a execução segue
       com a de maior nota (A) e você pode trocar depois. Não gostou de nenhuma: crie as suas (1600×900, sem texto) e mande os arquivos — elas
       entram pelo `cover_url`. · *de:* S139 §3
+
+> **15/10 (SPEC-131-0-B2 — a linha do usuário, fase 1; branch `spec/131-0-B2-a-linha-do-usuario`):** cada corretor poderá conectar o
+> PRÓPRIO WhatsApp no Meu perfil e falar com o AutoBrokers na conversa "Mensagem para você". Nasce **DESLIGADA** (📊 sem a variável
+> `LINHA_DO_USUARIO_LIGADA`, o botão não aparece e o servidor só conta e cala). A tabela nova já está no banco (📊 versão `20261015053220`).
+> Junto: a caixa do chat que subia a cada resposta foi consertada e o botão "Pesquisa na web", que não fazia nada, saiu. Nasceram a T-178 a
+> T-182.
+
+- [ ] **T-178** ⏳ 🧑 **quando puder, 10 min, com o celular do seu número de TESTE** · **Parear o chip e medir a linha (M1–M6)** (substitui a
+      T-175; D-132F-06) — escreva no chat do Claude Code: *"pronto para o QR"*. O gerente cria a instância de medição e abre o QR na tela
+      do computador (ele avisa quando).
+      1. No celular de teste: WhatsApp → **Aparelhos conectados** → **Conectar um aparelho** → aponte para o QR (ele troca a cada ~20 s; depois
+         do 5º é preciso pedir outro — escreva *"QR de novo"*).
+      2. Na sua conversa **"Mensagem para você"** mande: um texto ("teste 1"), um áudio de 5 segundos e uma foto.
+      3. O gerente manda uma mensagem de teste para essa mesma conversa → diga no chat se ela **apareceu** e se o celular **avisou** (som ou
+         notificação).
+      **Esperado:** um aparelho novo na lista de Aparelhos conectados; o gerente diz no chat se as suas 3 mensagens chegaram ao servidor (M1) e
+      a memória usada (M3); no fim ele desconecta o aparelho e apaga a instância. Só são gravados campos de roteamento, nunca o texto de
+      outra conversa. **Se der errado:** "limite de aparelhos" → desconecte um que você não usa e tente de novo; o QR não lê → *"QR de
+      novo"*. · *de:* S131-0-B2 §2.1 · P-1310B2-01
+- [ ] **T-179** ⏳ 🧑 **quando quiser, 10 min (pode ser o MESMO Implantar da T-166)** · **Implantar `smith-api` e `smith-worker` com o código
+      da SPEC-131-0-B2 — sem ligar nada** — EasyPanel → `smith-api` → **Implantar**; depois `smith-worker` → **Implantar**. Nenhuma variável
+      nova. **Esperado:** os dois ficam "running"/saudáveis; nada muda para os segurados (o atendimento e o Quem Cobra Menos não foram
+      tocados). **Se der errado:** o `smith-api` não sobe ("unhealthy") → print do log do contêiner e a hora no chat. · *de:* S131-0-B2 §6
+- [ ] **T-180** ⏳ 🧑 **depois da T-174, FORA do horário de atendimento, 15 min** · **Implantar o `smith-web`** (P-132D-01: o build do site
+      já derrubou o servidor em 14/10) — EasyPanel → `smith-web` → **Implantar**. Depois abra
+      `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao`.
+      **Esperado:** `commit` começando pelo que o gerente disser na resposta final e `build_em_brasilia` de hoje; no chat do painel, faça 5
+      perguntas seguidas → a caixa de texto **fica no rodapé**; no "+" não há mais "Pesquisa na web"; em
+      `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/configuracoes?aba=whatsapp` **não** aparece
+      "Conectar meu WhatsApp" (está desligada). **Se der errado:** o painel ou a API caem durante o build → anote a hora e mande no chat;
+      `/api/versao` com commit antigo → Implantar o `smith-web` de novo. · *de:* S131-0-B2 §8 · D-1310B2-07
+- [ ] **T-181** ⏳ 🧑 **SÓ depois da T-178 (com M1 positivo) e do canário, 5 min** · **Ligar a linha do usuário** — EasyPanel → `smith-api`
+      → **Ambiente** → acrescente a linha `LINHA_DO_USUARIO_LIGADA=1` → **Salvar** → **Implantar** o `smith-api`. Depois, no celular de teste:
+      abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/configuracoes?aba=whatsapp` → **Conectar
+      meu WhatsApp** → leia o QR com o WhatsApp do seu número de teste.
+      **Esperado:** "✓ Conectado" com o número mascarado; em segundos, na "Mensagem para você", as boas-vindas começando por "▸ AutoBrokers";
+      uma pergunta ali recebe a resposta do AutoBrokers; nenhuma outra conversa sua é respondida. **Se der errado:** o botão não aparece →
+      confira a variável e o Implantar; a resposta não chega → print e a hora no chat. **Para desligar:** apague a linha
+      `LINHA_DO_USUARIO_LIGADA=1` e Implantar o `smith-api`; para soltar o celular: Meu perfil → **Desconectar** (desligar a variável não
+      solta o aparelho). · *de:* S131-0-B2 §6 · D-1310B2-09
+- [ ] **T-182** ⏳ 🧑 **ainda NÃO — a execução avisa quando** · **Ligar os avisos do sistema pelo WhatsApp, por tipo** (D-132F-04, D-1310B2-14)
+      — quando for a hora: EasyPanel → `smith-api` → **Ambiente** → `AVISOS_WHATSAPP_LIGADO=renovacoes_calculadas` → **Implantar** o
+      `smith-api`. Os tipos são `renovacoes_calculadas`, `licenca_do_agger` e `falha_de_conexao`, separados por vírgula; `true`, `1` ou
+      `todos` **não ligam nada** (de propósito). 📊 Hoje ligar não teria efeito: nenhum código grava a linha nos canais do perfil
+      (P-1310B2-03) e os avisos de licença e de falha não têm quem os publique (P-1310B2-04). **Esperado (depois das duas):** às 06:45 o
+      aviso das renovações chega na sua "Mensagem para você". · *de:* S131-0-B2 §4
 
 ### ① Implantar e conferir — não depende de nada
 
