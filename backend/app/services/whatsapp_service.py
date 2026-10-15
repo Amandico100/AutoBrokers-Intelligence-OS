@@ -8,11 +8,42 @@ Segurança: nenhum log de URL/token/Client-Token aqui — toda a chamada Z-API
 (e o mascaramento de telefone) vive em app/services/whatsapp/zapi_provider.py.
 """
 import logging
-from typing import Any, Dict, Optional
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from app.services.whatsapp.zapi_provider import get_zapi_provider
 
 logger = logging.getLogger(__name__)
+
+# SPEC-131-0-B2 (M6) — OS IDS DO QUE SAIU, para quem precisa deles (o anti-eco da linha do usuário).
+#
+# `send_message` devolve `bool` (o contrato legado) e fatia o texto em balões: um envio produz N ids, e o id do
+# provider (`SendResult.provider_message_id`) morria aqui. Em vez de mudar a assinatura de todos os chamadores, quem
+# quer os ids abre `coletar_ids_enviados()` em volta do envio: cada balão que saiu `ok` COM id vira um par
+# `(texto_do_balao, id)` na lista. Fora do `with`, nada é coletado e nada muda — nenhum outro canal sente.
+# É um ContextVar: `asyncio.to_thread` copia o contexto, então o envio numa thread enche a lista de quem abriu.
+_IDS_ENVIADOS: ContextVar[Optional[List[Tuple[str, str]]]] = ContextVar("whatsapp_ids_enviados", default=None)
+
+
+@contextmanager
+def coletar_ids_enviados() -> Iterator[List[Tuple[str, str]]]:
+    """`with coletar_ids_enviados() as ids:` → `ids` recebe `(texto, id_do_provider)` de cada balão enviado."""
+    lista: List[Tuple[str, str]] = []
+    marca = _IDS_ENVIADOS.set(lista)
+    try:
+        yield lista
+    finally:
+        _IDS_ENVIADOS.reset(marca)
+
+
+def _anotar_id_enviado(texto: Any, result: Any, ok: bool) -> None:
+    lista = _IDS_ENVIADOS.get()
+    if lista is None or not ok:
+        return
+    mid = getattr(result, "provider_message_id", None) or getattr(result, "message_id", None)
+    if isinstance(mid, str) and mid.strip():
+        lista.append((str(texto or ""), mid.strip()))
 
 
 def _e_recuperavel(erro: BaseException) -> bool:
@@ -192,7 +223,9 @@ class WhatsappService:
 
                 # ANTES de enviar: o eco pode voltar antes da linha seguinte.
                 registrar_nossa_fala(_empresa_da_voz, to_number, t)
-            return _enviar(t)
+            result = _enviar(t)
+            _anotar_id_enviado(t, result, _ok(result))   # SPEC-131-0-B2 (M6): só dentro de `coletar_ids_enviados`
+            return result
 
         def _ok(result) -> bool:
             # SendResult do seam usa .ok; o provider z-api legado usa .success.
