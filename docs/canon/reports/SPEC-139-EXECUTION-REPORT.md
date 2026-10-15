@@ -210,7 +210,11 @@ do site). **RECOMENDAÇÃO:** T-174 → T-183 → T-184; a P-139-01 (o "Even" no
 
 ## Push
 ```
-<!-- o gerente cola a saída do git push aqui -->
+```n$ git push origin HEAD:main
+   4a08ce4..300b323  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
 ```
 
 ## §11 A TELEMETRIA (`backend\.venv\Scripts\python.exe backend/scripts/medir_execucao_claude_code.py --sessao atual`, da raiz, 15/10 ~18:40 UTC)
