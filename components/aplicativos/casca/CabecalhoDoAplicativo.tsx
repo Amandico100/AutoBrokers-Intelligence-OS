@@ -180,7 +180,7 @@ function CabecalhoCompacto(props: CabecalhoProps) {
   return (
     <header className="space-y-2" data-cabecalho="compacto">
       <div className="flex items-center gap-3 px-1">
-        <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={48} />
+        <TileDoIcone icone={item.icone} matiz={item.matiz} slug={item.slug} tamanho={48} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{item.nome}</h1>
@@ -207,6 +207,7 @@ export function CabecalhoDoAplicativo(props: CabecalhoProps) {
   return (
     <header className="space-y-5" data-cabecalho="completo">
       <CapaGerada
+        slug={item.slug}
         icone={item.icone}
         matiz={item.matiz}
         coverUrl={item.cover_url}
@@ -215,9 +216,16 @@ export function CabecalhoDoAplicativo(props: CabecalhoProps) {
       />
       <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-          {/* K3 (juiz de design 3): `relative z-10` — sem ele a capa (relative, overflow-hidden) pinta POR CIMA do tile
+          {/* SPEC-139 · D-139-L6-01 (costura): a capa GERADA (direção A · Placa) já é o ícone do aplicativo, grande, na cor
+              dele — o tile ao lado repetia o MESMO desenho a dois dedos de distância (no celular, colado à placa). O tile
+              só aparece quando a capa é a imagem do Founder (`cover_url`), que pode não trazer o ícone. (esconder 86 ×
+              manter 55 × reposicionar 65 — capturas 1440/390, claro/escuro, 15/10/2026.) O cabeçalho compacto (as outras
+              abas, sem capa) continua com o tile.
+              K3 (juiz de design 3): `relative z-10` — sem ele a capa (relative, overflow-hidden) pinta POR CIMA do tile
               no celular e só a metade de baixo aparecia; o card da loja já fazia assim */}
-          <TileDoIcone icone={item.icone} matiz={item.matiz} tamanho={72} className="relative z-10 -mt-14 ml-3 ring-4 ring-background sm:-mt-10 sm:ml-4" />
+          {item.cover_url && (
+            <TileDoIcone icone={item.icone} matiz={item.matiz} slug={item.slug} tamanho={72} className="relative z-10 -mt-14 ml-3 ring-4 ring-background sm:-mt-10 sm:ml-4" />
+          )}
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{item.nome}</h1>
