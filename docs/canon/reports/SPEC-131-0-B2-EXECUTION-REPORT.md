@@ -210,7 +210,12 @@ pareada (`is_active` segue true) — depois do conserto ela não é escolhida po
   primeira corretora com mais de um corretor ligado.
 
 ## Push
-<!-- o gerente cola a saída do git push aqui -->
+```n$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   5f9bdac..45e233a  HEAD -> main
+$ git rev-list --count origin/main..HEAD
+0
+```
 
 ## §11 A TELEMETRIA (`backend\.venv\Scripts\python.exe backend/scripts/medir_execucao_claude_code.py --sessao atual`, da raiz, 15/10 ~12:10 UTC)
 ```
