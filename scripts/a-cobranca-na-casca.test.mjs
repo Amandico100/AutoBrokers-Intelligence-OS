@@ -325,7 +325,8 @@ if (fonteBase) {
   pular(`a referência contra o git (${BASE})`, 'sem git ou sem o commit nesta cópia; os hashes cravados abaixo continuam valendo');
 }
 
-const fonteFormulario = ler(FORMULARIO);
+// CRLF → LF: numa cópia do Windows (core.autocrlf) as âncoras de várias linhas das mutações não casavam (costura L6)
+const fonteFormulario = ler(FORMULARIO).replace(/\r\n/g, '\n');
 let F = null;
 if (!conferir(`o formulário extraído existe (${FORMULARIO})`, fonteFormulario.length > 0)) {
   // sem ele, o resto do bloco não tem o que medir
