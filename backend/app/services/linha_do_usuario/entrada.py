@@ -72,7 +72,13 @@ _TRAVAS_DO_TURNO: Dict[Tuple[int, str], asyncio.Lock] = {}
 
 
 def ligada() -> bool:
+    """Existe alguém com a linha ligada? (só informativo — a decisão é sempre por DONO: `ligada_para`)."""
     return E.ligada()
+
+
+def ligada_para(dono: Any) -> bool:
+    """A chave liga a linha DESTE dono? (`estado.ligada_para` — o ponto único)."""
+    return E.ligada_para(dono)
 
 
 def _dados(r: Any) -> List[Dict[str, Any]]:
@@ -381,10 +387,10 @@ async def enviar_pela_linha(db: Any, linha: Optional[Dict[str, Any]], texto_mark
 
     Devolve `{enviadas, ids, motivo?}`. `ids` = os ids que o provedor deu aos balões que saíram (M6), cada um gravado
     em `linha_mensagens_do_sistema` DEPOIS do envio (o hash vai ANTES); provedor que não devolve id → `ids` vazio.
-    Chave desligada, linha inativa/de outro dono, sem número → nada sai. Nunca levanta."""
+    Chave desligada para o DONO, linha inativa/de outro dono, sem número → nada sai. Nunca levanta."""
     vazio: Dict[str, Any] = {"enviadas": 0, "ids": []}
     try:
-        if not ligada():
+        if not ligada_para((linha or {}).get("owner_user_id")):
             return {**vazio, "motivo": "desligada"}
         linha = linha or {}
         cid, uid = _low(linha.get("company_id")), _low(linha.get("owner_user_id"))
@@ -466,7 +472,7 @@ async def turno_da_linha(db: Any, integration: Dict[str, Any], envelope: Dict[st
     from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
 
     try:
-        if not ligada():
+        if not ligada_para((integration or {}).get("owner_user_id")):
             return {"status": "ignorado", "motivo": "desligada"}
         linha = await asyncio.to_thread(linha_confirmada, db, integration)
         if not linha:
@@ -551,7 +557,8 @@ async def desviar(db: Any, integration: Dict[str, Any], body: Dict[str, Any], ba
     from app.services.whatsapp.evolution_go_events import go_event_to_v2_envelope
 
     try:
-        if not ligada():
+        # a chave decide pelo DONO da integração: dono fora da lista = como a chave ausente (conta e cala)
+        if not ligada_para((integration or {}).get("owner_user_id")):
             _IGNORADAS_DESLIGADA["n"] += 1
             if _IGNORADAS_DESLIGADA["n"] % 100 == 1:
                 logger.info("[LINHA] desligada (LINHA_DO_USUARIO_LIGADA) — %d evento(s) ignorado(s)",
@@ -600,5 +607,5 @@ async def desviar(db: Any, integration: Dict[str, Any], body: Dict[str, Any], ba
 
 
 __all__ = ("PURPOSE", "ORIGEM", "PREFIXO", "PREFIXO_DA_MENSAGEM", "JANELA_DO_ECO", "MOTIVOS_DE_OUTRA_CONVERSA",
-           "ligada", "linha_confirmada", "filtrar", "contar_descartada", "descarregar_descartadas",
+           "ligada", "ligada_para", "linha_confirmada", "filtrar", "contar_descartada", "descarregar_descartadas",
            "enviar_pela_linha", "turno_da_linha", "tipo_do_evento", "desviar")
