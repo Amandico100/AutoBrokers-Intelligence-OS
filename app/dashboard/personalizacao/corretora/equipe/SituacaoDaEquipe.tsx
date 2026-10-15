@@ -10,6 +10,10 @@ import { Skeleton } from '@/components/ui/skeleton';
  * confirmado e a ausência de hoje. Cada pessoa conecta o PRÓPRIO Agger em Meu perfil; aqui o admin vê quem falta e
  * "pede para conectar" — o produto só monta o texto para ele COPIAR e mandar como quiser. Nada é enviado; nenhum
  * login de outra pessoa é digitado aqui. Só o admin da corretora vê esta lista (a rota confere).
+ *
+ * SPEC-131-0-B3 (D-1310B3-01) — o WhatsApp de trabalho pela ORIGEM que o backend decide (`whatsapp_trabalho_origem`):
+ * 'linha' = a pessoa conectou o próprio WhatsApp ("WhatsApp conectado") · 'digitado' = informou só o número ·
+ * nenhum = não informado. O NÚMERO nunca chega aqui. Backend antigo (sem a origem): o `confirmado` decide, como antes.
  */
 type Pessoa = {
   user_id: string;
@@ -18,6 +22,7 @@ type Pessoa = {
   funcoes: string[];
   agger: { situacao: string | null; rotulo: string | null; conectado: boolean };
   whatsapp_trabalho_confirmado: boolean | null;
+  whatsapp_trabalho_origem?: 'linha' | 'digitado' | null;
   ausencia: { ate: string; substituto: string } | null;
 };
 
@@ -43,6 +48,20 @@ function sinalDoAgger(p: Pessoa): { tom: 'ok' | 'falta' | 'neutro'; texto: strin
   if (s === 'pausado') return { tom: 'neutro', texto: 'Agger pausado' };
   if (p.agger.conectado) return { tom: 'ok', texto: 'Agger conectado' };
   return { tom: 'falta', texto: 'Sem Agger' };
+}
+
+type SinalDaPessoa = { tom: 'ok' | 'falta' | 'neutro'; texto: string };
+
+/** o sinal do WhatsApp de trabalho de uma pessoa; `null` = a corretora ainda não tem as colunas (nada a mostrar) */
+export function sinalDoWhatsApp(
+  p: Pick<Pessoa, 'whatsapp_trabalho_confirmado' | 'whatsapp_trabalho_origem'>,
+): SinalDaPessoa | null {
+  const origem = p.whatsapp_trabalho_origem;
+  if (origem === 'linha') return { tom: 'ok', texto: 'WhatsApp conectado' };
+  if (origem === 'digitado') return { tom: 'ok', texto: 'WhatsApp de trabalho informado' };
+  if (p.whatsapp_trabalho_confirmado === null || p.whatsapp_trabalho_confirmado === undefined) return null;
+  if (origem === undefined && p.whatsapp_trabalho_confirmado) return { tom: 'ok', texto: 'WhatsApp de trabalho informado' };
+  return { tom: 'neutro', texto: 'WhatsApp de trabalho não informado' };
 }
 
 function textoDoPedido(p: Pessoa, origem: string): string {
@@ -88,7 +107,7 @@ export function SituacaoDaEquipe() {
       <div className="space-y-1">
         <h2 id="situacao-da-equipe" className="text-base font-semibold text-foreground">Situação de cada pessoa</h2>
         <p className="text-sm text-muted-foreground">
-          Cada pessoa conecta o próprio Agger e confirma o WhatsApp de trabalho em Meu perfil. Aqui você vê quem falta.
+          Cada pessoa conecta o próprio Agger e o próprio WhatsApp de trabalho em Meu perfil. Aqui você vê quem falta.
         </p>
       </div>
 
@@ -102,6 +121,7 @@ export function SituacaoDaEquipe() {
         <ul className="divide-y divide-border-soft rounded-xl border border-border bg-surface">
           {pessoas.map((p) => {
             const ag = sinalDoAgger(p);
+            const zap = sinalDoWhatsApp(p);
             const falta = !p.agger.conectado || p.agger.situacao === 'senha_recusada';
             return (
               <li key={p.user_id} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between" data-situacao-da-pessoa>
@@ -112,10 +132,7 @@ export function SituacaoDaEquipe() {
                   </p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
                     <Sinal {...ag} />
-                    {p.whatsapp_trabalho_confirmado === null ? null : (
-                      <Sinal tom={p.whatsapp_trabalho_confirmado ? 'ok' : 'neutro'}
-                        texto={p.whatsapp_trabalho_confirmado ? 'WhatsApp de trabalho confirmado' : 'WhatsApp de trabalho não informado'} />
-                    )}
+                    {zap && <Sinal {...zap} />}
                     {p.ausencia && (
                       <span className="inline-flex items-center gap-1.5 text-sm text-foreground">
                         <CalendarClock size={15} strokeWidth={1.6} className="text-muted-foreground" aria-hidden />

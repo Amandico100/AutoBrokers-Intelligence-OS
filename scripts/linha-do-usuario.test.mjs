@@ -272,7 +272,10 @@ test('② desligada (e sem leitura): o bloco NÃO aparece', () => {
 test('② não conectada: título, frase curta e o botão "Conectar meu WhatsApp"', () => {
   const { MinhaLinhaDoWhatsApp } = linhaMod();
   const html = desenhar(MinhaLinhaDoWhatsApp, { linha: LINHA('nao_conectada'), ...semAcao });
-  assert.match(html, /Conversar com o AutoBrokers pelo seu WhatsApp/);
+  // SPEC-131-0-B3 (§9.3, migrado): o bloco virou o PRINCIPAL da aba — o título é o do número de trabalho, e a frase
+  // diz que o WhatsApp conectado passa a ser ele (antes: "Conversar com o AutoBrokers pelo seu WhatsApp")
+  assert.match(html, /Seu WhatsApp de trabalho/);
+  assert.match(html, /Ele passa a ser o seu número de trabalho no AutoBrokers/);
   assert.match(html, /<button[^>]*>Conectar meu WhatsApp<\/button>/);
   assert.match(html, /aria-live="polite"/);
 });
@@ -308,7 +311,8 @@ test('② conectada: só o número MASCARADO que veio do servidor — nenhum tel
     linha: { ...LINHA('conectada', { numero_mascarado: '(11) 9••••-0001', desde: '2026-10-15T12:00:00Z' }), numero: TELEFONE_FICTICIO, paired_phone_e164: TELEFONE_FICTICIO },
     ...semAcao,
   });
-  assert.match(html, /Conectado/);
+  // SPEC-131-0-B3 (§9.3, migrado): conectado, o pareado É o WhatsApp de trabalho (antes: só "Conectado")
+  assert.match(html, /Este é o seu WhatsApp de trabalho/);
   assert.ok(html.includes('(11) 9••••-0001'), 'o número mascarado tem de aparecer');
   assert.match(html, /desde 15\/10\/2026/);
   assert.ok(!/900000001|9\s?0000-0001|90000-0001/.test(html), `telefone em claro na tela: ${html}`);
@@ -454,16 +458,18 @@ test('④ a faixa lê UMA vez (sem relógio), guarda a dispensa com try/catch, e
   assert.equal((layout.match(/<FaixaDaLinha\b/g) ?? []).length, 1, 'o layout monta a faixa uma vez');
 });
 
-test('④ o "Meu WhatsApp de trabalho" monta o bloco no topo e não mente com a linha conectada', () => {
+test('④ o "WhatsApp de trabalho" monta o bloco no topo e não mente com a linha conectada', () => {
   const fonte = semComentarios(ler('components/perfil/MeuWhatsAppDeTrabalho.tsx'));
   assert.match(fonte, /<MinhaLinhaDoWhatsApp\b/);
+  // SPEC-131-0-B3 (§9.3, migrado): o bloco da conexão É o principal quando oferecido, e o número digitado vem DEPOIS,
+  // recolhido (antes: o bloco vinha acima do título "Meu WhatsApp de trabalho"). A ordem é a mesma lição.
   const iBloco = fonte.indexOf('<MinhaLinhaDoWhatsApp');
-  const iTitulo = fonte.indexOf('Meu WhatsApp de trabalho</h3>');
-  assert.ok(iBloco > 0 && iTitulo > 0 && iBloco < iTitulo, 'o bloco da linha vai no TOPO da aba');
-  // a frase "não se conecta" só pode existir condicionada à linha NÃO conectada
+  const iReserva = fonte.indexOf('<details');
+  assert.ok(iBloco > 0 && iReserva > 0 && iBloco < iReserva, 'o bloco da conexão vai no TOPO da aba, antes do número digitado');
+  // a frase "não se conecta" só pode existir condicionada à conexão NÃO oferecida (e, portanto, não conectada)
   const i = fonte.indexOf('o AutoBrokers não se conecta a ele');
   if (i >= 0) {
     const antes = fonte.slice(Math.max(0, i - 600), i);
-    assert.match(antes, /linhaConectada/, '"não se conecta" aparece sem olhar se a linha está conectada (§9.3)');
+    assert.match(antes, /linhaConectada|!linhaOfertada/, '"não se conecta" aparece sem olhar se a linha está conectada (§9.3)');
   }
 });

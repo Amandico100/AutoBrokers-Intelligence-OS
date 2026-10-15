@@ -9,18 +9,22 @@ export const dynamic = 'force-dynamic';
 /**
  * SPEC-131-B G3 — "Meu perfil": o MEU WhatsApp de trabalho e a MINHA ausência (D-131-41, D-131-08).
  *
- * GET    → { whatsapp_trabalho: {numero, confirmado_em, confirmado, verificado_em, verificado, disponivel},
+ * GET    → { whatsapp_trabalho: {numero, confirmado_em, confirmado, verificado_em, verificado, disponivel,
+ *                                 efetivo: {numero, origem: 'linha'|'digitado'|null}},
  *            atalho_whatsapp: {disponivel}, ausencias, cubro, pessoas, eu, pode_gerir_todos }
  *          (SPEC-132-C: `verificado` = a pessoa provou a posse mandando o código do celular; trocar o número apaga.
  *           O código sai de POST ./whatsapp/codigo)
+ *          (SPEC-131-0-B3: `efetivo` = o número de trabalho que vale, decidido no backend — o PAREADO quando o WhatsApp
+ *           da pessoa está conectado nesta corretora, senão o digitado. O BFF REPASSA; não decide nem completa.)
  * PUT    { numero, confirmo: true }    grava o WhatsApp de trabalho DA PESSOA DA SESSÃO · { numero: null } apaga
  * POST   { substituto_user_id, de, ate, user_id? }   marca a ausência (a minha; `user_id` de outra pessoa só o admin)
  * DELETE ?id=                           apaga uma ausência (a minha; a de outra pessoa só o admin)
  *
  * 🔴 `company_id`, `user_id` e `por_user_id` vêm SEMPRE da sessão — nunca do corpo (o `user_id` do corpo só vale para o
  * admin marcar a ausência de outra pessoa, e o backend confere o papel de novo, no banco).
- * ⛔ O WhatsApp de trabalho é só o NÚMERO: nada em `integrations`, nenhum pareamento. O número de atendimento da corretora
- * e o do Quem Cobra Menos são outros e não mudam. ⛔ O número nunca vai para log nem para a auditoria.
+ * ⛔ O PUT grava só o número DIGITADO (a reserva de quem não conecta): nada em `integrations` — conectar o WhatsApp é
+ * a rota ./linha. O número de atendimento da corretora e o do Quem Cobra Menos são outros e não mudam.
+ * ⛔ O número nunca vai para log nem para a auditoria.
  */
 function backendHeaders(): Record<string, string> {
   const key = process.env.BACKEND_INTERNAL_API_KEY || process.env.ADMIN_API_KEY || '';

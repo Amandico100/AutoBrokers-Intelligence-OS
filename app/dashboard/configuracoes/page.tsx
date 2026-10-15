@@ -21,7 +21,8 @@ import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo'
 
 /**
  * "Meu perfil" — a camada da PESSOA (SPEC-064 Bloco B). SPEC-131-B G3 (laudo I2 §5, D-131-07/08/41): Dados · Minhas
- * conexões (o MEU Agger) · Meu WhatsApp de trabalho (só o número, confirmado) · Ausência (período + OUTRA pessoa) ·
+ * conexões (o MEU Agger) · WhatsApp de trabalho (SPEC-131-0-B3: o WhatsApp CONECTADO é o principal; quem não conecta
+ * informa só o número) · Ausência (período + OUTRA pessoa) ·
  * Segurança · Aparência. "Uso e custos" é da CORRETORA e saiu daqui: mora em Personalização → Custos.
  * A aba vem de `?aba=` (para os links "mudar" do aplicativo abrirem direto aqui).
  */
@@ -194,7 +195,7 @@ export default function MeuPerfilPage() {
                 <Input id="perfil-telefone" value={profile.phone} inputMode="tel"
                   onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="bg-background" />
                 <p className="text-sm text-muted-foreground">
-                  O WhatsApp em que você atende os clientes fica na aba WhatsApp de trabalho.
+                  Para conectar o WhatsApp em que você atende os clientes, use a aba WhatsApp de trabalho.
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-3">

@@ -7,8 +7,23 @@ import { useCallback, useEffect, useState } from 'react';
  * as MINHAS ausências, as que eu cubro e as OUTRAS pessoas ativas da corretora (para escolher quem cobre).
  */
 export type Ausencia = { id: string; de: string; ate: string; user_id: string; nome: string; ativa: boolean };
+/**
+ * SPEC-131-0-B3 (D-1310B3-01) — o número de trabalho EFETIVO, decidido num ponto só no backend: o PAREADO quando o
+ * WhatsApp da pessoa está conectado nesta corretora (`origem: 'linha'`), senão o DIGITADO e confirmado, senão nenhum.
+ * É ele que o cliente recebe no "Quero renovar". Backend antigo não manda `efetivo`: a tela trata como antes.
+ */
+export type OrigemDoNumero = 'linha' | 'digitado';
+export type NumeroEfetivo = { numero: string | null; origem: OrigemDoNumero | null };
 export type MeuPerfil = {
-  whatsapp_trabalho: { numero: string | null; confirmado_em: string | null; confirmado: boolean; disponivel?: boolean };
+  whatsapp_trabalho: {
+    numero: string | null;
+    confirmado_em: string | null;
+    confirmado: boolean;
+    disponivel?: boolean;
+    verificado_em?: string | null;
+    verificado?: boolean;
+    efetivo?: NumeroEfetivo | null;
+  };
   ausencias: Ausencia[];
   cubro: Ausencia[];
   pessoas: { user_id: string; nome: string }[];
@@ -44,6 +59,39 @@ export async function fraseDoErro(res: Response, generica: string): Promise<stri
   if (typeof j?.detail === 'string') return j.detail;
   if (typeof j?.error === 'string' && /\s/.test(j.error)) return j.error;
   return generica;
+}
+
+/** o `efetivo` que veio do servidor, só se estiver no contrato; ausente ou torto → `null` (a tela trata como antes) */
+export function lerEfetivo(v: unknown): NumeroEfetivo | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const origem = o.origem === 'linha' || o.origem === 'digitado' ? o.origem : null;
+  const numero = typeof o.numero === 'string' && /\d/.test(o.numero) ? o.numero : null;
+  return { numero, origem };
+}
+
+const digitos = (v: string | null | undefined) => String(v ?? '').replace(/\D/g, '');
+
+/** o celular brasileiro pareado pode vir sem o nono dígito (o WhatsApp guarda assim contas antigas): a mesma pessoa */
+function chaveDoNumero(v: string | null | undefined): string {
+  const d = digitos(v);
+  return d.startsWith('55') && d.length === 13 && d[4] === '9' ? `${d.slice(0, 4)}${d.slice(5)}` : d;
+}
+
+export function mesmoNumero(a: string | null | undefined, b: string | null | undefined): boolean {
+  const ka = chaveDoNumero(a);
+  return Boolean(ka) && ka === chaveDoNumero(b);
+}
+
+/**
+ * O número MASCARADO no mesmo desenho do servidor (`5511*****001`: quatro primeiros, cinco estrelas sempre, três
+ * últimos) — assim o número de reserva e o conectado se leem lado a lado.
+ */
+export function mascararNumero(v: string | null | undefined): string | null {
+  const d = digitos(v);
+  if (!d) return null;
+  if (d.length <= 7) return `${d.slice(0, 2)}*****`;
+  return `${d.slice(0, 4)}*****${d.slice(-3)}`;
 }
 
 export const dataBR = (iso: string) => {

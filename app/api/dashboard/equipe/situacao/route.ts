@@ -7,12 +7,15 @@ export const dynamic = 'force-dynamic';
 
 /**
  * SPEC-131-B G3 — a coluna SITUAÇÃO de Personalização → Equipe (D-131-07, revê D-131-0-06): de cada pessoa ATIVA, o
- * Agger (conectado? senha recusada? falta?), o WhatsApp de trabalho confirmado (sim/não — o NÚMERO não sai) e a ausência
+ * Agger (conectado? senha recusada? falta?), o WhatsApp de trabalho (conectado, informado ou não — o NÚMERO não sai) e a ausência
  * ativa. Cada pessoa conecta SÓ o próprio Agger, em Meu perfil; o admin VÊ quem falta e pede para conectar — nunca
  * digita o login de outra pessoa.
  *
  * GET → { pessoas: [{ user_id, nome, primeiro_nome, funcoes, agger: {situacao, rotulo, conectado},
- *                     whatsapp_trabalho_confirmado: boolean | null, ausencia: {ate, substituto} | null }] }
+ *                     whatsapp_trabalho_confirmado: boolean | null,
+ *                     whatsapp_trabalho_origem: 'linha' | 'digitado' | null, ausencia: {ate, substituto} | null }] }
+ *       (SPEC-131-0-B3: a origem diz se a pessoa CONECTOU o WhatsApp ou só informou o número; o BFF repassa sem
+ *        inventar, e o número continua sem sair)
  *
  * 🔴 Só o papel administrativo DA corretora ativa lê (a mesma régua de escrever a configuração). `company_id` da sessão.
  */

@@ -19,12 +19,18 @@ import {
 } from './useMeuPerfil';
 
 /**
- * SPEC-131-0-B2 L3 — o bloco de cima do "Meu WhatsApp de trabalho": a pessoa conecta o PRÓPRIO WhatsApp lendo um QR
- * e conversa com o AutoBrokers na conversa "Mensagem para você". Só essa conversa é lida; nada vai para clientes.
+ * SPEC-131-0-B2 L3 — a pessoa conecta o PRÓPRIO WhatsApp lendo um código e conversa com o AutoBrokers na conversa
+ * "Mensagem para você". Só essa conversa é lida; nada vai para clientes.
  *
- * Estados (do servidor): desligada → nada aparece · nao_conectada → "Conectar meu WhatsApp" · aguardando_qr → o QR,
- * renovado a cada 4 s (para ao conectar, ao sair da tela e com a aba do navegador oculta) · conectada → número
- * MASCARADO que veio do servidor + "Desconectar" (com a confirmação da casa) · desconectada → a frase da SPEC §4 +
+ * SPEC-131-0-B3 (D-1310B3-01) — este bloco passou a ser o PRINCIPAL da aba "WhatsApp de trabalho": conectado, o
+ * WhatsApp pareado É o número de trabalho da pessoa. A tela separa o que ele faz HOJE do que vem QUANDO A CORRETORA
+ * LIGAR (o envio a clientes é da SPEC-135 — D-1310B3-02) e do que FICA DE FORA (o atendimento aos segurados).
+ * O "Quero renovar" só é atribuído ao pareado quando o servidor confirma (`queroRenovarNoPareado`, do `efetivo`).
+ *
+ * Estados (do servidor): desligada → nada aparece (o número digitado é o principal) · nao_conectada → "Conectar meu
+ * WhatsApp" · aguardando_qr → o código, renovado a cada 4 s (para ao conectar, ao sair da tela e com a aba do
+ * navegador oculta) · conectada → "Este é o seu WhatsApp de trabalho" com o número MASCARADO que veio do servidor +
+ * "Desconectar" (com a confirmação da casa) · desconectada → a frase da SPEC §4 + o que vale enquanto isso +
  * "Conectar de novo" · limite → "estamos no limite de conexões".
  */
 
@@ -45,26 +51,59 @@ type Acoes = {
   aoDesconectar: () => void;
 };
 
+/** o número que a pessoa digitou antes, já MASCARADO pelo pai (este componente nunca vê número em claro) */
+export type Reserva = { mascarado: string; diferente: boolean };
+export type Contexto = {
+  /** o servidor confirmou que o "Quero renovar" usa o pareado (`efetivo.origem === 'linha'`) */
+  queroRenovarNoPareado?: boolean;
+  reserva?: Reserva | null;
+};
+
+const SUBTITULO = 'text-xs font-semibold uppercase tracking-wide text-muted-foreground';
+
+function Parte({ titulo, itens }: { titulo: string; itens: string[] }) {
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border-soft bg-background p-3">
+      <h4 className={SUBTITULO}>{titulo}</h4>
+      <ul className="list-disc space-y-1 pl-4 text-sm text-foreground marker:text-muted-foreground">
+        {itens.map((i) => <li key={i}>{i}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 /** o desenho de cada estado — sem efeitos, sem leitura (o container decide) */
 export function VistaDaLinha({
-  linha, qr, ocupado, erro, aviso, aoConectar, aoCancelar, aoDesconectar,
-}: { linha: LinhaDoWhatsApp | null; qr: string | null; ocupado: boolean; erro: string; aviso: string } & Acoes) {
+  linha, qr, ocupado, erro, aviso, aoConectar, aoCancelar, aoDesconectar, queroRenovarNoPareado = false, reserva = null,
+}: { linha: LinhaDoWhatsApp | null; qr: string | null; ocupado: boolean; erro: string; aviso: string } & Acoes & Contexto) {
   if (!linha || linha.estado === 'desligada') return null;
   const imagem = qrSeguro(qr);
+  const hoje = [
+    'Conversar com o AutoBrokers: abra a conversa "Mensagem para você" no seu WhatsApp e escreva como escreveria para um colega.',
+    ...(queroRenovarNoPareado ? ['É o número que o cliente recebe quando toca em "Quero renovar".'] : []),
+  ];
+  const aoDesconectarDiz = !queroRenovarNoPareado
+    ? ''
+    : reserva
+      ? ` O "Quero renovar" volta para o número ${reserva.mascarado} que você informou.`
+      : ' O "Quero renovar" passa a ir para o número da corretora.';
 
   return (
     <section aria-labelledby="linha-do-whatsapp-titulo" className="space-y-3 rounded-xl border border-border bg-surface p-4">
       <h3 id="linha-do-whatsapp-titulo" className="flex items-center gap-2 text-base font-semibold text-foreground">
         <Smartphone size={18} strokeWidth={1.6} aria-hidden />
-        Conversar com o AutoBrokers pelo seu WhatsApp
+        Seu WhatsApp de trabalho
       </h3>
 
       <div aria-live="polite" className="space-y-3">
         {linha.estado === 'nao_conectada' && (
           <>
+            <p className="text-sm text-foreground">
+              Conecte o WhatsApp que você usa com os clientes. Ele passa a ser o seu número de trabalho no AutoBrokers.
+            </p>
             <p className="text-sm text-muted-foreground">
-              Escreva, mande áudio, foto ou PDF na conversa &quot;Mensagem para você&quot; do seu WhatsApp e receba a
-              resposta ali, como no chat. Só essa conversa é lida, e nada vai para os seus clientes.
+              Você conversa com o AutoBrokers na conversa &quot;Mensagem para você&quot;, como no chat. Só essa conversa
+              é lida, e nada vai para os seus clientes.
             </p>
             <button type="button" onClick={aoConectar} disabled={ocupado} className={BOTAO_PRINCIPAL}>
               {ocupado ? 'Preparando o código…' : 'Conectar meu WhatsApp'}
@@ -103,18 +142,31 @@ export function VistaDaLinha({
 
         {linha.estado === 'conectada' && (
           <>
-            <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-              <CheckCircle2 size={16} strokeWidth={1.6} className="text-success" aria-hidden />
-              <span className="font-medium">Conectado</span>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground">
+              <CheckCircle2 size={16} strokeWidth={1.6} className="shrink-0 text-success" aria-hidden />
+              <span className="font-medium">Este é o seu WhatsApp de trabalho</span>
               {linha.numero_mascarado && <span className="tabular-nums">— {linha.numero_mascarado}</span>}
               {linha.desde && <span className="text-muted-foreground">· desde {dataDaLinha(linha.desde)}</span>}
             </p>
+            <div className="grid gap-2 md:grid-cols-3">
+              <Parte titulo="Para que ele serve hoje" itens={hoje} />
+              <Parte titulo="Quando a sua corretora ligar"
+                itens={['Avisos do AutoBrokers para você.', 'Cobrança e renovação aos seus clientes, por este número.']} />
+              <Parte titulo="Fica de fora" itens={['O atendimento aos segurados continua no número da corretora.']} />
+            </div>
+            {reserva?.diferente && queroRenovarNoPareado && (
+              <p className="text-sm text-muted-foreground">
+                O número <span className="tabular-nums">{reserva.mascarado}</span> que você informou antes fica guardado
+                como reserva.
+              </p>
+            )}
             <p className="text-sm text-muted-foreground">
-              Abra a conversa &quot;Mensagem para você&quot; no seu WhatsApp e escreva como escreveria para um colega.
+              Hoje, o AutoBrokers lê só a conversa &quot;Mensagem para você&quot; e responde ali: as suas outras conversas
+              não são lidas nem guardadas, e nada sai para os seus clientes.
             </p>
             <Confirmar
               titulo="Desconectar o seu WhatsApp?"
-              descricao={'O AutoBrokers deixa de ler e de responder na conversa "Mensagem para você". O seu WhatsApp continua funcionando normalmente no celular.'}
+              descricao={`O AutoBrokers deixa de ler e de responder na conversa "Mensagem para você".${aoDesconectarDiz} O seu WhatsApp continua funcionando normalmente no celular.`}
               acao="Desconectar" perigo onConfirmar={aoDesconectar}>
               <button type="button" disabled={ocupado} className={cn(BOTAO_SECUNDARIO, 'text-danger')}>
                 {ocupado ? 'Desconectando…' : 'Desconectar'}
@@ -131,6 +183,11 @@ export function VistaDaLinha({
                 Seu WhatsApp desconectou do AutoBrokers{linha.desde ? ` em ${dataDaLinha(linha.desde)}` : ''}. Isso acontece
                 quando o celular fica 14 dias sem internet ou quando o aparelho é removido em <em>Aparelhos conectados</em>.
               </span>
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {reserva
+                ? <>Enquanto isso, o &quot;Quero renovar&quot; usa o número de reserva <span className="tabular-nums">{reserva.mascarado}</span>.</>
+                : <>Enquanto isso, o &quot;Quero renovar&quot; vai para o número da corretora.</>}
             </p>
             <button type="button" onClick={aoConectar} disabled={ocupado} className={BOTAO_PRINCIPAL}>
               {ocupado ? 'Preparando o código…' : 'Conectar de novo'}
@@ -170,8 +227,8 @@ async function lerQr(): Promise<LeituraDoQr | null> {
  * resto da aba saber se a linha está conectada.
  */
 export function MinhaLinhaDoWhatsApp({
-  linha, aoMudar, recarregar,
-}: {
+  linha, aoMudar, recarregar, queroRenovarNoPareado, reserva,
+}: Contexto & {
   linha: LinhaDoWhatsApp | null;
   /** troca o estado na hora (antes de o servidor confirmar) */
   aoMudar: (linha: LinhaDoWhatsApp) => void;
@@ -247,6 +304,7 @@ export function MinhaLinhaDoWhatsApp({
   return (
     <VistaDaLinha
       linha={linha} qr={qr} ocupado={ocupado} erro={erro} aviso={aviso}
+      queroRenovarNoPareado={queroRenovarNoPareado} reserva={reserva}
       aoConectar={conectar}
       aoCancelar={() => desconectar('')}
       aoDesconectar={() => desconectar('WhatsApp desconectado.')}

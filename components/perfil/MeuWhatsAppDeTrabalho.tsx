@@ -1,33 +1,40 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Info, MessageCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Info, MessageCircle } from 'lucide-react';
 
 import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-import { MinhaLinhaDoWhatsApp } from './MinhaLinhaDoWhatsApp';
-import { fraseDoErro, useLinhaDoWhatsApp, type MeuPerfil } from './useMeuPerfil';
+import { MinhaLinhaDoWhatsApp, type Reserva } from './MinhaLinhaDoWhatsApp';
+import {
+  fraseDoErro,
+  lerEfetivo,
+  mascararNumero,
+  mesmoNumero,
+  useLinhaDoWhatsApp,
+  type MeuPerfil,
+} from './useMeuPerfil';
 
 /**
- * SPEC-131-B G3 (D-131-41) — "Meu WhatsApp de trabalho": SÓ o número em que a pessoa atende os clientes, confirmado por
- * ela. A página de renovação usa este número no "Quero renovar" (o cliente responde ao dono da carteira).
- * O número em si não é pareado: o número de atendimento da corretora e o do Quem Cobra Menos são outros e não mudam.
- * O envio continua saindo do aparelho de quem clica.
+ * A aba "WhatsApp de trabalho" de Meu perfil.
  *
- * SPEC-131-0-B2 L3 — no TOPO da aba, a "linha do usuário" (`MinhaLinhaDoWhatsApp`): a pessoa pode conectar o PRÓPRIO
- * WhatsApp por QR e conversar com o AutoBrokers em "Mensagem para você". Com a linha conectada, a frase "o AutoBrokers
- * não se conecta a ele" deixa de ser verdade — a aba diz o que vale para cada estado (CLAUDE.md §9.3).
+ * SPEC-131-0-B3 (D-1310B3-01) — UM número só por pessoa. Quando a pessoa pode conectar o próprio WhatsApp
+ * (`MinhaLinhaDoWhatsApp`), o PAREAMENTO é o principal: conectado, ele É o WhatsApp de trabalho, e o número que ela
+ * digitou fica como RESERVA (usado se o WhatsApp desconectar). Quem não quer conectar informa só o número, no bloco
+ * recolhido "Não quer conectar? Informe só o número" — aberto por padrão quando já há número digitado e nenhuma
+ * conexão. Sem a conexão disponível para esta pessoa, o número digitado volta a ser o principal (como na 131-B).
+ * O "Quero renovar" só é atribuído ao pareado quando o servidor diz (`whatsapp_trabalho.efetivo.origem === 'linha'`);
+ * backend antigo, sem `efetivo`, a tela não afirma o que não sabe (CLAUDE.md §9.3).
+ * ⛔ Nada é enviado daqui. O número de atendimento da corretora e o do Quem Cobra Menos são outros e não mudam.
  *
- * SPEC-132-C C1 (D-132C-02) — "Usar pelo WhatsApp": a pessoa prova que o número é DELA mandando, do próprio celular, o
- * código "ATIVAR 123456" ao número do AutoBrokers. Verificado, ela conversa com o AutoBrokers pelo WhatsApp como no chat.
- * Trocar o número apaga a verificação. Sem o número do AutoBrokers ligado pela plataforma, o botão não aparece.
- * Conserto da 132-C: o código só vale mandado do número SALVO e confirmado aqui (a tela pede o número primeiro), e
- * com o atalho desligado a tela diz "Em breve" em vez de oferecer um código que ficaria sem resposta.
+ * SPEC-132-C C1 (D-132C-02, D-1310B3-05) — "Usar pelo WhatsApp": a pessoa prova que o número DIGITADO é dela mandando,
+ * do próprio celular, o código "ATIVAR 123456" ao número do AutoBrokers. A identidade do atalho continua no número
+ * digitado e verificado (o pareado é outra porta). Trocar o número apaga a verificação. Com o atalho desligado, a tela
+ * diz "Em breve" em vez de oferecer um código que ficaria sem resposta.
  */
-type WhatsAppDoPerfil = MeuPerfil['whatsapp_trabalho'] & { verificado_em?: string | null; verificado?: boolean };
 type PerfilComAtalho = MeuPerfil & { atalho_whatsapp?: { disponivel?: boolean } };
 type Codigo = {
   codigo: string;
@@ -38,6 +45,7 @@ type Codigo = {
   numero_assistente: string | null;
 };
 
+/** o PRÓPRIO número da pessoa, legível, no formulário dela (o de outra pessoa nunca passa por aqui) */
 function exibir(e164: string): string {
   const d = e164.replace(/\D/g, '');
   if (d.startsWith('55') && (d.length === 12 || d.length === 13)) {
@@ -48,14 +56,15 @@ function exibir(e164: string): string {
   return e164;
 }
 
+const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const BOTAO_SECUNDARIO =
   'inline-flex h-11 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-surface-2 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil | null; onMudou: () => void }) {
-  const atual = perfil?.whatsapp_trabalho as WhatsAppDoPerfil | undefined;
+  const atual = perfil?.whatsapp_trabalho;
   const atalhoDisponivel = (perfil as PerfilComAtalho | null)?.atalho_whatsapp?.disponivel === true;
-  const [editando, setEditando] = useState(false);
-  const [numero, setNumero] = useState('');
+  const [editando, setEditando] = useState(() => !atual?.confirmado);
+  const [numero, setNumero] = useState(() => (atual?.numero ? exibir(atual.numero) : ''));
   const [confirmo, setConfirmo] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
@@ -63,22 +72,39 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
   const [codigo, setCodigo] = useState<Codigo | null>(null);
   const [pedindo, setPedindo] = useState(false);
   const [erroDoCodigo, setErroDoCodigo] = useState('');
-  const { linha, setLinha, carregar: recarregarLinha } = useLinhaDoWhatsApp();
+  // o bloco recolhido do número digitado: `null` = a pessoa ainda não mexeu (vale o padrão do estado)
+  const [reservaAberta, setReservaAberta] = useState<boolean | null>(null);
+  const { linha, carregada, setLinha, carregar: recarregarLinha } = useLinhaDoWhatsApp();
 
   useEffect(() => {
     if (atual) { setEditando(!atual.confirmado); setNumero(atual.numero ? exibir(atual.numero) : ''); setConfirmo(false); }
     if (atual?.verificado) setCodigo(null);
   }, [atual]);
 
-  if (!perfil) return <Skeleton className="h-40 w-full rounded-xl" />;
+  if (!perfil || !carregada) return <Skeleton className="h-40 w-full rounded-xl" />;
 
   const verificado = Boolean(atual?.verificado && atual?.numero);
   // conserto P1 (SPEC-132-C): o código amarra o número DECLARADO — sem número salvo e confirmado, não há código
   const numeroConfirmado = Boolean(atual?.confirmado && atual?.numero && !editando);
-  // a linha do usuário: conectada, o AutoBrokers LÊ a conversa "Mensagem para você" do aparelho da pessoa
-  const linhaConectada = linha?.estado === 'conectada';
-  // a linha ofertada já é o jeito de falar pelo WhatsApp: o "Em breve" do número central deixaria de ser verdade
+  const temDigitado = Boolean(atual?.confirmado && atual?.numero);
+  // a conexão do WhatsApp é oferecida a esta pessoa? (`desligada` ou sem leitura → o número digitado é o principal)
   const linhaOfertada = Boolean(linha && linha.estado !== 'desligada');
+  const linhaConectada = linha?.estado === 'conectada';
+  const efetivo = lerEfetivo(atual?.efetivo);
+  // só o SERVIDOR diz que o "Quero renovar" usa o pareado; sem `efetivo` (backend antigo), a tela não afirma
+  const queroRenovarNoPareado = linhaConectada && efetivo?.origem === 'linha';
+  const mascarado = temDigitado ? mascararNumero(atual?.numero) : null;
+  const reserva: Reserva | null = mascarado
+    ? {
+      mascarado,
+      diferente: efetivo?.numero
+        ? !mesmoNumero(atual?.numero, efetivo.numero)
+        : !(linha?.numero_mascarado && linha.numero_mascarado === mascarado),
+    }
+    : null;
+  const comoReserva = linhaConectada || (linha?.estado === 'desconectada' && temDigitado);
+  const reservaAbertaPorPadrao = !linhaConectada && temDigitado;
+  const abrirReserva = reservaAberta ?? reservaAbertaPorPadrao;
 
   const gravar = async (corpo: Record<string, unknown>, ok: string) => {
     setOcupado(true); setErro(''); setAviso('');
@@ -110,87 +136,117 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
     }
   };
 
+  const aoTirar = queroRenovarNoPareado
+    ? 'O "Quero renovar" continua no seu WhatsApp conectado; você só fica sem número de reserva.'
+    : 'O "Quero renovar" passa a ir para o número da corretora.';
+
+  const blocoDoNumero = atual?.disponivel === false ? (
+    <p className="rounded-lg border border-border-soft bg-surface p-3 text-sm text-muted-foreground">
+      Este campo ainda não está disponível na sua corretora. Tente de novo mais tarde.
+    </p>
+  ) : !editando && atual?.confirmado && atual.numero ? (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
+        <CheckCircle2 size={16} strokeWidth={1.6} className="text-success" aria-hidden />
+        <span className="tabular-nums">{exibir(atual.numero)}</span>
+        <span className="text-muted-foreground">· {verificado ? 'verificado' : 'confirmado'}</span>
+      </p>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => { setEditando(true); setAviso(''); }} className={BOTAO_SECUNDARIO}>
+          Mudar
+        </button>
+        <Confirmar titulo={comoReserva ? 'Tirar o número de reserva?' : 'Tirar o seu WhatsApp de trabalho?'}
+          descricao={verificado
+            ? `${aoTirar} E você deixa de falar com o AutoBrokers pelo número dele no WhatsApp.`
+            : aoTirar}
+          acao="Tirar" perigo onConfirmar={() => gravar({ numero: null }, 'Número tirado.')}>
+          <button type="button" disabled={ocupado} className={cn(BOTAO_SECUNDARIO, 'text-danger')}>
+            Tirar
+          </button>
+        </Confirmar>
+      </div>
+    </div>
+  ) : (
+    <form className="space-y-3 rounded-xl border border-border bg-surface p-4"
+      onSubmit={(e) => { e.preventDefault(); gravar({ numero, confirmo }, 'Número salvo e confirmado.'); }}>
+      <div className="space-y-1">
+        <label htmlFor="zap-trabalho" className="text-sm font-medium text-foreground">Número com DDD</label>
+        <input id="zap-trabalho" type="tel" inputMode="tel" autoComplete="tel" placeholder="(11) 9 1234-5678"
+          value={numero} onChange={(e) => setNumero(e.target.value)}
+          className="h-11 w-full max-w-xs rounded-lg border border-border bg-background px-3 text-sm tabular-nums text-foreground" />
+      </div>
+      <label className="flex items-start gap-3 text-sm text-foreground">
+        <input type="checkbox" checked={confirmo} onChange={(e) => setConfirmo(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 accent-[hsl(var(--primary))]" />
+        Confirmo que este é o WhatsApp em que eu atendo os clientes.
+      </label>
+      {verificado && (
+        <p className="text-sm text-muted-foreground">
+          Se você trocar o número, vai precisar verificar de novo para falar com o AutoBrokers pelo WhatsApp.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={ocupado || !numero.trim() || !confirmo}
+          className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, FOCO)}>
+          {ocupado ? 'Salvando…' : 'Salvar'}
+        </button>
+        {atual?.confirmado && (
+          <button type="button" onClick={() => { setEditando(false); setErro(''); }} className={BOTAO_SECUNDARIO}>
+            Cancelar
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
   return (
     <div className="space-y-4">
-      <MinhaLinhaDoWhatsApp linha={linha} aoMudar={setLinha} recarregar={recarregarLinha} />
+      {linhaOfertada ? (
+        <>
+          <MinhaLinhaDoWhatsApp linha={linha} aoMudar={setLinha} recarregar={recarregarLinha}
+            queroRenovarNoPareado={queroRenovarNoPareado} reserva={reserva} />
 
-      <div className="space-y-1">
-        <h3 className="text-base font-semibold text-foreground">Meu WhatsApp de trabalho</h3>
-        <p className="text-sm text-muted-foreground">
-          O número em que você atende. O &quot;Quero renovar&quot; do cliente chega aqui, direto para você.
-        </p>
-      </div>
-
-      {atual?.disponivel === false ? (
-        <p className="rounded-lg border border-border-soft bg-surface p-3 text-sm text-muted-foreground">
-          Este campo ainda não está disponível na sua corretora. Tente de novo mais tarde.
-        </p>
-      ) : !editando && atual?.confirmado && atual.numero ? (
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex flex-wrap items-center gap-2 text-sm text-foreground">
-            <CheckCircle2 size={16} strokeWidth={1.6} className="text-success" aria-hidden />
-            <span className="tabular-nums">{exibir(atual.numero)}</span>
-            <span className="text-muted-foreground">· {verificado ? 'verificado' : 'confirmado'}</span>
-          </p>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => { setEditando(true); setAviso(''); }} className={BOTAO_SECUNDARIO}>
-              Mudar
-            </button>
-            <Confirmar titulo="Tirar o seu WhatsApp de trabalho?"
-              descricao={verificado
-                ? 'O "Quero renovar" passa a ir para o número da corretora, e você deixa de falar com o AutoBrokers pelo número dele no WhatsApp.'
-                : 'O "Quero renovar" passa a ir para o número da corretora.'}
-              acao="Tirar" perigo onConfirmar={() => gravar({ numero: null }, 'Número tirado.')}>
-              <button type="button" disabled={ocupado} className={cn(BOTAO_SECUNDARIO, 'text-danger')}>
-                Tirar
-              </button>
-            </Confirmar>
-          </div>
-        </div>
+          {/* o número digitado, recolhido: o `<details>` nativo anuncia aberto/fechado ao leitor de tela */}
+          <details open={abrirReserva} onToggle={(e) => setReservaAberta(e.currentTarget.open)}
+            className="group rounded-xl border border-border-soft">
+            <summary className={cn('flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2 [&::-webkit-details-marker]:hidden', FOCO)}>
+              {comoReserva ? 'Número de reserva' : 'Não quer conectar? Informe só o número'}
+              <ChevronDown size={18} strokeWidth={1.6} aria-hidden
+                className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="space-y-3 border-t border-border-soft p-4">
+              <p className="text-sm text-muted-foreground">
+                {comoReserva
+                  ? 'Se o seu WhatsApp desconectar, o "Quero renovar" do cliente usa este número até você conectar de novo.'
+                  : 'Informe o número em que você atende. O "Quero renovar" do cliente chega nele, direto para você. É só o número: nada é enviado por ele.'}
+              </p>
+              {blocoDoNumero}
+            </div>
+          </details>
+        </>
       ) : (
-        <form className="space-y-3 rounded-xl border border-border bg-surface p-4"
-          onSubmit={(e) => { e.preventDefault(); gravar({ numero, confirmo }, 'WhatsApp de trabalho confirmado.'); }}>
+        <>
           <div className="space-y-1">
-            <label htmlFor="zap-trabalho" className="text-sm font-medium text-foreground">Número com DDD</label>
-            <input id="zap-trabalho" type="tel" inputMode="tel" autoComplete="tel" placeholder="(11) 9 1234-5678"
-              value={numero} onChange={(e) => setNumero(e.target.value)}
-              className="h-11 w-full max-w-xs rounded-lg border border-border bg-background px-3 text-sm tabular-nums text-foreground" />
-          </div>
-          <label className="flex items-start gap-3 text-sm text-foreground">
-            <input type="checkbox" checked={confirmo} onChange={(e) => setConfirmo(e.target.checked)}
-              className="mt-0.5 h-5 w-5 shrink-0 accent-[hsl(var(--primary))]" />
-            Confirmo que este é o WhatsApp em que eu atendo os clientes.
-          </label>
-          {verificado && (
+            <h3 className="text-base font-semibold text-foreground">Seu WhatsApp de trabalho</h3>
             <p className="text-sm text-muted-foreground">
-              Se você trocar o número, vai precisar verificar de novo para falar com o AutoBrokers pelo WhatsApp.
+              O número em que você atende os clientes. O &quot;Quero renovar&quot; do cliente chega aqui, direto para você.
             </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={ocupado || !numero.trim() || !confirmo}
-              className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
-              {ocupado ? 'Salvando…' : 'Salvar'}
-            </button>
-            {atual?.confirmado && (
-              <button type="button" onClick={() => { setEditando(false); setErro(''); }} className={BOTAO_SECUNDARIO}>
-                Cancelar
-              </button>
-            )}
           </div>
-        </form>
+          {blocoDoNumero}
+        </>
       )}
 
       {atual?.disponivel !== false && (atalhoDisponivel || verificado || !linhaOfertada) && (
         <section aria-labelledby="atalho-whatsapp-titulo" className="space-y-3 rounded-xl border border-border bg-surface p-4">
           <h4 id="atalho-whatsapp-titulo" className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <MessageCircle size={16} strokeWidth={1.6} aria-hidden />
-            Falar com o AutoBrokers pelo WhatsApp
+            Falar com o AutoBrokers pelo número dele no WhatsApp
           </h4>
 
           {verificado ? (
             <p className="flex items-start gap-2 text-sm text-foreground" role="status">
               <CheckCircle2 size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-success" aria-hidden />
-              <span>Verificado — você pode falar com o AutoBrokers pelo WhatsApp, do número acima.</span>
+              <span>Verificado — você pode falar com o AutoBrokers pelo WhatsApp, do número que você informou.</span>
             </p>
           ) : !atalhoDisponivel ? (
             <p className="text-sm text-muted-foreground">
@@ -198,7 +254,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
             </p>
           ) : !numeroConfirmado ? (
             <p className="text-sm text-muted-foreground">
-              Primeiro salve e confirme o seu WhatsApp de trabalho acima. Depois, você manda um código desse número
+              Primeiro informe e confirme o número em que você atende, acima. Depois, você manda um código desse número
               para o AutoBrokers.
             </p>
           ) : !codigo ? (
@@ -208,7 +264,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
                 número é seu: você manda um código do seu celular para o AutoBrokers.
               </p>
               <button type="button" onClick={pedirCodigo} disabled={pedindo}
-                className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
+                className={cn('h-11 rounded-lg px-5 text-sm font-medium disabled:opacity-60', BOTAO_PRIMARIO, FOCO)}>
                 {pedindo ? 'Gerando o código…' : 'Usar pelo WhatsApp'}
               </button>
             </div>
@@ -236,7 +292,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
               <div className="flex flex-wrap gap-2">
                 {codigo.wa_me_url && (
                   <a href={codigo.wa_me_url} target="_blank" rel="noopener noreferrer"
-                    className={cn('inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-medium', BOTAO_PRIMARIO, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}>
+                    className={cn('inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-medium', BOTAO_PRIMARIO, FOCO)}>
                     Abrir no WhatsApp
                   </a>
                 )}
@@ -256,15 +312,16 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
         </section>
       )}
 
-      <p className="flex items-start gap-2 rounded-lg border border-border-soft p-3 text-sm text-muted-foreground">
-        <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
-        <span>
-          {linhaConectada
-            ? 'O número acima serve para o "Quero renovar" dos clientes. No WhatsApp que você conectou, o AutoBrokers lê só a conversa "Mensagem para você" e responde ali: as suas outras conversas não são lidas nem guardadas, e nada vai para os seus clientes.'
-            : 'É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele, e nada vai para os seus clientes.'}
-          {verificado ? ' Quando você escreve para o número do AutoBrokers, ele responde a você, pelo número dele.' : ''}
-        </span>
-      </p>
+      {/* sem a conexão oferecida, o digitado é SÓ um número; com ela, o bloco de cima diz o que é lido (§9.3) */}
+      {!linhaOfertada && (
+        <p className="flex items-start gap-2 rounded-lg border border-border-soft p-3 text-sm text-muted-foreground">
+          <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
+          <span>
+            É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele, e nada vai para os seus clientes.
+            {verificado ? ' Quando você escreve para o número do AutoBrokers, ele responde a você, pelo número dele.' : ''}
+          </span>
+        </p>
+      )}
       {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
       {aviso && <p className="text-sm text-foreground dark:text-success" role="status">{aviso}</p>}
     </div>
