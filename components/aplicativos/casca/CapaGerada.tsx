@@ -54,7 +54,8 @@ export function CapaGerada({
   const usarImagem = Boolean(coverUrl) && !quebrou;
   const svgs = useMemo(() => (usarImagem ? null : svgsDaCapa({ slug, icone, matiz, enquadramento })), [usarImagem, slug, icone, matiz, enquadramento]);
   const crescer = crescerNoHover
-    ? 'transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none'
+    // `motion-reduce:group-hover:scale-100`: o `transform-none` sozinho perde para o `group-hover:` (mais específico)
+    ? 'transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:group-hover:scale-100 motion-reduce:transition-none'
     : '';
 
   return (
