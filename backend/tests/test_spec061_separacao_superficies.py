@@ -45,21 +45,23 @@ FALHAS: list[str] = []
 # A duplicata foi removida; o destino agora é a tela de tenant da SPEC-043.
 #
 # O propósito deste caso não mudou: rota antiga leva à casa nova, nunca a 404.
+# SPEC-139 · L6 (§9.3): a EXTRA-001.9 levou Equipe, Conhecimento e Custos para Corretora — o destino é o endereço NOVO,
+# direto (antes: dois saltos, porque o endereço de cá também virou redirect). A lição é a mesma: link salvo nunca vira 404.
 MUDARAM_DE_CASA = {
-    "/admin/team": "/dashboard/personalizacao/equipe",
+    "/admin/team": "/dashboard/personalizacao/corretora/equipe",
     "/admin/conversations": "/dashboard/atendimentos/conversas",
     "/admin/agent": "/dashboard/personalizacao/agentes/autobrokers",
-    "/admin/documents": "/dashboard/personalizacao/conhecimento",
-    "/admin/billing": "/dashboard/personalizacao/custos",
+    "/admin/documents": "/dashboard/personalizacao/corretora/conhecimento",
+    "/admin/billing": "/dashboard/personalizacao/corretora/custos",
 }
 
 # Os quatro endereços que eu criei na raiz do dashboard e que ficaram órfãos.
 # Continuam existindo como redirecionamento — link salvo não pode virar 404.
 RAIZ_DUPLICADA = {
-    "/dashboard/equipe": "/dashboard/personalizacao/equipe",
+    "/dashboard/equipe": "/dashboard/personalizacao/corretora/equipe",
     "/dashboard/agente": "/dashboard/personalizacao/agentes/autobrokers",
-    "/dashboard/documentos": "/dashboard/personalizacao/conhecimento",
-    "/dashboard/plano": "/dashboard/personalizacao/custos",
+    "/dashboard/documentos": "/dashboard/personalizacao/corretora/conhecimento",
+    "/dashboard/plano": "/dashboard/personalizacao/corretora/custos",
 }
 
 
