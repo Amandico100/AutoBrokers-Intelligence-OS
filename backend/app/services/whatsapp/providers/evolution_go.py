@@ -177,6 +177,28 @@ def _strip_jid(value: Any) -> str:
     return text.split("@", 1)[0].split(":", 1)[0] if text else ""
 
 
+def _id_da_mensagem_enviada(response: Any) -> Optional[str]:
+    """SPEC-131-0-B2 (M6) — o id que o Evolution GO deu à mensagem que acabou de sair, ou ``None``.
+
+    📊 15/10 (gerente, instância de medição): o envio volta 200 com ``data`` dict. O nome do campo varia com a versão
+    do GO/whatsmeow, então lê-se, nesta ordem: ``data.Info.ID`` · ``data.ID`` · ``data.key.id`` · ``data.id``.
+    Corpo que não é JSON, ``data`` que não é dict, id vazio ou que não é texto → ``None`` (o envio continua ``ok``;
+    só não se sabe o id). Nunca levanta: o id é informação a mais, nunca motivo de falha."""
+    try:
+        corpo = response.json()
+    except Exception:  # noqa: BLE001 — corpo vazio/texto: sem id
+        return None
+    dados = corpo.get("data") if isinstance(corpo, dict) else None
+    if not isinstance(dados, dict):
+        return None
+    info = dados.get("Info") if isinstance(dados.get("Info"), dict) else {}
+    chave = dados.get("key") if isinstance(dados.get("key"), dict) else {}
+    for valor in (info.get("ID"), dados.get("ID"), chave.get("id"), dados.get("id")):
+        if isinstance(valor, str) and valor.strip() and len(valor.strip()) <= 128:
+            return valor.strip()
+    return None
+
+
 ROTA_DE_FLOW_REPLY_PROVADA = "/send/interactiveResponse"
 
 
@@ -564,7 +586,7 @@ class EvolutionGoProvider:
         if not 200 <= status < 300:
             logger.error("[EVOLUTION-GO] HTTP %s error: %s", status, response.text[:200])
             return SendResult(ok=False, error=f"HTTP {status}: {response.text[:120]}")
-        return SendResult(ok=True)
+        return SendResult(ok=True, provider_message_id=_id_da_mensagem_enviada(response))
 
     def send_text(self, to: str, text: str) -> SendResult:
         return self._post("/send/text", {"number": to, "text": text})
