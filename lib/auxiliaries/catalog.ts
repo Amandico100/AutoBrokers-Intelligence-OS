@@ -247,7 +247,8 @@ export const INSTALAR_JA_LIGA: ReadonlySet<string> = new Set(['renovacao']);
  * (ex.: `'renovacao/AbaRenovacoes'`), carregado por import dinâmico pela casca. O módulo exporta `default` um
  * componente React que recebe `PropsDaAba`. `null` = a casca desenha (Início, Dúvidas, e o Configurar dos aplicativos
  * com rotina — o painel de rotinas de hoje). SPEC-139: a Cobrança saiu do modal e tem o Configurar PRÓPRIO
- * (`cobranca/AbaConfigurar`, o formulário extraído do painel, mesmo corpo gravado).
+ * (`cobranca-feita/AbaConfigurar`, o formulário extraído do painel, mesmo corpo gravado — a pasta é o slug, como
+ * `renovacao/`).
  *
  * 🔴 Um arquivo de aba que ainda não existe NÃO quebra o build nem a tela: o import dinâmico da casca é um contexto
  * do webpack (`webpackInclude` só de `Aba*.tsx`) — o que não está no disco simplesmente não entra no contexto, e a
@@ -293,11 +294,12 @@ export const ABAS_DO_APLICATIVO: Record<string, AbaDoAplicativo[]> = {
     ABA_DUVIDAS,
   ],
   // SPEC-139 · L2 — a Cobrança sai do modal e entra na casa: o Configurar é o formulário EXTRAÍDO do painel (o mesmo
-  // corpo gravado — o teste dourado do ELO), e "Cobranças" é o que saiu (só leitura, só desta corretora)
+  // corpo gravado — o teste dourado do ELO), e "Cobranças" é o que saiu (só leitura, só desta corretora). A pasta é o
+  // SLUG (`components/aplicativos/cobranca-feita/`), como renovacao/ e checklist-6h/ (costura L6).
   'cobranca-feita': [
     ABA_INICIO,
-    { id: 'configurar', rotulo: 'Configurar', componente: 'cobranca/AbaConfigurar' },   // L2
-    { id: 'cobrancas', rotulo: 'Cobranças', componente: 'cobranca/AbaCobrancas' },      // L2
+    { id: 'configurar', rotulo: 'Configurar', componente: 'cobranca-feita/AbaConfigurar' },   // L2
+    { id: 'cobrancas', rotulo: 'Cobranças', componente: 'cobranca-feita/AbaCobrancas' },      // L2
     ABA_DUVIDAS,
   ],
   // SPEC-139 · L3 (P-16) — as telas que já funcionavam, MOVIDAS para a aba do trabalho. O Checklist tem o Configurar
@@ -509,7 +511,8 @@ export interface FontesDoComoComecar {
 /** Meu perfil — onde a pessoa conecta o Agger dela e o WhatsApp de trabalho (G3). */
 export const LINK_MEU_PERFIL = '/dashboard/configuracoes';
 export const LINK_CONECTORES = '/dashboard/personalizacao/conectores';
-export const LINK_EQUIPE = '/dashboard/personalizacao/equipe';
+/** SPEC-139 (EXTRA-001.9): a Equipe mora em Corretora — o endereço NOVO, direto (o antigo dá 307 para cá). */
+export const LINK_EQUIPE = '/dashboard/personalizacao/corretora/equipe';
 
 function estadoDoBackend(estado: string | undefined): EstadoDoPasso {
   if (estado === 'pronto') return 'pronto';
