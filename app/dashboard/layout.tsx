@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { TermsAcceptanceModal } from '@/components/TermsAcceptanceModal';
 import { TenantAppShell } from '@/components/layout/TenantAppShell';
+import { FaixaDaLinha } from '@/components/avisos/FaixaDaLinha';
 
 interface ActiveTerms {
   id: string;
@@ -35,7 +36,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      <TenantAppShell>{children}</TenantAppShell>
+      <TenantAppShell>
+        {/* SPEC-131-0-B2 L3: a faixa "seu WhatsApp desconectou" no topo (só nesse estado). O invólucro é SEMPRE o mesmo
+            (a página não remonta quando a faixa aparece) e dá à página a altura que sobra — o `h-full` dela continua valendo. */}
+        <div className="flex h-full min-h-0 flex-col">
+          <FaixaDaLinha />
+          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        </div>
+      </TenantAppShell>
       {termsOutdated && activeTerms && (
         <TermsAcceptanceModal
           activeTerms={activeTerms}
