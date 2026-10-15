@@ -147,7 +147,15 @@ def _go_instance_name(company_id: str, purpose: str) -> str:
 
 
 async def _go_company_channel(company_id: str, purpose: str = "attendance") -> Optional[Dict[str, str]]:
-    """Instância GO DA corretora (linha ativa em integrations)."""
+    """Instância GO DA corretora (linha ativa em integrations).
+
+    🔴 SPEC-131-0-B2 (conserto) — a LINHA DO USUÁRIO não é instância DA corretora: é o WhatsApp de UMA pessoa, e só
+    o fluxo dela (`linha_do_usuario.pareamento`, filtrado pelo DONO) a opera. Estas rotas por corretora+purpose não a
+    resolvem — senão o setup a religaria com `HISTORY_SYNC` e o QR/desconectar operariam a linha de outro membro."""
+    from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+
+    if str(purpose or "").strip().lower() == PURPOSE_DA_LINHA:
+        return None
     supabase = get_supabase_client()
 
     def _q() -> list:
@@ -234,8 +242,13 @@ async def _go_setup(company_id: str, payload: "ChannelSetupPayload", public_url:
     """
     import secrets
 
-    base = _go_base()
+    from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+
     purpose = str(payload.purpose or "attendance").strip().lower()
+    if purpose == PURPOSE_DA_LINHA:
+        # SPEC-131-0-B2 (conserto B2): a linha do usuário só se pareia pelo fluxo dela (por DONO, sem HISTORY_SYNC)
+        raise HTTPException(status_code=400, detail="linha_do_usuario_tem_fluxo_proprio")
+    base = _go_base()
     existing = await _go_company_channel(company_id, purpose)
     global_key = os.getenv("EVOLUTION_GO_GLOBAL_KEY") or ""
 
