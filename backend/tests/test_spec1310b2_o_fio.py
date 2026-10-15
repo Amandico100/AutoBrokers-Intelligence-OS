@@ -372,7 +372,8 @@ def test_o_fio_inteiro_da_linha_do_usuario_com_duas_corretoras(lu, caplog):
     assert ea == {"estado": "conectada", "numero_mascarado": "5511*****001",
                   "desde": lu.linha(ALFA, U1)["linha_conectada_em"], "motivo": None}
     assert lu.ler("estado", BETA, U4).json()["numero_mascarado"] == "5521*****004"
-    assert lu.ler("estado", ALFA, U4).json()["estado"] == "nao_conectada"
+    # U4 é só da Beta: pela Alfa o bloco SOME (`desligada`; antes `nao_conectada` — fix/linha-por-pessoa)
+    assert lu.ler("estado", ALFA, U4).json()["estado"] == "desligada"
     assert NUM_A not in json.dumps(ea)
 
     # o fio nunca tocou o observer nem o pipeline de atendimento/QCM, nem o número central
