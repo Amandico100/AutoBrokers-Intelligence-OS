@@ -212,11 +212,11 @@ export function CabecalhoDoAplicativo(props: CabecalhoProps) {
         matiz={item.matiz}
         coverUrl={item.cover_url}
         className="aspect-[5/2] rounded-2xl border border-border sm:aspect-[4/1]"
-        marca={180}
+        enquadramento="cabecalho"
       />
       <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-          {/* SPEC-139 · D-139-L6-01 (costura): a capa GERADA (direção A · Placa) já é o ícone do aplicativo, grande, na cor
+          {/* SPEC-139 · D-139-L6-01 (costura): a capa GERADA (hoje a C · Cena, o ícone no selo) já é o ícone do aplicativo, grande, na cor
               dele — o tile ao lado repetia o MESMO desenho a dois dedos de distância (no celular, colado à placa). O tile
               só aparece quando a capa é a imagem do Founder (`cover_url`), que pode não trazer o ícone. (esconder 86 ×
               manter 55 × reposicionar 65 — capturas 1440/390, claro/escuro, 15/10/2026.) O cabeçalho compacto (as outras
@@ -247,7 +247,9 @@ export function CabecalhoDoAplicativo(props: CabecalhoProps) {
         </div>
       </div>
 
-      <Avisos botao={botao} erro={erro} motivoDeNaoLigar={motivoDeNaoLigar} />
+      {/* Conserto B (juiz de design, "Em breve"): o que falta para existir já é a seção "Ainda não está pronto" do Início
+          (a única aba de um "Em breve") — aqui ele aparecia DUAS vezes. O cabeçalho completo não repete o motivo. */}
+      <Avisos botao={botao.tipo === 'desabilitado' && item.estado === 'em_breve' ? { ...botao, motivo: null } : botao} erro={erro} motivoDeNaoLigar={motivoDeNaoLigar} />
 
       <div className="px-1">
         <FuncionaCom conexoes={conexoes} />
