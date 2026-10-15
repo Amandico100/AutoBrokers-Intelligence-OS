@@ -252,6 +252,14 @@ class ProvaDeFormularioPayload(BaseModel):
 _TETO_DE_NUMEROS_NOSSOS = 500
 
 
+def _e_linha_do_usuario(integracao: Any) -> bool:
+    """A integração é a linha PESSOAL de um corretor (SPEC-131-0-B2)? Ela nunca é
+    origem nem destino da prova de formulário."""
+    from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+
+    return str((integracao or {}).get("purpose") or "").strip().lower() == PURPOSE_DA_LINHA
+
+
 def _chave_de_telefone(bruto: Any) -> str:
     """A forma comparavel de um telefone brasileiro: **DDD + o numero inteiro**.
 
@@ -329,7 +337,7 @@ async def _destino_e_nosso(db: AsyncSupabaseClient, company_id: str,
         return (False, "")
     try:
         r = await (db.client.table("integrations")
-                   .select("paired_phone_e164")
+                   .select("paired_phone_e164, purpose")
                    .eq("company_id", empresa)
                    .eq("is_active", True)
                    .limit(_TETO_DE_NUMEROS_NOSSOS).execute())
@@ -345,6 +353,10 @@ async def _destino_e_nosso(db: AsyncSupabaseClient, company_id: str,
                      _TETO_DE_NUMEROS_NOSSOS)
         return (False, "")
     for linha in linhas:
+        # SPEC-131-0-B2 (conserto) — o WhatsApp PESSOAL de um corretor não é
+        # "aparelho desta corretora": a prova não manda nada a ele.
+        if _e_linha_do_usuario(linha):
+            continue
         gravado = str(linha.get("paired_phone_e164") or "").strip()
         if gravado and _chave_de_telefone(gravado) == alvo:
             return (True, "".join(ch for ch in gravado if ch.isdigit()))
@@ -412,15 +424,20 @@ async def prova_de_formulario(
         )
         if payload.integration_id:
             query = query.eq("id", payload.integration_id.strip())
-        resp = await query.limit(1).execute()
+        resp = await query.limit(_TETO_DE_NUMEROS_NOSSOS).execute()
     except Exception as e:  # noqa: BLE001
         logger.error(f"[PROVA FORMULARIO] lookup falhou: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Failed to load integration") from e
 
-    if not resp.data:
+    # 🔴 SPEC-131-0-B2 (conserto B1) — a ORIGEM da prova nunca é a linha PESSOAL de
+    # um corretor (`purpose='linha_do_usuario'`): ela é da pessoa, não da corretora.
+    # O filtro é aqui, em Python, e não um `.neq` no banco: `neq` descarta também as
+    # linhas antigas com `purpose` NULL, e mudaria a escolha de hoje.
+    candidatas = [x for x in (resp.data or []) if not _e_linha_do_usuario(x)]
+    if not candidatas:
         raise HTTPException(status_code=404, detail="Nenhuma integracao evolution-go ativa para esta corretora")
 
-    runtime = prepare_integration_for_runtime(resp.data[0]) or {}
+    runtime = prepare_integration_for_runtime(candidatas[0]) or {}
     base_url = str(runtime.get("base_url") or "").rstrip("/")
     token = runtime.get("token")
     if not base_url or not token:
