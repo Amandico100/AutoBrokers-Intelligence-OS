@@ -397,9 +397,16 @@ def test_a_excecao_do_anti_laco_e_exata(lu):
     assert enviar(integ_a, C2.CEL_1) == 0                       # uma PESSOA: nada vai a cliente na fase 1
     assert enviar({**integ_a, "owner_user_id": U2}, NUM_A) == 0  # a integração com outro dono
     assert enviar(integ_a, NUM_A) == 1                          # CONTROLE: a própria conta passa
-    # e o central continua recusando o número de uma linha do usuário (é instância do produto)
-    assert enviar(AENV.integracao_do_assistente(lu.banco), NUM_A) == 0
-    assert [(e["integracao"], e["para"]) for e in lu.fio.envio.enviados] == [("int-linha-a", "5511900000001")]
+    # SPEC-131-0-B2 (conserto B3, a verdade mudou — CLAUDE.md §9.3): conectar a linha NÃO cala ninguém. O número de
+    # uma linha do usuário continua sendo de uma PESSOA para o central (sem laço: na instância da linha, a conversa com
+    # o central é ALHEIA → `outra_conversa`, `test_spec1310b2_a_linha_nao_vaza`). CONTROLE: o anti-laço do central
+    # segue recusando a linha de ATENDIMENTO da corretora (instância do produto).
+    assistente = AENV.integracao_do_assistente(lu.banco)
+    assert enviar(assistente, C2.CEL_LINHA_ALFA) == 0
+    assert enviar(assistente, NUM_A) == 1
+    enviados = [(e["integracao"], e["para"]) for e in lu.fio.envio.enviados]
+    assert enviados[0] == ("int-linha-a", "5511900000001")
+    assert len(enviados) == 2 and enviados[1][1] == "5511900000001" and enviados[1][0] != "int-linha-a"
 
 
 # =====================================================================================================================
