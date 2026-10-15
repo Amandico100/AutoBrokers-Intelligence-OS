@@ -92,11 +92,17 @@ const linear = (id: string, de: string, para: string, attrs = 'x2="0" y2="1"', o
 
 const TELA = `width="${LARGURA}" height="${ALTURA}"`;
 
-/** O grão fino (papel/filme): ruído em cinza, por cima de tudo, em luz suave. */
-const grao = (p: string, semente: number): string =>
-  `<filter id="${p}g" x="0" y="0" width="1" height="1"><feTurbulence type="fractalNoise" baseFrequency=".2" numOctaves="2" seed="${semente % 97}" stitchTiles="stitch"/><feColorMatrix values="0 0 0 9 -4 0 0 0 9 -4 0 0 0 9 -4 0 0 0 0 1"/></filter>`;
+/**
+ * O grão fino (papel/filme): ruído em cinza, em luz suave. ⚠️ A frequência está em unidades do viewBox (1600 de
+ * largura), então o grão CRESCE com o quadro: .2 dá ~1 ciclo por px no card (~320 px), mas no destaque e no cabeçalho
+ * (~1400 px, retina) virava lixa grossa e manchada (juiz de design 139 R2, Galeria 1a). Por isso a frequência vem do
+ * enquadramento (`QUADROS_C.grao`): o grão tem o mesmo tamanho NA TELA em todo lugar.
+ */
+const grao = (p: string, semente: number, frequencia = 0.2): string =>
+  `<filter id="${p}g" x="0" y="0" width="1" height="1"><feTurbulence type="fractalNoise" baseFrequency="${n(frequencia)}" numOctaves="2" seed="${semente % 97}" stitchTiles="stitch"/><feColorMatrix values="0 0 0 9 -4 0 0 0 9 -4 0 0 0 9 -4 0 0 0 0 1"/></filter>`;
+// no escuro, .035 (era .07: o overlay sobre fundo escuro pesa o dobro — o juiz viu o grão sujar o destaque)
 const camadaDeGrao = (p: string, tema: Tema): string =>
-  `<rect ${TELA} filter="url(#${p}g)" opacity="${tema === 'claro' ? '.05' : '.07'}" style="mix-blend-mode:overlay"/>`;
+  `<rect ${TELA} filter="url(#${p}g)" opacity="${tema === 'claro' ? '.05' : '.035'}" style="mix-blend-mode:overlay"/>`;
 
 const desfoque = (id: string, d: number): string =>
   `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${d}"/></filter>`;
@@ -251,6 +257,11 @@ const TAMANHO: Record<Peca, [number, number]> = {
 function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
   const claro = tema === 'claro';
   const [w, h] = TAMANHO[tipo];
+  // Juiz de design 139 R2 (Galeria 1d): no escuro, `forte` (L .41) sobre a peça (L ~.36) sumia — o traço do gráfico
+  // "azul-escuro sobre ardósia". No escuro o TRAÇO vai na luz do aplicativo e a MARCA (o disco do visto, o dia marcado)
+  // na cor dele; no claro, nada muda. Só a cor troca: a geometria dos dois temas segue a mesma (capas.test.mjs, 4).
+  const traco = claro ? t.forte : t.luz;
+  const marca = claro ? t.forte : t.cor;
   const borda = `stroke="#fff" stroke-opacity="${claro ? '.95' : '.3'}" stroke-width="2"`;
   const base = (extra = '') => `<rect width="${w}" height="${h}" rx="22" fill="url(#${p}v)" ${borda}${extra}/>`;
   const linhas = (d: string, op = claro ? 0.2 : 0.42, larg = 10) =>
@@ -261,7 +272,7 @@ function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
     case 'documento':
       return base() + `<rect x="28" y="30" width="112" height="16" rx="8" fill="${t.cor}"/>` +
         linhas('M33 80h174M33 106h150M33 132h174M33 158h112') +
-        `<circle cx="178" cy="240" r="30" fill="${t.forte}"/>` + visto('M165 240l9 9 17-19', t.glifo);
+        `<circle cx="178" cy="240" r="30" fill="${marca}"/>` + visto('M165 240l9 9 17-19', t.glifo);
     case 'cartao':
       return `<rect width="${w}" height="${h}" rx="24" fill="url(#${p}pt)"/>` +
         `<path d="M0 150L230 0h60L0 190z" fill="#fff" opacity=".1"/>` +
@@ -272,20 +283,20 @@ function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
     case 'bolha':
       return `<path d="M24 0h282a24 24 0 0 1 24 24v78a24 24 0 0 1-24 24H62l-34 24 6-24h-10A24 24 0 0 1 0 102V24A24 24 0 0 1 24 0z" fill="url(#${p}v)" ${borda}/>` +
         `<circle cx="50" cy="56" r="24" fill="${t.cor}"/>` + linhas('M94 44h190M94 72h120') +
-        visto('M246 100l8 8 14-16M262 108l14-16', t.forte, 5);
+        visto('M246 100l8 8 14-16M262 108l14-16', traco, 5);
     case 'calendario': {
       let celulas = '';
       for (let j = 0; j < 3; j += 1) for (let i = 0; i < 4; i += 1) if (!(i === 2 && j === 1)) celulas += `M${26 + i * 54} ${86 + j * 50}h42v34h-42z`;
       return base() + `<path d="M0 22a22 22 0 0 1 22-22h216a22 22 0 0 1 22 22v40H0z" fill="${t.cor}"/>` +
         `<path d="M72 -12v32M188 -12v32" stroke="${t.forte}" stroke-width="12" stroke-linecap="round"/>` +
         `<path d="${celulas}" fill="${t.tinta}" opacity="${claro ? '.1' : '.26'}"/>` +
-        `<rect x="134" y="136" width="42" height="34" rx="6" fill="${t.forte}"/>`;
+        `<rect x="134" y="136" width="42" height="34" rx="6" fill="${marca}"/>`;
     }
     case 'grafico':
       return base() + linhas('M26 188h288M26 140h288M26 92h288', claro ? 0.1 : 0.22, 2) +
         `<path d="M26 170L84 132L142 148L200 98L258 112L314 58V188H26z" fill="url(#${p}pa)"/>` +
-        `<path d="M26 170L84 132L142 148L200 98L258 112L314 58" fill="none" stroke="${t.forte}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>` +
-        `<circle cx="314" cy="58" r="20" fill="${t.cor}" opacity=".35"/><circle cx="314" cy="58" r="9" fill="${t.forte}"/>`;
+        `<path d="M26 170L84 132L142 148L200 98L258 112L314 58" fill="none" stroke="${traco}" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `<circle cx="314" cy="58" r="20" fill="${t.cor}" opacity=".35"/><circle cx="314" cy="58" r="9" fill="${traco}"/>`;
     case 'recibo': {
       let serra = `M0 22a22 22 0 0 1 22-22h176a22 22 0 0 1 22 22V${h}`;
       for (let i = 0; i < 11; i += 1) serra += `l-10 -14l-10 14`;
@@ -293,13 +304,13 @@ function peca(tipo: Peca, p: string, t: TokensDaCapa, tema: Tema): string {
       return `<path d="${serra}" fill="url(#${p}v)" ${borda}/>` +
         linhas('M30 44h96M30 86h160M30 112h130M30 138h160') +
         `<rect x="30" y="176" width="160" height="34" rx="10" fill="${t.cor}" opacity=".9"/>` +
-        `<circle cx="174" cy="244" r="20" fill="${t.forte}"/>` + visto('M165 244l6 6 12-13', t.glifo, 5);
+        `<circle cx="174" cy="244" r="20" fill="${marca}"/>` + visto('M165 244l6 6 12-13', t.glifo, 5);
     }
     case 'lista':
     default:
       return base() +
-        `<circle cx="46" cy="54" r="17" fill="${t.forte}"/>` + visto('M38 54l6 6 11-12', t.glifo, 5) +
-        `<circle cx="46" cy="116" r="17" fill="${t.forte}"/>` + visto('M38 116l6 6 11-12', t.glifo, 5) +
+        `<circle cx="46" cy="54" r="17" fill="${marca}"/>` + visto('M38 54l6 6 11-12', t.glifo, 5) +
+        `<circle cx="46" cy="116" r="17" fill="${marca}"/>` + visto('M38 116l6 6 11-12', t.glifo, 5) +
         `<circle cx="46" cy="178" r="15" fill="none" stroke="${t.tinta}" stroke-opacity=".35" stroke-width="4"/>` +
         linhas('M84 54h170M84 116h130M84 178h150');
   }
@@ -324,12 +335,14 @@ interface QuadroDaCena {
   /** a luz da cena (o segundo tom) e o chão */
   luz: [number, number];
   chao: [number, number, number];
+  /** a frequência do grão (por unidade do viewBox): proporcional à largura com que o quadro aparece na tela */
+  grao: number;
 }
 
 const QUADROS_C: Readonly<Record<Enquadramento, QuadroDaCena>> = {
-  card: { selo: { cx: 480, cy: 420, lado: 320 }, lugares: [[1060, 345, 1.45], [1310, 535, 1.5]], luz: [1150, 760], chao: [1190, 720, 420] },
-  cabecalho: { selo: { cx: 520, cy: 450, lado: 220 }, lugares: [[1010, 430, 0.76], [1240, 445, 0.8], [1455, 455, 0.72]], luz: [1200, 760], chao: [1230, 610, 440] },
-  destaque: { selo: { cx: 900, cy: 450, lado: 280 }, lugares: [[1215, 355, 0.88], [1435, 490, 0.94], [1175, 560, 0.86]], luz: [1250, 800], chao: [1260, 700, 380] },
+  card: { selo: { cx: 480, cy: 420, lado: 320 }, lugares: [[1060, 345, 1.45], [1310, 535, 1.5]], luz: [1150, 760], chao: [1190, 720, 420], grao: 0.2 },
+  cabecalho: { selo: { cx: 520, cy: 450, lado: 220 }, lugares: [[1010, 430, 0.76], [1240, 445, 0.8], [1455, 455, 0.72]], luz: [1200, 760], chao: [1230, 610, 440], grao: 0.7 },
+  destaque: { selo: { cx: 900, cy: 450, lado: 280 }, lugares: [[1215, 355, 0.88], [1435, 490, 0.94], [1175, 560, 0.86]], luz: [1250, 800], chao: [1260, 700, 380], grao: 0.7 },
 };
 
 function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: Tema, r: () => number, semente: number, enquadramento: Enquadramento): string {
@@ -362,9 +375,11 @@ function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: 
     radial(`${p}m`, chx, chy - 220, chr * 1.5, claro ? t.cor : t.luz, claro ? 0.35 : 0.22) +
     linear(`${p}pt`, t.cor, t.forte, 'x1="0" y1="0" x2="1" y2="1"') +
     linear(`${p}pa`, t.cor, t.cor, 'x2="0" y2="1"', 0.55, 0) +
-    linear(`${p}v`, t.vidro, t.vidro2) +
-    desfoque(`${p}b`, 24) + pl.defs + grao(p, semente) + '</defs>' +
+    linear(`${p}v`, t.peca, t.peca2) +
+    desfoque(`${p}b`, 24) + pl.defs + grao(p, semente, q.grao) + '</defs>' +
     `<rect ${TELA} fill="url(#${p}f)"/><rect ${TELA} fill="url(#${p}k)"/><rect ${TELA} fill="url(#${p}m)"/><rect ${TELA} fill="url(#${p}h)"/>` +
+    // o grão SÓ no fundo (juiz de design 139 R2, Galeria 1b): por cima de tudo, ele manchava a medalha e as peças
+    camadaDeGrao(p, tema) +
     // o chão da cena: uma elipse de sombra sob as peças
     `<ellipse cx="${chx}" cy="${chy}" rx="${chr}" ry="60" fill="${t.sombra}" opacity="${claro ? '.05' : '.2'}" filter="url(#${p}b)"/>` +
     cena +
@@ -372,8 +387,7 @@ function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: 
     `<circle cx="${cx}" cy="${cy}" r="${Math.round(lado * 0.62)}" fill="${t.vidro}" fill-opacity="${claro ? '.55' : '.5'}" stroke="#fff" stroke-opacity="${claro ? '.95' : '.3'}" stroke-width="2"/>` +
     pl.corpo +
     glifo(nome, cx - g / 2, cy - g / 2 + 5, g, `stroke="${t.sombra}" stroke-opacity="${claro ? '.35' : '.6'}" stroke-width="1.6"`) +
-    glifo(nome, cx - g / 2, cy - g / 2, g, `stroke="${t.glifo}" stroke-width="1.6"`, `${p}i`) +
-    camadaDeGrao(p, tema)
+    glifo(nome, cx - g / 2, cy - g / 2, g, `stroke="${t.glifo}" stroke-width="1.6"`, `${p}i`)
   );
 }
 
