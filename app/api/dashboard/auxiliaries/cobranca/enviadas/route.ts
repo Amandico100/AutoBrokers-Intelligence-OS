@@ -17,7 +17,8 @@ export const dynamic = 'force-dynamic';
  *   • não envia, não escreve no ledger, não liga agente;
  *   • não devolve telefone — nem pede `to_phone` ao banco; só os 4 últimos dígitos (CLAUDE.md §7);
  *   • não devolve o nome inteiro do segurado: só o primeiro nome e as iniciais;
- *   • não devolve `canario`.
+ *   • não devolve `canario`: ele é LIDO só para dizer que aquela linha não foi ao segurado (`destinoDaLinha`), e a
+ *     tela recebe o destino ("segurado" · "equipe" · "teste"), nunca a coluna (conserto A da 139).
  *
  * 🔴 O `.eq('company_id', ctx.companyId)` é obrigatório: o backend usa service role, e RLS sozinha não protege contra
  * erro de filtro no código (CLAUDE.md §7). O teste da fatia tira esta linha e exige VERMELHO.
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('billing_sent_log')
-    .select('id, status, send_mode, modalidade, portal_key, recibo, cliente_nome, to_last4, sent_at, created_at, encaminhado_ao_cliente_em')
+    .select('id, status, send_mode, modalidade, portal_key, recibo, cliente_nome, to_last4, sent_at, created_at, encaminhado_ao_cliente_em, canario')
     .eq('company_id', ctx.companyId)
     .gte('created_at', desdeDoPeriodo(periodo, new Date()))
     .order('created_at', { ascending: false })
