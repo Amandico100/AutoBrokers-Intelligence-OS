@@ -6,10 +6,17 @@
 //
 // ⚠️ Por que `h` não é a matiz do laudo convertida (decisão D-139-L1-01, nota 86 × conversão literal 58):
 //    as matizes do laudo são 17 frias espremidas em 112° (150–262) — oito delas entre 185° e 215°. Convertidas literalmente,
-//    a grade dos 18 seria oito azuis-petróleo quase iguais. A tabela abaixo PRESERVA A ORDEM do laudo (o verde continua
-//    verde, o violeta continua violeta, o âmbar continua sozinho) e espalha as frias em passos iguais de 9,5° no arco
-//    148°–300° do OKLCH. 📊 Em ordem alfabética de slug (a ordem da galeria dentro de um mesmo estado), vizinhos ficam a
-//    ≥ 19° (o teste `capas.test.mjs` mede).
+//    a grade dos 18 seria oito azuis-petróleo quase iguais.
+// ⚠️ Conserto B da SPEC-139 (D-139-CB-01, juiz de design: dois pares a 10° na VERTICAL da grade de 4 colunas, e 8 das 18
+//    no verde-água/ciano): a ordem do laudo NÃO é mais preservada — ela não cabe junto com a vizinhança 2D (📊 a busca
+//    com a ordem preservada não passa de 15°). As 17 frias foram espalhadas no arco 140°–330° por busca, com três regras
+//    DURAS, todas medidas em `capas.test.mjs`:
+//      1. os 9 aplicativos que existem hoje (os que têm capa na loja) a ≥ 18° DOIS A DOIS — qualquer arranjo que uma
+//         corretora tenha (ligados/disponíveis mudam a ordem) fica com vizinhos distintos;
+//      2. os 18 na ordem da galeria (nome, pt-BR) e na ordem do slug: vizinhos a ≥ 18° nas distâncias 1, 2, 3 e 4 — a
+//         horizontal e a vertical das grades de 2, 3 e 4 colunas;
+//      3. no máximo 5 no verde-água/ciano (148°–224°).
+//    E dois desejos: a Renovação azul (240°, a vitrine) e a Cobrança verde (140°, dinheiro).
 // ⚠️ Os valores são LITERAIS de propósito: um aplicativo novo ganha a sua linha sem mexer na cor de nenhum outro
 //    (a mesma capa hoje e daqui a um ano).
 
@@ -26,24 +33,24 @@ export interface VisualDaCapa {
 
 /** A tabela única. `renovacao-maxima` saiu da vitrine (migration 20261014_01) e herda a Renovação. */
 export const PALETA: Readonly<Record<string, VisualDaCapa>> = {
-  'caca-comissao':           { icone: 'HandCoins',           matiz: 150, h: 148 },
-  'carteira-blindada':       { icone: 'ShieldCheck',         matiz: 205, h: 234 },
+  'caca-comissao':           { icone: 'HandCoins',           matiz: 150, h: 258 },
+  'carteira-blindada':       { icone: 'ShieldCheck',         matiz: 205, h: 227 },
   'checklist-6h':            { icone: 'Sunrise',             matiz: 38,  h: 58 },
-  'clientes-perdidos':       { icone: 'UserSearch',          matiz: 230, h: 272 },
-  'cobranca-feita':          { icone: 'ReceiptText',         matiz: 158, h: 158 },
-  'contabilidade-pronta':    { icone: 'BookOpenCheck',       matiz: 175, h: 177 },
-  cotacao:                   { icone: 'Calculator',          matiz: 195, h: 205 },
-  'digitacao-zero':          { icone: 'ScanText',            matiz: 225, h: 262 },
-  'follow-up-whatsapp':      { icone: 'MessageSquareReply',  matiz: 200, h: 215 },
-  'organizacao-completa':    { icone: 'FolderCheck',         matiz: 185, h: 186 },
-  'protecao-completa':       { icone: 'Umbrella',            matiz: 210, h: 243 },
-  'quem-cobra-menos':        { icone: 'BadgePercent',        matiz: 165, h: 167 },
-  'radar-mercado-regulacao': { icone: 'Radar',               matiz: 262, h: 300 },
-  renovacao:                 { icone: 'RefreshCcwDot',       matiz: 203, h: 224 },
-  'resgatar-cliente':        { icone: 'UserRoundCheck',      matiz: 250, h: 291 },
-  'resumo-atendimentos':     { icone: 'ScrollText',          matiz: 215, h: 253 },
-  'sinistralidade-avancada': { icone: 'ChartNoAxesCombined', matiz: 240, h: 281 },
-  'tarefas-agendadas':       { icone: 'CalendarClock',       matiz: 188, h: 196 },
+  'clientes-perdidos':       { icone: 'UserSearch',          matiz: 230, h: 175 },
+  'cobranca-feita':          { icone: 'ReceiptText',         matiz: 158, h: 140 },
+  'contabilidade-pronta':    { icone: 'BookOpenCheck',       matiz: 175, h: 291 },
+  cotacao:                   { icone: 'Calculator',          matiz: 195, h: 270 },
+  'digitacao-zero':          { icone: 'ScanText',            matiz: 225, h: 249 },
+  'follow-up-whatsapp':      { icone: 'MessageSquareReply',  matiz: 200, h: 330 },
+  'organizacao-completa':    { icone: 'FolderCheck',         matiz: 185, h: 153 },
+  'protecao-completa':       { icone: 'Umbrella',            matiz: 210, h: 310 },
+  'quem-cobra-menos':        { icone: 'BadgePercent',        matiz: 165, h: 190 },
+  'radar-mercado-regulacao': { icone: 'Radar',               matiz: 262, h: 214 },
+  renovacao:                 { icone: 'RefreshCcwDot',       matiz: 203, h: 240 },
+  'resgatar-cliente':        { icone: 'UserRoundCheck',      matiz: 250, h: 280 },
+  'resumo-atendimentos':     { icone: 'ScrollText',          matiz: 215, h: 164 },
+  'sinistralidade-avancada': { icone: 'ChartNoAxesCombined', matiz: 240, h: 321 },
+  'tarefas-agendadas':       { icone: 'CalendarClock',       matiz: 188, h: 300 },
 };
 
 const APELIDOS: Readonly<Record<string, string>> = { 'renovacao-maxima': 'renovacao' };
@@ -129,7 +136,7 @@ const RECEITAS: Record<Tema, Receita> = {
   escuro: {
     fundo: [0.25, 0.06], fundo2: [0.16, 0.045, 32], luz: [0.76, 0.14],
     cor: [0.62, 0.13], forte: [0.41, 0.11], acento: [0.56, 0.12, 40],
-    tinta: [0.84, 0.07], sombra: [0.09, 0.025], vidro: [0.41, 0.05], vidro2: [0.3, 0.04],
+    tinta: [0.84, 0.07], sombra: [0.09, 0.025], vidro: [0.5, 0.05], vidro2: [0.38, 0.045],
     glifo: [0.985, 0.015], traco1: [0.93, 0.06], traco2: [0.72, 0.14, 40],
   },
 };
