@@ -20,6 +20,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
+
+// Conserto B da SPEC-139 (juiz de design, Checklist · Hoje 80): o seletor interno dizia "Hoje" logo abaixo da ABA "Hoje"
+// do aplicativo — virou "Agora" (a pergunta da tela: o que precisa de mim agora?). Os rótulos de 11 px em caixa alta e
+// os botões azuis com texto branco (4,1:1 no claro) vestem o padrão da casca: `text-sm` em `muted-foreground`
+// e `BOTAO_PRIMARIO`; toque de 44 px no celular. Nenhuma chamada de dados mudou (scripts/as-telas-no-lugar.test.mjs).
+const BOTAO_ACAO = 'inline-flex h-11 items-center rounded-lg px-4 text-sm font-medium disabled:opacity-60 sm:h-9';
+const BOTAO_SECUNDARIO = 'inline-flex h-11 items-center rounded-lg border border-border px-3 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60 sm:h-9';
+const ROTULO = 'text-sm font-medium text-muted-foreground';
+
 type Item = {
   item_type: string;
   section: string;
@@ -83,7 +93,7 @@ type Finding = {
 };
 
 const ABAS = [
-  { id: 'hoje', rotulo: 'Hoje' },
+  { id: 'hoje', rotulo: 'Agora' },
   { id: 'semana', rotulo: 'Esta semana' },
   { id: 'oportunidades', rotulo: 'Oportunidades' },
   { id: 'historico', rotulo: 'Histórico' },
@@ -98,10 +108,22 @@ function dataCurta(v?: string | null) {
   }
 }
 
+/** "Publicado em 15/10 · cobre de 14/10 a 15/10" — o período só aparece com as duas datas (antes: "período — a —"). */
+function quandoFoiPublicado(p: Publicacao): string {
+  const partes = [p.published_at ? `Publicado em ${dataCurta(p.published_at)}` : 'Publicado'];
+  if (p.period_start && p.period_end) partes.push(`cobre de ${dataCurta(p.period_start)} a ${dataCurta(p.period_end)}`);
+  return partes.join(' · ');
+}
+
+/** O título da semana: as datas quando existem, senão "Esta semana" (nunca "— a —"). */
+function periodoDaSemana(p: Publicacao): string {
+  return p.period_start && p.period_end ? `De ${dataCurta(p.period_start)} a ${dataCurta(p.period_end)}` : 'Esta semana';
+}
+
 function faixaDePrioridade(score?: number): { rotulo: string; classe: string } {
   const s = Number(score || 0);
   if (s >= 85) return { rotulo: 'Crítico', classe: 'bg-destructive/15 text-destructive' };
-  if (s >= 70) return { rotulo: 'Alto', classe: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' };
+  if (s >= 70) return { rotulo: 'Alto', classe: 'bg-warning/15 text-foreground' };
   if (s >= 50) return { rotulo: 'Médio', classe: 'bg-secondary text-muted-foreground' };
   return { rotulo: 'Informativo', classe: 'bg-secondary text-muted-foreground' };
 }
@@ -160,7 +182,7 @@ export default function AbaHoje() {
           <button
             key={a.id}
             onClick={() => setAba(a.id)}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${
+            className={`inline-flex h-11 items-center whitespace-nowrap rounded-lg px-4 text-sm font-medium transition sm:h-9 ${
               aba === a.id
                 ? 'bg-secondary text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
@@ -199,9 +221,7 @@ export default function AbaHoje() {
 function Metrica({ rotulo, valor, nota }: { rotulo: string; valor: string | number; nota?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {rotulo}
-      </p>
+      <p className={ROTULO}>{rotulo}</p>
       <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">{valor}</p>
       {nota && <p className="mt-0.5 text-xs text-muted-foreground">{nota}</p>}
     </div>
@@ -261,19 +281,14 @@ function Hoje({
 
       {publicacao ? (
         <section className="rounded-xl border border-border bg-card p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Resumo do dia
-          </p>
+          <p className={ROTULO}>Resumo do dia</p>
           <h2 className="mt-1.5 text-lg font-semibold text-foreground">
             {publicacao.headline || spec.headline}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {publicacao.summary_text || spec.executive_summary}
           </p>
-          <p className="mt-3 text-[11px] text-muted-foreground">
-            Publicado em {dataCurta(publicacao.published_at)} · período{' '}
-            {dataCurta(publicacao.period_start)} a {dataCurta(publicacao.period_end)}
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground">{quandoFoiPublicado(publicacao)}</p>
         </section>
       ) : (
         <section className="rounded-xl border border-dashed border-border bg-card p-5 text-center">
@@ -283,7 +298,7 @@ function Hoje({
           <button
             onClick={gerar}
             disabled={gerando}
-            className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            className={`mt-3 ${BOTAO_ACAO} ${BOTAO_PRIMARIO}`}
           >
             {gerando ? 'Montando…' : 'Montar agora'}
           </button>
@@ -343,11 +358,11 @@ function CartaoDeFinding({
       <div className="flex items-start gap-4 px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${faixa.classe}`}>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${faixa.classe}`}>
               {faixa.rotulo}
             </span>
             {finding.confidence != null && (
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 confiança {Math.round(Number(finding.confidence) * 100)}%
               </span>
             )}
@@ -396,7 +411,7 @@ function CartaoDeFinding({
       <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/30 px-5 py-3">
         <button
           onClick={() => setAberto((v) => !v)}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary"
+          className={`${BOTAO_SECUNDARIO} text-foreground`}
         >
           {aberto ? 'Fechar' : 'Por que estou vendo isso?'}
         </button>
@@ -406,7 +421,7 @@ function CartaoDeFinding({
             onClick={() =>
               agir({ acao: 'responder_recomendacao', id: recomendacao.id, resposta: 'accept' })
             }
-            className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-60"
+            className={`${BOTAO_ACAO} ${BOTAO_PRIMARIO}`}
           >
             {recomendacao.action_options?.find((o) => o.key === recomendacao.recommended_action_key)
               ?.label || 'Resolver'}
@@ -415,19 +430,19 @@ function CartaoDeFinding({
         <button
           disabled={ocupadoAqui}
           onClick={() => agir({ acao: 'responder_finding', id: finding.id, resposta: 'snooze', dias: 1 })}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-60"
+          className={BOTAO_SECUNDARIO}
         >
           Me lembre amanhã
         </button>
         <button
           disabled={ocupadoAqui}
           onClick={() => agir({ acao: 'responder_finding', id: finding.id, resposta: 'dismiss' })}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-60"
+          className={BOTAO_SECUNDARIO}
         >
           Dispensar
         </button>
         {recomendacao?.approval_required && (
-          <span className="ml-auto text-[11px] text-amber-600 dark:text-amber-400">
+          <span className="ml-auto text-xs text-foreground-2">
             Esta ação precisa da sua aprovação antes de rodar
           </span>
         )}
@@ -461,7 +476,7 @@ function Semana({ dados, recarregar }: { dados: any; recarregar: () => void }) {
         <button
           onClick={gerar}
           disabled={gerando}
-          className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className={`mt-3 ${BOTAO_ACAO} ${BOTAO_PRIMARIO}`}
         >
           {gerando ? 'Montando…' : 'Montar agora'}
         </button>
@@ -472,9 +487,7 @@ function Semana({ dados, recarregar }: { dados: any; recarregar: () => void }) {
   return (
     <div className="space-y-5">
       <section className="rounded-xl border border-border bg-card p-5">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {dataCurta(publicacao.period_start)} a {dataCurta(publicacao.period_end)}
-        </p>
+        <p className={ROTULO}>{periodoDaSemana(publicacao)}</p>
         <h2 className="mt-1.5 text-lg font-semibold text-foreground">
           {publicacao.headline || spec.headline}
         </h2>
@@ -496,7 +509,7 @@ function Semana({ dados, recarregar }: { dados: any; recarregar: () => void }) {
                   <p className="text-sm text-foreground">{i.headline}</p>
                   {i.summary && <p className="mt-0.5 text-xs text-muted-foreground">{i.summary}</p>}
                   {i.evidence_summary && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       <span className="font-semibold">Fato:</span> {i.evidence_summary}
                     </p>
                   )}
@@ -522,7 +535,7 @@ function Semana({ dados, recarregar }: { dados: any; recarregar: () => void }) {
       )}
 
       {spec.methodology && (
-        <p className="text-[11px] text-muted-foreground">{spec.methodology}</p>
+        <p className="text-xs text-muted-foreground">{spec.methodology}</p>
       )}
     </div>
   );
@@ -553,16 +566,16 @@ function Oportunidades({
           <article key={r.id} className="overflow-hidden rounded-xl border border-border bg-card">
             <div className="px-5 py-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${faixa.classe}`}>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${faixa.classe}`}>
                   {faixa.rotulo}
                 </span>
                 {r.confidence != null && (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     confiança {Math.round(Number(r.confidence) * 100)}%
                   </span>
                 )}
                 {r.expires_at && (
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     relevante até {dataCurta(r.expires_at)}
                   </span>
                 )}
@@ -585,7 +598,7 @@ function Oportunidades({
                 <button
                   disabled={ocupado === r.id}
                   onClick={() => agir({ acao: 'responder_recomendacao', id: r.id, resposta: 'accept' })}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-60"
+                  className={`${BOTAO_ACAO} ${BOTAO_PRIMARIO}`}
                 >
                   {principal.label}
                 </button>
@@ -595,7 +608,7 @@ function Oportunidades({
                 onClick={() =>
                   agir({ acao: 'responder_recomendacao', id: r.id, resposta: 'snooze', dias: 7 })
                 }
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-60"
+                className={BOTAO_SECUNDARIO}
               >
                 Depois
               </button>
@@ -604,7 +617,7 @@ function Oportunidades({
                 onClick={() =>
                   agir({ acao: 'responder_recomendacao', id: r.id, resposta: 'not_relevant' })
                 }
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-60"
+                className={BOTAO_SECUNDARIO}
               >
                 Não é relevante
               </button>
@@ -613,7 +626,7 @@ function Oportunidades({
                 onClick={() =>
                   agir({ acao: 'responder_recomendacao', id: r.id, resposta: 'wrong_data' })
                 }
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary disabled:opacity-60"
+                className={BOTAO_SECUNDARIO}
               >
                 O número está errado
               </button>
@@ -657,7 +670,7 @@ function Historico({ dados }: { dados: any }) {
                   {dataCurta(b.period_start)}
                 </span>
                 <p className="min-w-0 flex-1 truncate text-sm text-foreground">{b.headline}</p>
-                <span className="flex-none text-[11px] text-muted-foreground">
+                <span className="flex-none text-xs text-muted-foreground">
                   {b.item_count ?? 0} item(ns)
                   {b.critical_count ? ` · ${b.critical_count} crítico(s)` : ''}
                 </span>
@@ -687,13 +700,13 @@ function Historico({ dados }: { dados: any }) {
                   <span className="text-sm text-foreground">
                     {rotuloDeOutcome[o.measurement_status] || o.measurement_status}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">{o.measurement_type}</span>
+                  <span className="text-xs text-muted-foreground">{o.measurement_type}</span>
                   {o.automation_level === 'estimated' && (
-                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                       estimativa
                     </span>
                   )}
-                  <span className="ml-auto text-[11px] text-muted-foreground">
+                  <span className="ml-auto text-xs text-muted-foreground">
                     {dataCurta(o.measured_at)}
                   </span>
                 </div>
