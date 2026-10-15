@@ -117,6 +117,11 @@ export interface TokensDaCapa {
   sombra: string;
   /** a placa de vidro (cartões das cenas): o alto e a base do degradê */
   vidro: string; vidro2: string;
+  /**
+   * as peças da cena (direção C): o alto e a base. No claro, o mesmo vidro; no escuro, a cor do aplicativo funda —
+   * o vidro neutro (L .5, C .05) virava cinza-ardósia sob a cena (juiz de design 139 R2, Galeria 1d)
+   */
+  peca: string; peca2: string;
   /** o desenho do ícone sobre a placa */
   glifo: string;
   /** as duas pontas do traço grande (direção B) */
@@ -131,12 +136,14 @@ const RECEITAS: Record<Tema, Receita> = {
     fundo: [0.955, 0.035], fundo2: [0.885, 0.07, 32], luz: [0.995, 0.012],
     cor: [0.72, 0.13], forte: [0.53, 0.14], acento: [0.8, 0.11, 40],
     tinta: [0.47, 0.1], sombra: [0.42, 0.12], vidro: [0.995, 0.006], vidro2: [0.955, 0.022],
+    peca: [0.995, 0.006], peca2: [0.955, 0.022],
     glifo: [1, 0], traco1: [0.44, 0.13], traco2: [0.6, 0.15, 40],
   },
   escuro: {
     fundo: [0.25, 0.06], fundo2: [0.16, 0.045, 32], luz: [0.76, 0.14],
     cor: [0.62, 0.13], forte: [0.41, 0.11], acento: [0.56, 0.12, 40],
     tinta: [0.84, 0.07], sombra: [0.09, 0.025], vidro: [0.5, 0.05], vidro2: [0.38, 0.045],
+    peca: [0.4, 0.065], peca2: [0.32, 0.055],
     glifo: [0.985, 0.015], traco1: [0.93, 0.06], traco2: [0.72, 0.14, 40],
   },
 };
