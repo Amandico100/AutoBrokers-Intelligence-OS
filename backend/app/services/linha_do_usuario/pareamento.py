@@ -9,8 +9,8 @@ DONO no escopo: a tentativa, a chave do Redis, a linha do banco e o nome da inst
     estado(db, company_id, user_id)      → {estado, numero_mascarado, desde, motivo}
     desconectar(db, company_id, user_id) → {ok, estado}   (aceita a tentativa PENDENTE: é o "Cancelar" da tela)
 
-`company_id` e `user_id` vêm SEMPRE da sessão (o BFF). As chaves: `LINHA_DO_USUARIO_LIGADA` ausente = recusa sem
-chamar o Evolution; `LINHA_DO_USUARIO_MAX_LINHAS` = o teto do servidor (cheio → `limite`, com a frase humana).
+`company_id` e `user_id` vêm SEMPRE da sessão (o BFF). As chaves: `LINHA_DO_USUARIO_LIGADA` que não liga ESTA pessoa
+(`estado.ligada_para`: ausente, ou ela fora da lista de user_id) = recusa sem chamar o Evolution; `LINHA_DO_USUARIO_MAX_LINHAS` = o teto do servidor (cheio → `limite`, com a frase humana).
 ⛔ O QR e o telefone nunca vão para log.
 """
 from __future__ import annotations
@@ -82,8 +82,8 @@ def _recusa_de_pareamento(exc: Exception) -> Dict[str, Any]:
 async def conectar(db: Any, company_id: Any, user_id: Any, *, orquestrador: Any = None) -> Dict[str, Any]:
     """Cria (ou reusa) a instância DESTA pessoa e devolve o primeiro QR."""
     cid, uid = E._uuid(company_id, "company_id"), E._uuid(user_id, "user_id")
-    if not E.ligada():
-        # a chave ausente recusa ANTES de tocar no provedor
+    if not E.ligada_para(uid):
+        # a chave ausente (ou esta pessoa fora da lista) recusa ANTES de tocar no provedor
         return {"tentativa_id": None, "qr": None, "estado": "desligada", "motivo": E.FRASE_DESLIGADA}
     if not E.membro_ativo(db, cid, uid):
         raise E.Recusa("Só quem é da corretora conecta o WhatsApp aqui.")
@@ -119,7 +119,7 @@ async def qr(db: Any, company_id: Any, user_id: Any, *, orquestrador: Any = None
     """O QR da tentativa DESTA pessoa (nunca o de outra). Depois do QRTimeout, chama o connect de novo — pelo
     `start` do orquestrador, cujo corpo leva SEMPRE o webhookUrl (`channel_security.corpo_do_connect`)."""
     cid, uid = E._uuid(company_id, "company_id"), E._uuid(user_id, "user_id")
-    if not E.ligada():
+    if not E.ligada_para(uid):
         return {"qr": None, "estado": "desligada", "tentativa_id": None, "motivo": E.FRASE_DESLIGADA}
     orq = orquestrador or _orquestrador()
     try:
@@ -146,10 +146,21 @@ async def qr(db: Any, company_id: Any, user_id: Any, *, orquestrador: Any = None
 
 async def estado(db: Any, company_id: Any, user_id: Any, *, orquestrador: Any = None) -> Dict[str, Any]:
     """O estado da linha DESTA pessoa nesta corretora: o banco + o provedor ao vivo (só o SIM dele conta) —
-    sem provedor ou sem Redis, falha para o gravado."""
+    sem provedor ou sem Redis, falha para o gravado.
+
+    `desligada` (o bloco some da tela): a chave não liga ESTA pessoa, ou ela não é membro ATIVO desta corretora
+    (a mesma regra do `conectar`; banco ilegível na conferência → desligada, falha fechada)."""
     cid, uid = E._uuid(company_id, "company_id"), E._uuid(user_id, "user_id")
-    if not E.ligada():
-        return E.calcular_estado(None, esta_ligada=False, sem_vaga=False, tentativa_pendente=None, ao_vivo=None)
+    desligada = E.calcular_estado(None, esta_ligada=False, sem_vaga=False, tentativa_pendente=None, ao_vivo=None)
+    if not E.ligada_para(uid):
+        return desligada
+    try:
+        membro = E.membro_ativo(db, cid, uid)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[LINHA] membro nao conferido (%s) — desligada", type(exc).__name__)
+        membro = False
+    if not membro:
+        return desligada
     row = E.linha_crua_do_dono(db, cid, uid, incluir_inativa=True)
     sem_vaga = E.teto_cheio(db, uid)
     orq = orquestrador or _orquestrador()
