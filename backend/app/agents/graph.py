@@ -1799,10 +1799,12 @@ async def _build_initial_state(
     else:
         allow_web = company_config.get("allow_web_search", False)
 
+    # 15/10 (decisão do gerente da 131-0-B2, nota 85): a linha "🌐 MODO WEB ATIVO: Use a tool 'web_search'" saiu.
+    # 📊 Com RESEARCH_CUTOVER=1 (o padrão, `research/legacy_adapter.py:41`) a `web_search` nem é anexada ao Core —
+    # a frase mandava usar uma ferramenta inexistente. A pesquisa é `pesquisar_na_web`, que o modelo chama sozinho
+    # quando a capability está ativa (`research_tool.py`), com o `rigor` que ele escolhe. O botão saiu da tela.
     if options.get("web_search") and not allow_web:
         options["web_search"] = False
-    elif options.get("web_search"):
-        dynamic_context += "\n\n🌐 MODO WEB ATIVO: Use a tool 'web_search'."
 
     # === RAG PREFETCH DETERMINÍSTICO (41C.1.2) ===
     # Recall safety: a base é apenas uma tool e o LLM pode responder sem chamá-la.

@@ -5,6 +5,7 @@ import { ChatWelcome } from '@/components/chat/ChatWelcome';
 import { LinhaDeAtividade } from '@/components/chat/LinhaDeAtividade';
 import { AvisoDoTurno } from '@/components/chat/AvisoDoTurno';
 import { VoltarAoFim } from '@/components/chat/VoltarAoFim';
+import { COLUNA_DA_CONVERSA } from '@/components/chat/coluna';
 import { Composer } from '@/components/chat/composer/Composer';
 import type { ComposerHandle } from '@/components/chat/composer/Composer';
 import type { AnexoDoPedido, AnexoEnviado, OpcoesDoEnvio } from '@/components/chat/composer/tipos';
@@ -329,8 +330,6 @@ export default function ChatPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [agentsLoaded, setAgentsLoaded] = useState(false);
 
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
-  const [isWebSearchAllowed, setIsWebSearchAllowed] = useState(false);
   const [companyId, setCompanyId] = useState<string | null>(null);
 
   // Histórico paginado (D.1/D.3)
@@ -338,7 +337,6 @@ export default function ChatPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const rolagemRef = useRef<HTMLDivElement>(null);
   const [longeDoFim, setLongeDoFim] = useState(false);
 
@@ -476,7 +474,6 @@ export default function ChatPage() {
 
         const data = await response.json();
         setCompanyId(data.companyId);
-        setIsWebSearchAllowed(data.allowWebSearch || false);
       } catch (error) {
         console.error('[CHAT] Erro setup:', error);
       }
@@ -608,8 +605,19 @@ export default function ChatPage() {
     };
   }, [conversationId]);
 
+  /**
+   * 🔴 15/10 — "a caixa de texto sobe a cada pergunta". Quem rola é SÓ a lista: `el.scrollTo` mexe num elemento.
+   * 📊 Antes era `fimDaLista.scrollIntoView()`, que rola TODOS os ancestrais roláveis — inclusive o `<main
+   * overflow-hidden>` do casco (`TenantAppShell.tsx:21`), que o corretor não consegue rolar de volta. Com o
+   * `sr-only` do "Copiado" (`MessageBubble.tsx`, `position:absolute`) escapando da lista, o `<main>` ganhava
+   * rolagem a cada resposta, e o `scrollIntoView` (bloco `start`) o empurrava para cima: 📊 medido no Chromium
+   * headless a 1280×800 (réplica com o tailwind.config.ts real), o topo da caixa foi 730 → 730 → 495 → 145 → 40 px
+   * em cinco perguntas; com este conserto, 730 nas cinco. Guarda: scripts/a-caixa-fica-no-rodape.test.mjs.
+   */
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = rolagemRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   };
 
   /** A tela só acompanha quem já estava no fim — e o fim tem 120 px de folga. */
@@ -780,7 +788,7 @@ export default function ChatPage() {
           sessionId: sessionId,
           client_request_id: clientRequestId,
           attachments,
-          options: { web_search: webSearchEnabled, esforco },
+          options: { esforco },
           assistantMessageId: assistantMsgId,
         }),
         signal: controlador.signal,
@@ -1021,7 +1029,7 @@ export default function ChatPage() {
     void executarTurno(envio).finally(() => {
       enviandoRef.current = false;
     });
-  }, [sessionId, webSearchEnabled]);
+  }, [sessionId]);
 
   /**
    * Parar. O pedido vai ao servidor (é lá que a geração corre) e a leitura
@@ -1167,12 +1175,15 @@ export default function ChatPage() {
             <ChatWelcome nome={userName} />
           </div>
         ) : (
+          /* 🔴 `relative`: a lista é o bloco que contém o que nela é `absolute` (o `sr-only` do "Copiado" de cada
+             resposta). Sem ele o pai era o `<div relative>` de fora — o `absolute` escapava da rolagem da lista
+             e esticava o `<main>` do casco, e a caixa subia (15/10). */
           <div
             ref={rolagemRef}
             onScroll={aoRolar}
-            className="h-full overflow-y-auto overscroll-contain px-4 pt-6"
+            className="relative h-full overflow-y-auto overscroll-contain px-4 pt-6"
           >
-            <div className="mx-auto w-full max-w-3xl pb-4">
+            <div className={`${COLUNA_DA_CONVERSA} pb-4`}>
               {temAnteriores && (
                 <div className="mb-4 flex justify-center">
                   <button
@@ -1225,7 +1236,7 @@ export default function ChatPage() {
                 />
               )}
 
-              <div ref={messagesEndRef} className="h-4" />
+              <div className="h-4" />
             </div>
           </div>
         )}
@@ -1243,9 +1254,6 @@ export default function ChatPage() {
           turnStatus={turno.status}
           initialText={textoInicial}
           focoKey={sessionId}
-          podePesquisarNaWeb={isWebSearchAllowed}
-          pesquisaNaWeb={webSearchEnabled}
-          onAlternarPesquisaNaWeb={() => setWebSearchEnabled(!webSearchEnabled)}
         />
       </div>
 

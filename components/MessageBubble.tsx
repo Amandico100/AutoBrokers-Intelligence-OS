@@ -52,7 +52,9 @@ function AcoesDaResposta({ markdown, onRetry }: { markdown: string; onRetry?: ()
     "relative inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring before:absolute before:-inset-1.5 before:content-[''] lg:before:hidden";
 
   return (
-    <div className="mt-1.5 flex items-center gap-1">
+    // `relative`: o `sr-only` do "Copiado" (position:absolute) fica preso a ESTA linha. Sem pai posicionado ele
+    // escapava da rolagem da conversa e esticava o <main> do casco — a caixa de texto subia a cada resposta (15/10).
+    <div className="relative mt-1.5 flex items-center gap-1">
       <button
         type="button"
         onClick={copiar}

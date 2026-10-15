@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
 
+import { COLUNA_DA_CONVERSA } from '../coluna';
 import { FichaDeAnexo } from './FichaDeAnexo';
 import { FolhaDoMais } from './FolhaDoMais';
 import { GravadorDeAudio } from './GravadorDeAudio';
@@ -302,7 +303,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   );
 
   return (
-    <div className="relative mx-auto w-full max-w-[760px]" data-composer="">
+    // A MESMA coluna da lista de mensagens (`coluna.ts`): 48rem no notebook, a tela inteira no celular.
+    <div className={cn('relative', COLUNA_DA_CONVERSA)} data-composer="">
       <div
         className={cn(
           'relative rounded-[24px] border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.06),0_10px_28px_-18px_rgba(0,0,0,0.45)] transition-colors',
@@ -340,7 +342,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             }}
           />
         ) : (
-          <div className="flex items-end gap-1 p-1.5">
+          /* Celular: UMA linha de 44 px — [+] · o campo · o botão (não mudou).
+             Notebook (sm+): DUAS linhas, como a caixa do ChatGPT e do Claude.ai — o campo ocupa a linha de cima
+             (≥ 52 px) e [+] · chips · … · enviar ficam embaixo. 📊 15/10 (Chromium, 1280×800): a linha única dava
+             760 × 58 px, uma tira "fininha e larga"; agora 768 × 118 px. No celular (390 px) segue 366 × 58. Só CLASSES `sm:`: a ordem dos nós e o foco não mudam. */
+          <div className="flex items-end gap-1 p-1.5 sm:flex-wrap sm:p-2">
             <button
               ref={maisRef}
               type="button"
@@ -402,9 +408,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 // 🔴 16 px: abaixo disso o iPhone dá zoom ao tocar no campo (B9)
                 'block min-h-11 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-2.5 text-base leading-6 text-foreground',
                 'placeholder:text-muted-foreground focus:outline-none',
+                // notebook: a linha de cima inteira, com altura confortável
+                'sm:order-first sm:min-h-[52px] sm:basis-full sm:px-2.5 sm:pb-1 sm:pt-2.5',
               )}
               style={{ height: ALTURA_MINIMA, maxHeight: ALTURA_MAXIMA, overflowY: 'hidden' }}
             />
+
+            {/* notebook: empurra o enviar/parar/microfone para a direita da linha de baixo */}
+            <span aria-hidden="true" className="hidden sm:block sm:flex-1" />
 
             {botaoDaDireita}
           </div>

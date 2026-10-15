@@ -424,7 +424,9 @@ const ANEXO_FOTO = {
     { bucket: 'chat-media', path: ANEXO_FOTO.path, nome: 'placa.jpg', mime: 'image/jpeg', bytes: 90210 },
   ];
   checar(JSON.stringify(corpo.attachments) === JSON.stringify(esperado), 'attachments = [{bucket, path, nome, mime, bytes}] — nem a URL nem a miniatura local saem da tela', JSON.stringify(corpo.attachments));
-  checar(corpo.options && corpo.options.esforco === 'maximo' && corpo.options.web_search === false, 'options = {web_search, esforco:"maximo"}', JSON.stringify(corpo.options));
+  // 15/10: a opção "Pesquisa na web" saiu (ela só mandava usar uma ferramenta que o Core nem tem — graph.py); o corpo
+  // não leva mais `web_search`, e a pesquisa é decisão do modelo (`pesquisar_na_web`).
+  checar(corpo.options && corpo.options.esforco === 'maximo' && !('web_search' in corpo.options), 'options = {esforco:"maximo"}, sem web_search', JSON.stringify(corpo.options));
   checar(!('imageUrl' in corpo) && !('fileUrl' in corpo) && !('fileName' in corpo), 'o chat novo não manda mais imageUrl/fileUrl/fileName');
   checar(corpo.chatInput === 'Segue a apólice e a foto' && typeof corpo.client_request_id === 'string' && corpo.client_request_id.length > 10, 'chatInput e client_request_id continuam no corpo');
   checar(!('companyId' in corpo) && !('userId' in corpo) && !('agentId' in corpo), 'nenhum companyId/userId/agentId no corpo (a corretora vem da sessão)');
@@ -1044,16 +1046,17 @@ const ARQ_PAGINA_VIVA = process.env.PAGINA_VIVA_SOB_TESTE || ARQ_PAGINA;
     try {
       await p.enviar('sim', turnoQueDisparou(PROMESSA), PROMESSA);
       const noDeRolagem = [...nos(p.arvore())].find((n) => typeof n.props?.onScroll === 'function');
-      const fim = [...nos(p.arvore())].find((n) => n.tipo === 'div' && n.props?.ref && n.props.className === 'h-4');
+      // 15/10: quem rola é a PRÓPRIA lista (`el.scrollTo`), não mais o `scrollIntoView` do fim — que rolava também
+      // o <main> do casco e fazia a caixa subir (guarda: a-caixa-fica-no-rodape.test.mjs). A lição continua: conta-se
+      // a puxada no nó que rola de verdade.
       let puxadas = 0;
-      if (noDeRolagem?.props.ref) noDeRolagem.props.ref.current = { scrollHeight: 3000, scrollTop: longe ? 200 : 2450, clientHeight: 500 };
-      if (fim) fim.props.ref.current = { scrollIntoView() { puxadas += 1; } };
+      if (noDeRolagem?.props.ref) noDeRolagem.props.ref.current = { scrollHeight: 3000, scrollTop: longe ? 200 : 2450, clientHeight: 500, scrollTo() { puxadas += 1; } };
       noDeRolagem?.props.onScroll();
       p.banco.mensagens.push(resultadoDaCotacao(p.agora()));
       await p.avancar(6_000);
       const voltar = [...nos(p.arvore())].some((n) => n.tipo && n.tipo.nome === 'VoltarAoFim');
       const chegou = p.bolhas().some((m) => m.payload?.cotacao);
-      checar(Boolean(noDeRolagem && fim) && chegou && (longe ? puxadas === 0 && voltar : puxadas >= 1 && !voltar),
+      checar(Boolean(noDeRolagem) && chegou && (longe ? puxadas === 0 && voltar : puxadas >= 1 && !voltar),
         `${nome}: a resposta chega e a tela ${longe ? 'NÃO rola (mostra "Voltar ao fim")' : 'acompanha até o fim'}`, `puxadas=${puxadas} voltar=${voltar}`);
     } finally { p.restaurar(); }
   }

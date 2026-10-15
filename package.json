@@ -15,6 +15,7 @@
     "test:relatorios": "node scripts/relatorios-dizem-o-que-sao.test.mjs",
     "test:chat-shell": "node scripts/o-chat-responde-e-continua.test.mjs",
     "test:chat-novo": "node scripts/o-chat-novo.test.mjs",
+    "test:caixa-no-rodape": "node --test scripts/a-caixa-fica-no-rodape.test.mjs",
     "test:casa": "node scripts/a-operacao-tem-uma-casa.test.mjs",
     "test:de-quem-e": "node scripts/cada-coisa-sabe-de-quem-e.test.mjs",
     "test:de-quem-e-backend": "cd backend && python tests/test_cada_coisa_sabe_de_quem_e.py",
