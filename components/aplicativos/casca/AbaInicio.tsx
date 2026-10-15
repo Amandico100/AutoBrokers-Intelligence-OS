@@ -48,9 +48,12 @@ export interface AbaInicioProps {
   atividade: AtividadeDoAplicativo[];
   /** o link de "Ver todas" as dúvidas (a aba Dúvidas) */
   hrefDuvidas: string;
+  /** a ação de um passo do "Como começar" (a MESMA do botão principal — conserto A da 139) */
+  onAcao?: (acao: 'install') => void;
+  ocupado?: boolean;
 }
 
-export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioProps) {
+export function AbaInicio({ item, passos, atividade, hrefDuvidas, onAcao, ocupado }: AbaInicioProps) {
   const ganhoComNumero =
     item.prova.renovacoes_no_mes !== null && item.prova.renovacoes_no_mes > 0
       ? {
@@ -78,7 +81,7 @@ export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioPro
     </Bloco>
   ) : (
     <Bloco titulo="Como começar" primeiro={!item.descricao && faltaPasso}>
-      <ComoComecar passos={passos} />
+      <ComoComecar passos={passos} onAcao={onAcao} ocupado={ocupado} />
     </Bloco>
   );
 
