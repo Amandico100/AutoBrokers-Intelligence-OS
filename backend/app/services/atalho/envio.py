@@ -274,6 +274,41 @@ def _mascarar(telefone: Any) -> str:
     return mascarar(telefone)
 
 
+#: SPEC-131-0-B2 — o purpose da LINHA DO USUÁRIO (o WhatsApp do próprio corretor): o cinto aceita, só para a própria conta
+PURPOSE_DA_LINHA = "linha_do_usuario"
+
+
+def _e_a_propria_linha(db: Any, integracao: Dict[str, Any], tel: str) -> bool:
+    """O destino `tel` é o número DESTA linha do usuário? Relê do banco a integração (id + corretora + purpose + DONO
+    + ativa) e compara o número pareado na forma canônica. Erro ou dúvida → False (nada sai)."""
+    from app.services.canal.repositorio import canonico
+
+    iid = str(integracao.get("id") or "").strip()
+    cid = str(integracao.get("company_id") or "").strip().lower()
+    uid = str(integracao.get("owner_user_id") or "").strip().lower()
+    if not (iid and cid and uid and tel):
+        return False
+    try:
+        linhas = _dados(db.table("integrations").select("id, company_id, owner_user_id, purpose, is_active, "
+                                                        "paired_phone_e164")
+                        .eq("id", iid).eq("company_id", cid).eq("purpose", PURPOSE_DA_LINHA)
+                        .eq("owner_user_id", uid).eq("is_active", True).limit(1).execute())
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ATALHO] linha do usuário não conferida (%s) — não sai", type(erro).__name__)
+        return False
+    linha = next((x for x in linhas if str(x.get("id") or "") == iid
+                  and str(x.get("company_id") or "").lower() == cid
+                  and str(x.get("owner_user_id") or "").lower() == uid
+                  and x.get("purpose") == PURPOSE_DA_LINHA and x.get("is_active") is True), None)
+    numero = canonico((linha or {}).get("paired_phone_e164"))
+    return bool(numero) and numero == tel
+
+
+def _destino_ja_conferido(_db: Any, _tel: Any) -> bool:
+    """O anti-laço da linha do usuário: o destino JÁ foi conferido como a própria linha (`_e_a_propria_linha`)."""
+    return False
+
+
 async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str, Sequence[str]], *,
                  db: Any = None) -> int:
     """Manda as mensagens ao telefone pela integração DADA (a do assistente). Devolve quantas saíram; para na 1ª
@@ -289,7 +324,8 @@ async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str
     tel = canonico(telefone)
     if not textos or not tel or not integracao:
         return 0
-    if str(integracao.get("purpose") or "") != PURPOSE_DO_ASSISTENTE:
+    da_linha = str(integracao.get("purpose") or "") == PURPOSE_DA_LINHA
+    if str(integracao.get("purpose") or "") != PURPOSE_DO_ASSISTENTE and not da_linha:
         # o cinto: o atalho nunca fala por outro número (atendimento, observer, QCM)
         logger.error("[ATALHO] envio recusado: a integração não é a do assistente")
         return 0
@@ -299,6 +335,15 @@ async def enviar(integracao: Dict[str, Any], telefone: Any, mensagens: Union[str
     from app.services.atalho import estado as EST
     from app.services.atalho.entrada import numero_do_produto
 
+    if da_linha:
+        # SPEC-131-0-B2 — a ÚNICA exceção ao anti-laço, EXATA: a linha do usuário fala SÓ com a própria conta (o
+        # destino é o número DESTA linha, relido do banco). Qualquer outro destino — outro número do produto ou uma
+        # pessoa (nada vai a cliente na fase 1) — é recusado aqui; o anti-laço geral não se aplica a quem passou.
+        if not await asyncio.to_thread(_e_a_propria_linha, db, integracao, tel):
+            logger.warning("[ATALHO] envio recusado: a linha do usuário só fala com a própria conta (%s)",
+                           _mascarar(tel))
+            return 0
+        numero_do_produto = _destino_ja_conferido
     if await asyncio.to_thread(numero_do_produto, db, tel):
         logger.warning("[ATALHO] envio recusado: o destino (%s) é uma instância do produto — anti-laço", _mascarar(tel))
         return 0
@@ -391,6 +436,22 @@ def _conversa_do_atalho(db: Any, company_id: str, conversation_id: str) -> Optio
     return linha
 
 
+def _veio_pela_linha(db: Any, conversation_id: str) -> bool:
+    """A ÚLTIMA pergunta desta conversa (já conferida como da corretora) veio pela linha do usuário
+    (`payload.origem`)? Erro → False (o caminho do atalho, que tem os próprios portões)."""
+    try:
+        from app.services.atalho.turno import ORIGEM_DA_LINHA
+
+        linhas = _dados(db.table("messages").select("id, conversation_id, role, payload, created_at")
+                        .eq("conversation_id", conversation_id).eq("role", "user")
+                        .order("created_at", desc=True).limit(1).execute())
+        ultima = next((x for x in linhas if str(x.get("conversation_id")) == conversation_id), None)
+        return bool(ultima) and str((ultima.get("payload") or {}).get("origem") or "") == ORIGEM_DA_LINHA
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[ATALHO] origem da conversa ilegível (%s)", type(erro).__name__)
+        return False
+
+
 async def avisar_pelo_atalho_se_for_o_caso(db: Any, *, company_id: Any, conversation_id: Any,
                                            texto_markdown: Any) -> bool:
     """A mensagem que um Work Run gravou na conversa (ex.: o resultado da Cotação Rápida) volta TAMBÉM pelo WhatsApp
@@ -406,6 +467,16 @@ async def avisar_pelo_atalho_se_for_o_caso(db: Any, *, company_id: Any, conversa
         if not linha:
             return False
         cli = getattr(db, "client", db)
+        if await asyncio.to_thread(_veio_pela_linha, cli, str(linha["id"])):
+            # SPEC-131-0-B2 — a pergunta veio pela LINHA DO USUÁRIO: a volta sai pela MESMA linha (à própria conta do
+            # dono da conversa, nesta corretora), nunca pelo número do assistente
+            from app.services.linha_do_usuario import estado as LE
+            from app.services.linha_do_usuario.entrada import enviar_pela_linha
+
+            dona = await asyncio.to_thread(LE.linha_do_dono, cli, cid.strip().lower(), str(linha["user_id"]))
+            if not dona or not dona.get("ativa"):
+                return False
+            return int((await enviar_pela_linha(cli, dona, texto_markdown)).get("enviadas") or 0) > 0
         n = await enviar_ao_membro(cli, company_id=cid.strip().lower(), user_id=str(linha["user_id"]),
                                    texto=texto_markdown)
         return n > 0
