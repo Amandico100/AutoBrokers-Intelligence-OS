@@ -181,8 +181,9 @@ print("\n[3] 🔴 A PROIBICAO DO OBSERVADOR CONTINUA INTEIRA")
 # Este e o bloco que importa. O conserto vale para RESPOSTA. Iniciativa
 # propria — cobranca, relatorio, sugestao — nao pode ter sido afrouxada.
 
+# SPEC-131-0-B2 (conserto B1): a linha do usuário entrou na proibição; o observador continua nela (CLAUDE.md §9.3)
 check("`observer` continua em PROPOSITOS_QUE_NUNCA_ENVIAM",
-      'PROPOSITOS_QUE_NUNCA_ENVIAM = frozenset({"observer"})' in FONTE_IS)
+      'PROPOSITOS_QUE_NUNCA_ENVIAM = frozenset({"observer", "linha_do_usuario"})' in FONTE_IS)
 check("`pode_enviar` continua existindo e sendo a regra",
       "def pode_enviar" in FONTE_IS)
 check("`get_platform_whatsapp_integration` continua chamando `pode_enviar`",
