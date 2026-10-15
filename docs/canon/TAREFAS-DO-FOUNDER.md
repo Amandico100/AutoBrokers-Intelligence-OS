@@ -251,6 +251,9 @@
 > 11. **14/10 (SPEC-132 A·B·C construída):** **T-166** (Implantar os 4 — o `smith-api` reconstrói a imagem) → **T-167** (os 3 exemplos) →
 >    **T-168** (o chat novo) → **T-170** (o SEU Agger) → **T-169** (uma Cotação Rápida real) → **T-173** (a latência) · **T-172** (decisão) ·
 >    **T-171** (o número do AutoBrokers) quando quiser ligar.
+> 12. **14/10 (D-132F-01…08):** **T-174** (swap + parar os serviços antigos, ANTES do próximo Implantar do `smith-web`) → **T-175** (parear o
+>    chip quando o chat da SPEC-131-0-B2 pedir) → **T-177** (a direção das capas, quando o chat da SPEC-139 mandar o link) · **T-176** (KVM4)
+>    antes da primeira corretora pagante.
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -435,6 +438,29 @@
       chat depois do Implantar"*. O comando (`lat.py`) é da execução: mede a 1ª resposta com Equilibrado e com Rápido, contra o ANTES
       (📊 14/10: 1º texto em **10,2 s** numa conversa nova e 7,1 s na 2ª mensagem). **Esperado:** a execução cola os números do depois e
       diz se a meta (💭 1º texto ≤ 3 s no Rápido) foi batida. · *de:* S132-A §6 · P-132A-09
+
+> **14/10 (depois da SPEC-132 — as decisões D-132F-01…08):** a próxima execução é a SPEC-131-0-B2 (a linha do usuário, fase 1) e depois a
+> SPEC-139 (a loja de aplicativos), no mesmo chat — prompt pronto em `specs-propostas/PROMPT-DE-ABERTURA-LINHA-DO-USUARIO-E-LOJA.md`.
+> Nasceram a T-174 a T-177.
+
+- [ ] **T-174** ⏳ 🧑 **antes do próximo Implantar do `smith-web`** · **O servidor aguentar o build do site: swap + parar os serviços antigos
+      não usados** (P-132D-01, D-132F-08) — o passo a passo, os nomes dos serviços e o que esperar na tela: **ver a resposta final do gerente de
+      14/10**. **Esperado:** o Implantar do `smith-web` termina sem derrubar o painel, a API nem o WhatsApp. **Se der errado:** o servidor
+      cair de novo durante o build → anote a hora e mande no chat; até lá, Implantar o `smith-web` só fora do horário de atendimento.
+      · *de:* S132 (incidente de 14/10) · D-132F-08
+- [ ] **T-175** ⏳ 🧑 **quando o chat da SPEC-131-0-B2 pedir, 10 min** · **Parear o chip de teste** (D-132F-06) — com o celular do seu número
+      de teste: WhatsApp → **Aparelhos conectados** → **Conectar um aparelho** → aponte para o código que o gerente abrir na tela do
+      computador; depois mande, na sua conversa **"Mensagem para você"**, um texto, um áudio curto e uma foto, e diga ao gerente se a resposta
+      "▸ AutoBrokers" apareceu e se o celular avisou. O passo a passo completo vem na própria mensagem do gerente. **Esperado:** um aparelho
+      novo aparece na lista de Aparelhos conectados; no fim o gerente o desconecta. **Se der errado:** "limite de aparelhos" → desconecte um
+      que você não usa e tente de novo; o código não lê → peça "QR de novo". · *de:* S131-0-B2 §2.1
+- [ ] **T-176** ⏳ 🧑 **antes da primeira corretora PAGANTE** · **Subir o servidor para o plano KVM4** (D-132F-08) — e, junto, separar o
+      Evolution GO das linhas dos usuários num servidor próprio (SPEC-131-0-B2 §4, "Capacidade"). **Esperado:** a execução refaz a conta do
+      teto de linhas (`LINHA_DO_USUARIO_MAX_LINHAS`) com a memória nova. · *de:* D-132F-08
+- [ ] **T-177** ⏳ 🧑 **quando o chat da SPEC-139 mandar o link, 2 min** · **Escolher a direção das capas da loja: A, B ou C** (D-132F-03) —
+      abra a prancha (3 estilos × 4 aplicativos, claro e escuro) e responda no chat *"capas: A"* (ou B, ou C). Sem resposta, a execução segue
+      com a de maior nota (A) e você pode trocar depois. Não gostou de nenhuma: crie as suas (1600×900, sem texto) e mande os arquivos — elas
+      entram pelo `cover_url`. · *de:* S139 §3
 
 ### ① Implantar e conferir — não depende de nada
 
