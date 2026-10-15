@@ -195,6 +195,13 @@ def numero_de_corretora(db, telefone_e164: str) -> bool:
                         .in_("paired_phone_e164", fs).execute())
         linhas += _dados(db.table("integrations").select("company_id, purpose").eq("is_active", True)
                          .in_("identifier", digitos).execute())
+        # 🔴 SPEC-131-0-B2 (conserto B3) — a LINHA DO USUÁRIO é o WhatsApp PESSOAL de um corretor: o número continua
+        # sendo de uma PESSOA. Contá-la aqui calava o corretor no QCM no dia em que ele conectava a linha. Não abre laço:
+        # a linha só responde à conversa do dono consigo mesmo — o que o QCM manda a esse número chega à instância como
+        # conversa ALHEIA e é descartado no portão dela (`linha_do_usuario.entrada.filtrar` → `outra_conversa`).
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+
+        linhas = [x for x in linhas if str(x.get("purpose") or "").strip().lower() != PURPOSE_DA_LINHA]
         # SPEC-132-C C3 — o número do ASSISTENTE dos corretores mora na empresa da plataforma, mas é um robô do
         # produto como a linha de uma corretora: o QCM nunca conversa com ele (robô↔robô)
         if any(str(x.get("purpose") or "").strip().lower() == "assistente" for x in linhas):
