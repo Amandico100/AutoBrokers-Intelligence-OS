@@ -39,7 +39,7 @@ export default function CorretoraPage() {
             description="Quem atende seus segurados no WhatsApp. Nome, tom, mensagens — e o botão de ligar/desligar."
             status={{ tone: 'info', label: 'Da corretora' }}
             cta="Configurar"
-            href="/dashboard/personalizacao/agentes/even"
+            href="/dashboard/personalizacao/corretora/agente-de-atendimento"
           />
           <GalleryCard
             icon={icons.whatsapp}
@@ -62,21 +62,21 @@ export default function CorretoraPage() {
             title="Equipe"
             description="Usuários da corretora e papéis (dono, admin, membro)."
             cta="Gerenciar"
-            href="/dashboard/personalizacao/equipe"
+            href="/dashboard/personalizacao/corretora/equipe"
           />
           <GalleryCard
             icon={icons.conhecimento}
             title="Conhecimento da corretora"
             description="Documentos e fontes que TODOS os assistentes da equipe usam."
             cta="Alimentar"
-            href="/dashboard/personalizacao/conhecimento"
+            href="/dashboard/personalizacao/corretora/conhecimento"
           />
           <GalleryCard
             icon={icons.cobranca}
             title="Custos e Uso"
             description="Saldo e consumo da corretora — total e por pessoa (30 dias)."
             cta="Ver consumo"
-            href="/dashboard/personalizacao/custos"
+            href="/dashboard/personalizacao/corretora/custos"
           />
         </GalleryGrid>
       </div>
