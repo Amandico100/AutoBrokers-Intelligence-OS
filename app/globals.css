@@ -227,9 +227,9 @@ textarea::-webkit-scrollbar-thumb:hover {
 
 /* =============================================
    SPEC-131-B / SPEC-139 L1 · a CAPA GERADA de cada aplicativo (laudo de design §2.3)
-   O desenho é um SVG em código (components/aplicativos/casca/capas/composicoes.ts, direção A · Placa) — a cor, a luz,
+   O desenho é um SVG em código (components/aplicativos/casca/capas/composicoes.ts, direção C · Cena) — a cor, a luz,
    a textura e o ícone estão DENTRO dele. Este bloco só faz o SVG ocupar a capa inteira, como object-fit: cover (o
-   próprio SVG corta pelo centro: 16:9 no card, 4:1 no cabeçalho). Nenhum token global muda (D-131-43).
+   próprio SVG corta: 16:9 no card, 4:1 no cabeçalho; o destaque ancora à direita). Nenhum token global muda (D-131-43).
    ============================================= */
 .capa-aplicativo svg {
   position: absolute;
