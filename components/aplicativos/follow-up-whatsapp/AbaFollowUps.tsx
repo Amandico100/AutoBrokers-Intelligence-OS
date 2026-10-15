@@ -11,6 +11,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { PenLine } from 'lucide-react';
+
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +28,13 @@ import type { ResumoConversation } from '@/lib/auxiliaries/types';
 import { createApprovalRequest, fetchConnectorTemplates, fetchTenantConnections, fetchPermissions } from '@/lib/vault/api';
 
 type DraftState = 'idle' | 'loading' | 'error';
+
+// Conserto B da SPEC-139 (juiz de design, Follow-ups 78): os rótulos mono de 10 px em `text-faint` (2,75:1) viram
+// `text-sm font-medium text-foreground`; os chips de tom têm 44 px de toque no celular; "Gerar rascunho" e "Criar
+// aprovação" usam `BOTAO_PRIMARIO` (o branco sobre azul reprovava AA no claro); depois de criar, uma FRASE — nunca
+// `id:`/`status:` crus. As chamadas de dados são as mesmas (scripts/as-telas-no-lugar.test.mjs guarda).
+const ROTULO = 'text-sm font-medium text-foreground';
+const BOTAO = `inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${BOTAO_PRIMARIO}`;
 
 const TONES: { value: string; label: string }[] = [
   { value: 'profissional', label: 'Profissional' },
@@ -70,7 +80,7 @@ function SelectorRow({
     >
       <div className="min-w-0">
         <p className="truncate text-sm text-foreground">{title}</p>
-        {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
+        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
       </div>
       <span className={cn('h-3.5 w-3.5 shrink-0 rounded-full border', active ? 'border-primary bg-primary' : 'border-border')} />
     </button>
@@ -216,7 +226,7 @@ export default function AbaFollowUps() {
       </div>
 
       <div className="space-y-2">
-        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-faint">Atendimento (opcional)</p>
+        <p className={ROTULO}>Atendimento (opcional)</p>
         {convs === null ? (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
             <Icon icon={icons.renovacao} size={14} className="animate-spin" /> Carregando conversas…
@@ -240,8 +250,8 @@ export default function AbaFollowUps() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="fu-phone" className="text-foreground">Telefone de destino</Label>
-          <Input id="fu-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5547999999999" className="bg-background" />
-          <p className="text-[11px] text-muted-foreground">Use DDI+DDD+número. Ex.: 5547999999999.</p>
+          <Input id="fu-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="5511900000000" className="bg-background" />
+          <p className="text-xs text-muted-foreground">Com o código do país e o DDD, só números. Ex.: 5511900000000.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="fu-objective" className="text-foreground">Objetivo do follow-up</Label>
@@ -250,16 +260,17 @@ export default function AbaFollowUps() {
       </div>
 
       <div className="space-y-1.5">
-        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-faint">Tom da mensagem</p>
+        <p className={ROTULO}>Tom da mensagem</p>
         <div className="flex flex-wrap gap-1.5">
           {TONES.map((t) => (
             <button
               key={t.value}
               type="button"
               onClick={() => setTone(t.value)}
+              aria-pressed={tone === t.value}
               className={cn(
-                'rounded-full border px-3 py-1 text-xs transition-colors',
-                tone === t.value ? 'border-primary/40 bg-brand-soft text-primary' : 'border-border text-muted-foreground hover:text-foreground',
+                'inline-flex h-11 items-center rounded-full border px-4 text-sm transition-colors sm:h-9',
+                tone === t.value ? 'border-primary/40 bg-brand-soft font-medium text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
               )}
             >
               {t.label}
@@ -268,17 +279,17 @@ export default function AbaFollowUps() {
         </div>
       </div>
 
-      <Button onClick={generate} disabled={draftState === 'loading'}>
+      <button type="button" onClick={generate} disabled={draftState === 'loading'} className={BOTAO}>
         {draftState === 'loading' ? (
           <>
-            <Icon icon={icons.renovacao} size={16} className="mr-2 animate-spin" /> Gerando rascunho…
+            <Icon icon={icons.renovacao} size={16} className="animate-spin" /> Gerando rascunho…
           </>
         ) : (
           <>
-            <Icon icon={icons.auxiliares} size={16} className="mr-2" /> Gerar rascunho
+            <PenLine className="h-4 w-4" strokeWidth={1.6} aria-hidden="true" /> Gerar rascunho
           </>
         )}
-      </Button>
+      </button>
 
       {draftState === 'error' && (
         <DetailSection>
@@ -310,7 +321,7 @@ export default function AbaFollowUps() {
             className="bg-background"
             placeholder="A mensagem de follow-up aparecerá aqui."
           />
-          <p className="mt-1 text-[11px] text-muted-foreground">{message.length} caracteres · nenhuma mensagem será enviada agora.</p>
+          <p className="mt-1 text-xs text-muted-foreground">{message.length} caracteres · nenhuma mensagem será enviada agora.</p>
 
           {!waConn && (
             <p className="mt-3 text-xs text-warning">
@@ -327,9 +338,9 @@ export default function AbaFollowUps() {
           {createdApproval ? (
             <div className="mt-3 rounded-lg border border-success/40 bg-surface-2 p-3">
               <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Icon icon={icons.success} size={16} className="text-success" /> Aprovação criada
+                <Icon icon={icons.success} size={16} className="text-success" /> Pedido de aprovação criado
               </p>
-              <p className="mt-1 font-mono text-[11px] text-faint">id: {createdApproval.id} · status: {createdApproval.status}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Aguardando você em Aprovações — nada sai para o cliente antes disso.</p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Link
                   href="/dashboard/personalizacao/conectores/aprovacoes"
@@ -342,10 +353,10 @@ export default function AbaFollowUps() {
             </div>
           ) : (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button onClick={createApproval} disabled={creating}>
-                <Icon icon={icons.aprovacao} size={14} className="mr-2" />
-                {creating ? 'Criando…' : 'Criar aprovação'}
-              </Button>
+              <button type="button" onClick={createApproval} disabled={creating} className={BOTAO}>
+                <Icon icon={icons.aprovacao} size={14} />
+                {creating ? 'Criando…' : 'Pedir minha aprovação'}
+              </button>
               <Link
                 href="/dashboard/personalizacao/conectores/aprovacoes"
                 className="text-xs font-medium text-primary hover:underline"
