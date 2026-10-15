@@ -7,12 +7,27 @@ espera durável da SPEC-129-A).
 
     00:30  renovacao.preparar   InfoCap /renovacoes → lista congelada (upsert) → por item, EM SÉRIE: dono → ficha →
                                 de_apolice → `pronta` | `pendente(motivo)`
-    02:00  renovacao.calcular   `pronta` com calcular_em ≤ dia, ordem (ramo, fimvig) → porta.calcular(servico=
-                                'renovacao', prioridade=7, politica_de_sessao='madrugada', renovacao_id=…) → `calculando`;
-                                depois DORME e relê a cada 10 min (o estado é DERIVADO dos cálculos — nunca callback)
-    05:30  renovacao.conferir   `conferencia_da_renovacao.py` (OUTRO caminho: relê a InfoCap, não esta lista)
+    01:00  renovacao.calcular   ESPERA a lista das 00:30 terminar; `pronta` com calcular_em ≤ dia (+ a antecipação),
+                                vencimento mais próximo primeiro → porta.calcular(servico='renovacao', prioridade=7,
+                                politica_de_sessao='madrugada', renovacao_id=…) → `calculando`; depois DORME e relê a
+                                cada 10 min (o estado é DERIVADO dos cálculos — nunca callback)
+    05:55  (ultimo_inicio)      a HORA-LIMITE: o que ainda não começou no Agger é cancelado na fila e volta
+                                `pronta(ficou_para_a_proxima_noite)` — entra primeiro na noite seguinte
+    06:05  renovacao.conferir   `conferencia_da_renovacao.py` (OUTRO caminho: relê a InfoCap, não esta lista)
     06:15  renovacao.desvio     aguardando_agger / falhou passageiro → o Agger da CORRETORA, com aviso nomeado
     06:45  renovacao.avisar     "N prontas no seu Agger · M pendentes (porquê) · K falharam" por pessoa e à corretora
+
+A CONTA DA JANELA (SPEC-132, Founder 14/10: "nunca só 12 — às 7h tudo cotado no Agger"). O teto de 12 da D-131-33 era
+NIVELAMENTO (📊 pico de 42 de um dono num dia, BLOCO 0 131-A §1), não limite do motor: a vencida já saía toda, o 12 só
+limitava a antecipação, e NADA olhava o relógio — 42 no mesmo login invadiam a manhã sem ninguém saber. O gargalo real
+é a FILA: renovação de madrugada = 1 sessão do Agger por corretora (`teto_sessoes_corretora` 1, D-131-30), pedidos em
+série. 📊 LAUDO-I1 §2.4: um pedido de 3 opções = login 34–54 s + cálculo (1ª oferta 6 s, fecha em 64 s, p90 406 s, teto
+480 s) + logout 12–14 s → típico ~2,5 min · p90 ~8 min · pior ~9,1 min (54+480+14 = 548 s).
+    antes   02:00 → 05:30 = 210 min, sem hora-limite         típico 84 · pior 23 por corretora por noite
+    agora   01:00 → 05:55 = 295 min de começo + 10 de margem  típico 118 · p90 36 · pior 32 (295/9,13) — ≥ 30 mesmo no pior
+O último que começa às 05:55 termina (pior) às 06:04, antes da conferência das 06:05 e com o Agger da corretora livre
+para o desvio das 06:15; o aviso sai 06:45, antes das 07:00. O que sobra fica marcado e tem até `antecipar_ate_dias`
+(7) noites antes de vencer a antecedência: a antecipação puxa o que vence nos próximos dias quando sobra relógio.
 
 As BORDAS (InfoCap, a ficha, a porta) são funções deste módulo que o teste troca — o resto é o código do produto.
 ⛔ Nada aqui fala com o cliente. ⛔ Nenhum nome de corretora (CLAUDE.md §13.9): tudo por `company_id`.
@@ -577,6 +592,8 @@ async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
         campos["dono_motivo"] = status or None
         campos["responsavel_user_id"] = repo.substituto_de(cid, uid, d.isoformat()) or uid
         estado, motivo, pedido, dados = await _avaliar(db, cid, item, fonte, cfg)
+        if estado == "pronta" and _ficou_de_ontem(item):
+            motivo = R.MOTIVO_FICOU_PARA_A_PROXIMA_NOITE      # SPEC-132: a marca sobrevive à reavaliação da lista
         if pedido is not None:
             try:
                 campos["ramo_agger"] = int(getattr(pedido, "ramo"))
@@ -676,19 +693,28 @@ async def _pedir(db: Any, cid: str, item: Mapping[str, Any], dia: date, cfg: Map
     return "calculando"
 
 
-def escolher_da_noite(prontas: List[Mapping[str, Any]], dia: date, *, teto: int, antecipar_ate_dias: int
-                      ) -> Tuple[List[Mapping[str, Any]], Dict[str, int]]:
-    """D-131-33 — o que sai ESTA noite, por conta do Agger (`renovacao.chave_da_conta`), puro:
+def _ficou_de_ontem(x: Mapping[str, Any]) -> bool:
+    return x.get("estado") == "pronta" and x.get("motivo") == R.MOTIVO_FICOU_PARA_A_PROXIMA_NOITE
 
-    · as VENCIDAS (calcular_em ≤ dia — o atraso de ontem entra hoje) saem TODAS, mais perto do fimvig primeiro; as que
-      passam do teto NÃO são cortadas (o atraso é pior) — contam em `acima_do_teto`
-    · a SOBRA do teto é preenchida com `pronta` que vencem nos próximos `antecipar_ate_dias` (calcular_em ≤ dia + N),
-      as mais próximas primeiro — elas não entram nas "esperadas do dia" da conferência
-    Ordem do disparo: vencidas, depois antecipadas; dentro de cada, (fimvig, ramo)."""
+
+def escolher_da_noite(prontas: List[Mapping[str, Any]], dia: date, *, teto: Optional[int], antecipar_ate_dias: int
+                      ) -> Tuple[List[Mapping[str, Any]], Dict[str, int]]:
+    """O que sai ESTA noite e em que ORDEM, puro (SPEC-132; era D-131-33 com teto 12 fixo):
+
+    · as VENCIDAS (calcular_em ≤ dia — o atraso de ontem entra hoje) saem TODAS; nenhum teto as corta
+    · a ANTECIPAÇÃO: `pronta` que vencem nos próximos `antecipar_ate_dias` (calcular_em ≤ dia + N). `teto=None` (o
+      padrão) = TODAS entram na fila e o RELÓGIO decide até onde a noite chega (`ultimo_inicio`); com teto (30–500,
+      da corretora), por conta do Agger (`renovacao.chave_da_conta`), só até ele — a vencida acima dele conta em
+      `acima_do_teto` e sai assim mesmo (o atraso é pior)
+    Ordem do disparo = a da fila do motor: vencidas, depois antecipadas; dentro de cada, o VENCIMENTO MAIS PRÓXIMO
+    primeiro e, no empate, a que ficou da noite anterior (`ficou_para_a_proxima_noite`) na frente."""
     hoje, limite = dia.isoformat(), (dia + timedelta(days=max(0, int(antecipar_ate_dias)))).isoformat()
-    chave = lambda x: (str(x.get("fimvig")), int(x.get("ramo_agger") or 999), str(x.get("nosnum")))  # noqa: E731
+    chave = lambda x: (str(x.get("fimvig")), 0 if _ficou_de_ontem(x) else 1,  # noqa: E731
+                       int(x.get("ramo_agger") or 999), str(x.get("nosnum")))
     vencidas = sorted((x for x in prontas if str(x.get("calcular_em") or "") <= hoje), key=chave)
     futuras = sorted((x for x in prontas if hoje < str(x.get("calcular_em") or "9999") <= limite), key=chave)
+    if teto is None:
+        return vencidas + futuras, {"vencidas": len(vencidas), "antecipadas": len(futuras), "acima_do_teto": 0}
     usados: Dict[str, int] = {}
     for x in vencidas:
         usados[R.chave_da_conta(x)] = usados.get(R.chave_da_conta(x), 0) + 1
@@ -702,9 +728,32 @@ def escolher_da_noite(prontas: List[Mapping[str, Any]], dia: date, *, teto: int,
     return vencidas + antecipadas, {"vencidas": len(vencidas), "antecipadas": len(antecipadas), "acima_do_teto": acima}
 
 
-async def calcular_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.calcular") -> Dict[str, int]:
-    """Tudo o que está `pronta` e vence (calcular_em ≤ dia), mais a antecipação até o teto por conta (D-131-33),
-    enfileirado de uma vez — a fila do motor serializa por login e paraleliza entre logins."""
+def ultimo_inicio(janela: Mapping[str, Any], dia: date, fuso: str) -> datetime:
+    """SPEC-132 — a HORA-LIMITE do dia: depois dela nenhum cálculo de renovação COMEÇA (a régua de `config`)."""
+    from app.services.multicalculo import config as C
+
+    alvo = _hora(C.ultimo_inicio_coerente(janela), R.JANELA_PADRAO["ultimo_inicio"])
+    return datetime(dia.year, dia.month, dia.day, alvo.hour, alvo.minute, tzinfo=_tz(fuso))
+
+
+def _marcar_para_a_proxima_noite(repo: Any, cid: str, item: Mapping[str, Any], d: date, *, por: str,
+                                 hora: str) -> bool:
+    try:
+        repo.transicionar(cid, item["id"], "pronta", por=por, motivo=R.MOTIVO_FICOU_PARA_A_PROXIMA_NOITE,
+                          dados={"noite": d.isoformat(), "hora_limite": hora})
+        return True
+    except (R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
+        logger.warning("[RENOV] não marquei para a próxima noite (%s)", type(exc).__name__)
+        return False
+
+
+async def calcular_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.calcular",
+                       agora: Optional[datetime] = None) -> Dict[str, int]:
+    """Tudo o que está `pronta` e vence (calcular_em ≤ dia), mais a antecipação (SPEC-132: sem teto por padrão),
+    enfileirado de uma vez, o vencimento mais próximo primeiro — a fila do motor serializa por login e a madrugada usa
+    uma sessão por corretora. `agora` (o workflow passa o relógio): passou da hora-limite (`ultimo_inicio`) → NADA
+    começa; as escolhidas ficam `pronta(ficou_para_a_proxima_noite)`. Sem `agora` (o canário, os testes de unidade),
+    o relógio não é consultado."""
     cid = R._uuid(company_id)
     d = _dia(dia)
     repo = R.RepositorioDeRenovacoes(db)
@@ -712,11 +761,20 @@ async def calcular_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
     params = R.parametros(cfg)
     limite = d + timedelta(days=int(params["antecipar_ate_dias"]))
     prontas = repo.listar(cid, estados=("pronta",), calcular_ate=limite.isoformat())
-    itens, escolha = escolher_da_noite(prontas, d, teto=int(params["teto_por_conta_noite"]),
+    itens, escolha = escolher_da_noite(prontas, d, teto=params["teto_por_conta_noite"],
                                        antecipar_ate_dias=int(params["antecipar_ate_dias"]))
-    resultado = {"disparados": 0, "pendentes": 0, "falharam": 0, **escolha}
+    resultado = {"disparados": 0, "pendentes": 0, "falharam": 0, "ficaram_para_a_proxima_noite": 0, **escolha}
     if not itens:
         return resultado
+    if agora is not None:
+        hora_limite = ultimo_inicio(params["janela"], d, fuso_da_corretora(db, cid))
+        if agora >= hora_limite:
+            logger.warning("[RENOV] o calcular chegou depois da hora-limite: nada começa, %s ficam para a próxima "
+                           "noite", len(itens))
+            hora = hora_limite.strftime("%H:%M")
+            resultado["ficaram_para_a_proxima_noite"] = sum(
+                _marcar_para_a_proxima_noite(repo, cid, x, d, por=por, hora=hora) for x in itens)
+            return resultado
     try:
         fonte = await abrir_fonte(db, cid)
     except Exception as exc:  # noqa: BLE001 — sem a InfoCap a ficha não se monta
@@ -741,6 +799,48 @@ async def calcular_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrug
         chave = {"calculando": "disparados", "pendente": "pendentes"}.get(novo, "falharam")
         resultado[chave] += 1
     return resultado
+
+
+async def cancelar_na_porta(db: Any, company_id: str, *, pedido_id: str) -> int:
+    """A BORDA do cancelamento: `porta.cancelar` (pedido → cancelado; SÓ os cálculos `na_fila` → cancelado; os que já
+    estão no robô o motor termina). Devolve quantos cálculos saíram da fila."""
+    from app.services.multicalculo.porta import MulticalculoProvider
+
+    return int(await MulticalculoProvider().cancelar(company_id=company_id, pedido_id=pedido_id) or 0)
+
+
+async def adiar_o_que_nao_comecou(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.calcular"
+                                  ) -> Dict[str, int]:
+    """SPEC-132 — a HORA-LIMITE chegou: todo item `calculando` cujo pedido tem TODOS os cálculos ainda `na_fila`
+    (nenhum começou no Agger) tem o pedido cancelado e volta `pronta(ficou_para_a_proxima_noite)` — a noite seguinte o
+    pega primeiro. Um cálculo que já começou NÃO é tocado (termina e é derivado). Se a fila perdeu a corrida (o motor
+    pegou um no meio do cancelamento: cancelou menos que todos), o item fica `calculando` — nunca dois negócios."""
+    cid = R._uuid(company_id)
+    d = _dia(dia)
+    repo = R.RepositorioDeRenovacoes(db)
+    params = R.parametros(carregar_config(db, cid))
+    hora = ultimo_inicio(params["janela"], d, fuso_da_corretora(db, cid)).strftime("%H:%M")
+    r = {"ficaram_para_a_proxima_noite": 0, "ja_no_robo": 0}
+    for item in repo.listar(cid, estados=("calculando",)):
+        pid = str(item.get("pedido_id") or "")
+        if not pid:
+            continue
+        calcs, ofertas, _pessoa = _ler_o_pedido(db, cid, pid)
+        if not calcs or ofertas or any(str(c.get("status")) != "na_fila" for c in calcs):
+            r["ja_no_robo"] += 1
+            continue
+        try:
+            cancelados = await cancelar_na_porta(db, cid, pedido_id=pid)
+        except Exception as exc:  # noqa: BLE001 — a porta recusou: o item segue como está (o motor o leva)
+            logger.warning("[RENOV] não consegui tirar da fila (%s)", type(exc).__name__)
+            continue
+        if cancelados < len(calcs):
+            logger.warning("[RENOV] a fila perdeu a corrida: %s de %s cálculos já tinham começado", len(calcs) - cancelados,
+                           len(calcs))
+            r["ja_no_robo"] += 1
+            continue
+        r["ficaram_para_a_proxima_noite"] += int(_marcar_para_a_proxima_noite(repo, cid, item, d, por=por, hora=hora))
+    return r
 
 
 def acompanhar(db: Any, company_id: str, *, por: str) -> Dict[str, int]:
@@ -769,18 +869,32 @@ def acompanhar(db: Any, company_id: str, *, por: str) -> Dict[str, int]:
 
 
 async def _acompanhar_ou_dormir(ctx: dict, db: Any, cid: str, dia: date, *, ate_passo: str, passo: str) -> Any:
-    """Relê; ainda há item em voo e o relógio não passou de `ate_passo` → DORME 10 min (espera durável 129-A)."""
+    """Relê; ainda há item em voo e o relógio não passou de `ate_passo` → DORME 10 min (espera durável 129-A).
+    SPEC-132 (passo calcular): passou da HORA-LIMITE (`ultimo_inicio`) → o que ainda não começou fica para a próxima
+    noite (`adiar_o_que_nao_comecou`); antes dela, o sono acorda NA hora-limite, nunca 10 min depois."""
     contagem = await asyncio.to_thread(acompanhar, db, cid, por=f"madrugada.{passo}")
     if contagem["em_voo"] <= 0:
         return contagem
     params = R.parametros(carregar_config(db, cid))
-    limite = _momento_local(params["janela"], ate_passo, dia, fuso_da_corretora(db, cid))
+    fuso = fuso_da_corretora(db, cid)
+    limite = _momento_local(params["janela"], ate_passo, dia, fuso)
     agora = _agora()
+    acordar_em = float(RELEITURA_S)
+    if passo == "calcular":
+        hora_limite = ultimo_inicio(params["janela"], dia, fuso)
+        if agora >= hora_limite:
+            adiadas = await adiar_o_que_nao_comecou(db, cid, dia, por=f"madrugada.{passo}")
+            contagem["ficaram_para_a_proxima_noite"] = adiadas["ficaram_para_a_proxima_noite"]
+            contagem["em_voo"] = max(0, contagem["em_voo"] - adiadas["ficaram_para_a_proxima_noite"])
+            if contagem["em_voo"] <= 0:
+                return contagem
+        else:
+            acordar_em = min(acordar_em, (hora_limite - agora).total_seconds())
     if agora >= limite:
         return contagem
     falta = (limite - agora).total_seconds()
     return ctx["runs"].dormir(ctx["run_id"], lease_token=ctx.get("lease_token"),
-                              acordar_em_s=min(RELEITURA_S, max(60, falta)),
+                              acordar_em_s=min(acordar_em, max(60, falta)),
                               wait_for={"tipo": "renovacao_calculos", "ref": f"{passo}:{dia.isoformat()}",
                                         "prazo_s": int(falta) + 900, "passo": "acompanhar"},
                               company_id=cid)
@@ -795,8 +909,8 @@ async def desvio_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugad
     d = _dia(dia)
     repo = R.RepositorioDeRenovacoes(db)
     resultado = {"desviados": 0, "falharam": 0, "esperando_o_robo": 0, "sem_conexao": 0}
-    # 🔴 conserto C1 (RT-B1): o estado GRAVADO é das 05:30 (a última releitura do calcular); a retentativa do motor
-    # pode ter calculado no Agger da DONA entre 05:30 e 06:15. RELÊ os cálculos ANTES de escolher o que desviar —
+    # 🔴 conserto C1 (RT-B1): o estado GRAVADO é da última releitura do calcular (a hora da conferência); a retentativa do motor
+    # pode ter calculado no Agger da DONA entre a conferência e o desvio. RELÊ os cálculos ANTES de escolher o que desviar —
     # o item que já saiu vira `calculada` aqui e não abre o 2º negócio no Agger da corretora
     try:
         acompanhar(db, cid, por=por)
@@ -863,7 +977,7 @@ def _frase_do_desvio(razao: str, hora: Any) -> str:
 # O PASSO 5 — avisar (06:45)
 # ---------------------------------------------------------------------------------------------------------------------
 def _texto(n: int, m: int, k: int, motivos: Mapping[str, int], *, seu: bool, antecipadas: int = 0,
-           acima: int = 0, falhas: Optional[Mapping[str, int]] = None) -> str:
+           acima: int = 0, falhas: Optional[Mapping[str, int]] = None, proxima_noite: int = 0) -> str:
     texto = f"{n} prontas no {'seu ' if seu else ''}Agger · {m} pendentes"
     if m:
         texto += " (" + ", ".join(f"{R.frase_do_motivo(mo)}: {q}" for mo, q in sorted(motivos.items())) + ")"
@@ -874,7 +988,10 @@ def _texto(n: int, m: int, k: int, motivos: Mapping[str, int], *, seu: bool, ant
     if antecipadas:
         texto += f" · {antecipadas} antecipada(s) dos próximos dias"
     if acima:
-        texto += f" · {acima} acima do teto da noite (saíram mesmo assim: o atraso é pior)"
+        texto += f" · {acima} acima do limite da noite (saíram mesmo assim: o atraso é pior)"
+    if proxima_noite:
+        # SPEC-132: o relógio da madrugada acabou antes delas começarem — nunca caladas
+        texto += f" · {proxima_noite} ficaram para a próxima noite (o horário acabou; entram primeiro)"
     return texto
 
 
@@ -969,8 +1086,15 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
     fuso = fuso_da_corretora(db, cid)
     hoje = d.isoformat()
     limite = (d + timedelta(days=int(params["antecipar_ate_dias"]))).isoformat()
-    do_dia = _da_noite(repo.listar(cid, calcular_ate=limite), d)
-    teto = int(params["teto_por_conta_noite"])
+    lidos = repo.listar(cid, calcular_ate=limite)
+    do_dia = _da_noite(lidos, d)
+    # SPEC-132: sem teto (o padrão) nada fica "acima do teto"; o que o relógio deixou para amanhã é contado à parte
+    teto = params["teto_por_conta_noite"]
+    proxima: Dict[Optional[str], int] = {}
+    for x in lidos:
+        if _ficou_de_ontem(x):
+            dono = x.get("responsavel_user_id") or None
+            proxima[dono] = proxima.get(dono, 0) + 1
     por_conta: Dict[str, int] = {}
     for x in do_dia:
         if str(x.get("calcular_em") or "") <= hoje and x.get("estado") in R.ESTADOS_CALCULADOS + R.ESTADOS_EM_VOO:
@@ -979,8 +1103,11 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
     for x in do_dia:
         grupos.setdefault(x.get("responsavel_user_id") or None, []).append(x)
     avisos = 0
-    total = {"n": 0, "m": 0, "k": 0, "antecipadas": 0, "acima_do_teto": sum(max(0, v - teto)
-                                                                             for v in por_conta.values())}
+    total = {"n": 0, "m": 0, "k": 0, "antecipadas": 0,
+             "acima_do_teto": 0 if teto is None else sum(max(0, v - teto) for v in por_conta.values()),
+             "proxima_noite": sum(proxima.values())}
+    for pessoa in proxima:
+        grupos.setdefault(pessoa, [])      # quem só tem renovação para amanhã também recebe o aviso dela
     motivos_total: Dict[str, int] = {}
     falhas_total: Dict[str, int] = {}
     for pessoa, itens in grupos.items():
@@ -988,7 +1115,8 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
         pend = [x for x in itens if x["estado"] == "pendente"]
         k = sum(1 for x in itens if x["estado"] == "falhou")
         ant = sum(1 for x in itens if str(x.get("calcular_em") or "") > hoje)
-        acima = max(0, por_conta.get(str(pessoa), 0) - teto) if pessoa else 0
+        acima = max(0, por_conta.get(str(pessoa), 0) - teto) if (pessoa and teto is not None) else 0
+        prox = proxima.get(pessoa, 0)
         motivos: Dict[str, int] = {}
         for x in pend:
             motivos[str(x.get("motivo"))] = motivos.get(str(x.get("motivo")), 0) + 1
@@ -1006,15 +1134,15 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
             continue      # sem dono: entra no aviso da corretora (abaixo)
         R.registrar_aviso(db, cid, dia=hoje, assunto="avisar", user_id=pessoa,
                           texto=_texto(n, len(pend), k, motivos, seu=True, antecipadas=ant, acima=acima,
-                                       falhas=falhas),
-                          severidade="medium" if (pend or k) else "info",
+                                       falhas=falhas, proxima_noite=prox),
+                          severidade="medium" if (pend or k or prox) else "info",
                           valores={"prontas": n, "pendentes": len(pend), "falharam": k, "antecipadas": ant,
-                                   "acima_do_teto": acima},
+                                   "acima_do_teto": acima, "ficaram_para_a_proxima_noite": prox},
                           work_run_id=work_run_id, fuso=fuso, janela=params["janela"])
         avisos += 1
     medida = repo.dia(cid, hoje) or {}
     texto = _texto(total["n"], total["m"], total["k"], motivos_total, seu=False, antecipadas=total["antecipadas"],
-                   acima=total["acima_do_teto"], falhas=falhas_total)
+                   acima=total["acima_do_teto"], falhas=falhas_total, proxima_noite=total["proxima_noite"])
     estado_do_dia = str(medida.get("estado") or "")
     # 🔴 conserto C1 (J-P9 · RT-P2): a completude da SPEC conta `pendente` com motivo como feito — o número que diz se o
     # trabalho ACONTECEU é "calculadas de cotáveis", e ele vai SEMPRE no aviso (da conferência; sem ela, da lista do dia)
@@ -1022,7 +1150,7 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
     if estado_do_dia == "vermelho":
         texto += f" · 🔴 a conferência achou {medida.get('faltaram') or 0} renovação(ões) que a lista do dia esqueceu"
     elif estado_do_dia == "sem_conexao":
-        texto += " · a conferência das 05:30 não conseguiu ler a InfoCap"
+        texto += f" · a conferência das {params['janela'].get('conferir', R.JANELA_PADRAO['conferir'])} não conseguiu ler a InfoCap"
     elif estado_do_dia and calc_cot[0] == 0 and calc_cot[1] >= 1:
         texto += " · nenhuma renovação cotável foi calculada hoje"     # nunca "100 %" num dia sem cálculo
     elif estado_do_dia:
@@ -1032,9 +1160,11 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
     texto += _frase_da_licenca(lic)
     R.registrar_aviso(db, cid, dia=hoje, assunto="avisar", user_id=None, texto=texto,
                       severidade="high" if (estado_do_dia in ("vermelho", "sem_conexao") or lic.get("vencidas"))
-                      else ("medium" if (total["m"] or total["k"] or lic.get("vencendo")) else "info"),
+                      else ("medium" if (total["m"] or total["k"] or total["proxima_noite"] or lic.get("vencendo"))
+                            else "info"),
                       valores={"prontas": total["n"], "pendentes": total["m"], "falharam": total["k"],
                                "antecipadas": total["antecipadas"], "acima_do_teto": total["acima_do_teto"],
+                               "ficaram_para_a_proxima_noite": total["proxima_noite"],
                                "calculadas": calc_cot[0], "cotaveis": calc_cot[1],
                                "licenca_vencendo": lic.get("vencendo", 0), "licenca_vencida": lic.get("vencidas", 0)},
                       work_run_id=work_run_id, fuso=fuso, janela=params["janela"])
@@ -1044,6 +1174,26 @@ def avisar_dia(db: Any, company_id: str, dia: Any, *, work_run_id: Optional[str]
 # ---------------------------------------------------------------------------------------------------------------------
 # OS WORK RUNS — registrados no MESMO registro do Work OS (SPEC-055), carregados por `work.workflows.carregar_extras`
 # ---------------------------------------------------------------------------------------------------------------------
+#: SPEC-132 — o calcular (01:00) relê se a lista do dia terminou a cada isto
+ESPERA_DA_LISTA_S = 120
+
+
+def preparacao_em_curso(db: Any, company_id: str, dia: date) -> bool:
+    """O run `renovacao.preparar` DESTE dia DESTA corretora (a chave do tick, `renov:preparar:<company>:<dia>`) existe e
+    ainda não terminou. Sem run (o tick não o criou) ou banco ilegível → False: o calcular segue (o padrão de antes)."""
+    from app.services.work.runs import ESTADOS_TERMINAIS
+
+    chave = f"renov:preparar:{company_id}:{dia.isoformat()}"
+    try:
+        linhas = (_cliente(db).table("work_runs").select("id, company_id, status, idempotency_key")
+                  .eq("company_id", str(company_id)).eq("idempotency_key", chave).limit(5).execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[RENOV] não li o run da lista (%s): o calcular segue", type(exc).__name__)
+        return False
+    return any(str(x.get("company_id")) == str(company_id) and str(x.get("status")) not in ESTADOS_TERMINAIS
+               for x in linhas)
+
+
 def _contexto(ctx: dict) -> Tuple[Any, str, date]:
     db = _cliente(ctx["db"])
     cid = R._uuid(ctx["company_id"])
@@ -1070,12 +1220,26 @@ async def workflow_calcular(ctx: dict) -> Any:
     db, cid, dia = _contexto(ctx)
 
     async def _disparar() -> Any:
-        return await calcular_dia(db, cid, dia)
+        # SPEC-132: o calcular começa às 01:00 — mas só DEPOIS da lista das 00:30 (a preparação e o disparo nunca
+        # mexem no mesmo item ao mesmo tempo). Lista ainda em curso e antes da hora-limite → DORME 2 min (durável)
+        agora = _agora()
+        params = R.parametros(carregar_config(db, cid))
+        hora_limite = ultimo_inicio(params["janela"], dia, fuso_da_corretora(db, cid))
+        if agora < hora_limite and preparacao_em_curso(db, cid, dia):
+            falta = (hora_limite - agora).total_seconds()
+            return ctx["runs"].dormir(ctx["run_id"], lease_token=ctx.get("lease_token"),
+                                      acordar_em_s=min(ESPERA_DA_LISTA_S, max(1.0, falta)),
+                                      wait_for={"tipo": "renovacao_lista", "ref": f"lista:{dia.isoformat()}",
+                                                "prazo_s": int(falta) + 900, "passo": "disparar"},
+                                      company_id=cid)
+        return await calcular_dia(db, cid, dia, agora=agora)
 
     r = await executar_passo(ctx, step_key="disparar", ordinal=1, nome="Pedir os cálculos no Agger",
                              step_type="portal", fn=_disparar, efeito="idempotente",
                              guardar=("disparados", "pendentes", "falharam", "vencidas", "antecipadas",
-                                      "acima_do_teto"))
+                                      "acima_do_teto", "ficaram_para_a_proxima_noite"))
+    if isinstance(r, _runs_mod().Esperando):
+        return r
 
     async def _acompanhar() -> Any:
         return await _acompanhar_ou_dormir(ctx, db, cid, dia, ate_passo="conferir", passo="calcular")

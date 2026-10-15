@@ -61,12 +61,16 @@ type Rascunho = {
   antecedencia: number;
   reajuste: Record<string, string>;
   quantasOpcoes: number;
-  teto: number;
+  /** SPEC-132: null = sem limite (o padrão: o relógio da madrugada decide); um número só de 30 para cima */
+  teto: number | null;
   antecipar: number;
   usarCorretoraSeFalhar: boolean;
   contaGlobalDias: number;
   conta: ContaDaRenovacao;
 };
+
+/** SPEC-132: o limite por noite como o backend o lê — null (sem limite) ou um número. */
+const tetoDe = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** O modo como a TELA o mostra: o que ela não oferece (o envio automático) é o que o produto faz — só calcular. */
 const modoNaTela = (m: Modo): Modo => (MODOS_DA_RENOVACAO.some((x) => x.valor === m) ? m : 'calcular');
@@ -84,7 +88,7 @@ function rascunhoDe(d: DadosServicos): Rascunho {
     antecedencia: Number(e.antecedencia_dias ?? p.antecedencia_dias),
     reajuste: Object.fromEntries(Object.entries(e.reajuste_basica_pct || {}).map(([k, v]) => [k, v == null ? '' : String(v)])),
     quantasOpcoes: (e.opcoes || p.opcoes || []).length,
-    teto: Number(e.teto_por_conta_noite ?? p.teto_por_conta_noite),
+    teto: tetoDe(e.teto_por_conta_noite),
     antecipar: Number(e.antecipar_ate_dias ?? p.antecipar_ate_dias),
     usarCorretoraSeFalhar: conta > 0,
     // desligado (0) → ao religar, volta o padrão do produto
@@ -204,7 +208,8 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
 
   const padrao = dados.padrao.renovacao as Efetivo;
   const ordem = dados.faixas.opcoes_da_renovacao || padrao.opcoes || [];
-  const faixaTeto = dados.faixas.teto_por_conta_noite || [1, Math.max(r.teto, 1)];
+  // SPEC-132: a faixa vem do backend (o mínimo é 30 — "nunca só 12"); sem ela, só o valor que já está gravado
+  const faixaTeto = dados.faixas.teto_por_conta_noite || [r.teto ?? 1, r.teto ?? 1];
   const faixaAntecipar = dados.faixas.antecipar_ate_dias || [0, Math.max(r.antecipar, 0)];
   const ramos = dados.ramos;
 
@@ -230,7 +235,11 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
     if (Object.keys(ren).length) bloco.renovacao = ren;
     const opcoes = ordem.slice(0, r.quantasOpcoes);
     if (JSON.stringify(opcoes) !== JSON.stringify(padrao.opcoes || [])) bloco.opcoes = opcoes;
-    if (r.teto !== padrao.teto_por_conta_noite) bloco.teto_por_conta_noite = r.teto;
+    if (r.teto !== null && (r.teto < faixaTeto[0] || r.teto > faixaTeto[1])) {
+      setAviso(`O limite por noite vai de ${faixaTeto[0]} a ${faixaTeto[1]} renovações — ou deixe sem limite.`);
+      return;
+    }
+    if (r.teto !== tetoDe(padrao.teto_por_conta_noite)) bloco.teto_por_conta_noite = r.teto;
     if (r.antecipar !== padrao.antecipar_ate_dias) bloco.antecipar_ate_dias = r.antecipar;
     if (r.conta !== (padrao.conta ?? 'responsavel')) bloco.conta = r.conta;
     const corpo: Record<string, unknown> = { servicos: { renovacao: bloco } };
@@ -354,13 +363,23 @@ export function AbaConfigurar(_props: Partial<PropsDaAba> = {}) {
                 </div>
               </Linha>
             )}
-            <Linha rotulo="Máximo por Agger por noite" htmlFor="cfg-teto"
-              info="Quantas renovações cada Agger calcula numa noite. O que passar disso é adiantado para as noites anteriores.">
-              <NumeroComBotoes id="cfg-teto" rotulo="renovações por noite" valor={r.teto} min={faixaTeto[0]} max={faixaTeto[1]}
-                sufixo="por noite" desabilitado={!pode} onChange={(teto) => mudar({ teto })} />
+            <Linha rotulo="Limite por noite"
+              info={<>Sem limite, a madrugada calcula todas as renovações do dia e adianta as dos próximos dias enquanto houver tempo, para tudo estar pronto às 7h. Se o horário acabar antes de alguma começar, ela entra primeiro na noite seguinte. Com limite, cada Agger calcula no máximo este número por noite (no mínimo {faixaTeto[0]}); as que vencem no dia saem sempre.</>}>
+              <Segmentado<'sem' | 'com'> rotulo="Limite por noite" valor={r.teto === null ? 'sem' : 'com'} desabilitado={!pode}
+                opcoes={[
+                  { valor: 'sem', titulo: 'Sem limite (recomendado)' },
+                  { valor: 'com', titulo: 'Com limite' },
+                ]}
+                onChange={(v) => mudar({ teto: v === 'sem' ? null : (r.teto ?? faixaTeto[0]) })} />
+              {r.teto !== null && (
+                <div className="mt-3">
+                  <NumeroComBotoes id="cfg-teto" rotulo="renovações por noite" valor={r.teto} min={faixaTeto[0]} max={faixaTeto[1]}
+                    sufixo="por noite" desabilitado={!pode} onChange={(teto) => mudar({ teto })} />
+                </div>
+              )}
             </Linha>
             <Linha rotulo="Adiantar até" htmlFor="cfg-antecipar"
-              info="Quando uma noite passa do máximo, as renovações que sobram podem ser calculadas até este número de dias antes do previsto. Nunca depois do vencimento.">
+              info="Quando sobra tempo na madrugada, as renovações dos próximos dias são calculadas antes, até este número de dias antes do previsto. Nunca depois do vencimento.">
               <NumeroComBotoes id="cfg-antecipar" rotulo="dias de antecipação" valor={r.antecipar} min={faixaAntecipar[0]}
                 max={faixaAntecipar[1]} sufixo="dias antes" desabilitado={!pode} onChange={(antecipar) => mudar({ antecipar })} />
             </Linha>

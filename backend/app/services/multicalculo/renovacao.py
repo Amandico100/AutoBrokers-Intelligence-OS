@@ -47,7 +47,9 @@ TRANSICOES: Dict[str, Tuple[str, ...]] = {
     "pronta": ("pronta", "pendente", "calculando", "falhou", "substituida"),
     "pendente": ("pronta", "pendente", "substituida"),
     # confirmação N1: o cálculo pode revelar que o item não é cotável (a moto pela placa) → pendente(ramo_nao_cotado)
-    "calculando": ("calculada", "falhou", "pendente", "aguardando_agger", "substituida"),
+    # SPEC-132: `calculando → pronta` é SÓ o "ficou para a próxima noite" — a hora-limite chegou e TODOS os cálculos do
+    # pedido ainda estavam na fila (nenhum começou no Agger; o pedido foi cancelado antes)
+    "calculando": ("calculada", "falhou", "pendente", "aguardando_agger", "pronta", "substituida"),
     "aguardando_agger": ("calculando", "calculada", "falhou", "pendente", "aguardando_agger", "substituida"),
     "falhou": ("calculando", "pronta", "pendente", "falhou", "substituida"),
     "calculada": ("apresentada", "substituida"),
@@ -98,7 +100,14 @@ FRASE_DO_MOTIVO: Dict[str, str] = {
     # confirmação N1: os motivos de veículo que o robô escreve com o código na frente
     "veiculo_moto": "a placa é de uma moto: o aplicativo ainda não cota moto (renove manualmente)",
     "veiculo_sem_combustivel": "o combustível do veículo não veio da InfoCap nem da FIPE (complete no Agger)",
+    # SPEC-132 (Founder 14/10): o relógio da madrugada acabou antes de o cálculo começar — volta `pronta` e entra
+    # primeiro na noite seguinte (o vencimento mais próximo na frente)
+    "ficou_para_a_proxima_noite": "o horário da madrugada acabou antes de começar: entra primeiro na próxima noite",
 }
+#: SPEC-132 — os motivos que uma `pronta` pode CARREGAR (a marca de quem sobrou da noite). Nenhum outro: `pronta` sem
+#: motivo continua sendo o normal, e o CHECK do banco só exige motivo em pendente/falhou/perdida (nada a migrar)
+MOTIVO_FICOU_PARA_A_PROXIMA_NOITE = "ficou_para_a_proxima_noite"
+MOTIVOS_DA_PRONTA: Tuple[str, ...] = (MOTIVO_FICOU_PARA_A_PROXIMA_NOITE,)
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 _MOTIVO = re.compile(r"^[a-z0-9_]{1,80}$")
@@ -467,7 +476,9 @@ class RepositorioDeRenovacoes:
         de = str(atual.get("estado") or "")
         if para not in TRANSICOES.get(de, ()):
             raise TransicaoInvalida(f"{de} → {para} não está na máquina")
-        motivo_final = motivo if para in ESTADOS_COM_MOTIVO else None
+        # SPEC-132: a `pronta` guarda SÓ a marca de quem sobrou da noite (MOTIVOS_DA_PRONTA); qualquer outro some
+        motivo_final = motivo if (para in ESTADOS_COM_MOTIVO or (para == "pronta" and motivo in MOTIVOS_DA_PRONTA)) \
+            else None
         novos = {k: v for k, v in extra.items() if atual.get(k) != v}
         if de == para and (atual.get("motivo") or None) == motivo_final and not novos:
             if dados is None or _comparavel(dados) == _comparavel(self._dados_do_ultimo_evento(cid, str(atual["id"]))):
@@ -511,15 +522,22 @@ def contar(itens: Iterable[Mapping[str, Any]]) -> Dict[str, int]:
 # ---------------------------------------------------------------------------------------------------------------------
 ANTECEDENCIA_PADRAO = 10          # D-131-01 (era 15)
 MARGEM_DE_LEITURA_DIAS = 3        # 💭 SPEC §4: a lista lê +3 dias além da antecedência
-#: D-131-33 (o pico: 📊 um dia de 42 renovações de UM dono na corretora maior — 11× a média, BLOCO 0): o calcular
-#: aplica um TETO por conta do Agger por noite e ANTECIPA o que vence nos próximos dias para preencher a sobra
-TETO_POR_CONTA_NOITE_PADRAO = 12
+#: SPEC-132 (Founder 14/10: "se tiver 30 renovações no dia, o agente precisa fazer as 30 — nunca só 12"): SEM teto por
+#: padrão — o RELÓGIO decide. Nenhum cálculo novo começa depois de `janela.ultimo_inicio`; o que não começou volta
+#: `pronta(ficou_para_a_proxima_noite)` e entra primeiro na noite seguinte. A corretora pode pôr um teto por conta do
+#: Agger por noite, mas NUNCA abaixo de `TETO_POR_CONTA_NOITE_MINIMO`. (Era D-131-33: teto 12 fixo, revisto pela D-132F-07.)
+TETO_POR_CONTA_NOITE_PADRAO: Optional[int] = None
+TETO_POR_CONTA_NOITE_MINIMO = 30
+TETO_POR_CONTA_NOITE_MAXIMO = 500
 ANTECIPAR_ATE_DIAS_PADRAO = 7
 OPCOES_PADRAO: Tuple[str, ...] = ("anterior", "franquia_reduzida", "completa_mais")
 OPCOES_PROIBIDAS: Tuple[str, ...] = ("economica", "minima")    # ⛔ nunca na renovação (mutação 7)
-JANELA_PADRAO: Dict[str, Any] = {"preparar": "00:30", "calcular": "02:00", "conferir": "05:30", "desvio": "06:15",
-                                 "avisar": "06:45", "prosseguir_de": "01:00", "prosseguir_ate": "06:30",
-                                 "retentativa_min": 60}
+#: SPEC-132 — a janela ganhou 1 h no começo e 35 min no fim (📊 a conta está em `madrugada.py`, "A CONTA DA JANELA"):
+#: calcular 02:00 → 01:00 (espera a lista das 00:30 terminar) · `ultimo_inicio` 05:55 (novo: depois dele nenhum
+#: cálculo começa) · conferir 05:30 → 06:05 (os últimos terminam ANTES dela) · desvio 06:15 e aviso 06:45 iguais
+JANELA_PADRAO: Dict[str, Any] = {"preparar": "00:30", "calcular": "01:00", "ultimo_inicio": "05:55",
+                                 "conferir": "06:05", "desvio": "06:15", "avisar": "06:45", "prosseguir_de": "01:00",
+                                 "prosseguir_ate": "06:30", "retentativa_min": 60}
 FUSO_PADRAO = "America/Sao_Paulo"
 
 
@@ -557,8 +575,17 @@ def parametros(cfg: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     opcoes = opcoes[:3] or list(OPCOES_PADRAO)
     return {"antecedencia_dias": _inteiro(bloco, "antecedencia_dias", ANTECEDENCIA_PADRAO, 1, 60),
             "janela": janela, "opcoes": opcoes, "margem_dias": MARGEM_DE_LEITURA_DIAS,
-            "teto_por_conta_noite": _inteiro(bloco, "teto_por_conta_noite", TETO_POR_CONTA_NOITE_PADRAO, 1, 500),
+            "teto_por_conta_noite": teto_da_noite(bloco.get("teto_por_conta_noite")),
             "antecipar_ate_dias": _inteiro(bloco, "antecipar_ate_dias", ANTECIPAR_ATE_DIAS_PADRAO, 0, 30)}
+
+
+def teto_da_noite(valor: Any) -> Optional[int]:
+    """SPEC-132: None = sem teto (o relógio decide). Um inteiro de 30 a 500 vale; qualquer outro (o 12 antigo, 0, texto)
+    → None — ⛔ nunca um teto abaixo de 30."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or int(valor) != valor:
+        return None
+    n = int(valor)
+    return n if TETO_POR_CONTA_NOITE_MINIMO <= n <= TETO_POR_CONTA_NOITE_MAXIMO else None
 
 
 def chave_da_conta(item: Mapping[str, Any]) -> str:

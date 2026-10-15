@@ -1,4 +1,4 @@
-"""A CONFERÊNCIA DAS 05:30 — "nenhuma renovação esquecida". SPEC-131-A (F1), laudo I1 §3.
+"""A CONFERÊNCIA DA MADRUGADA (06:05 desde a SPEC-132; era 05:30) — "nenhuma renovação esquecida". SPEC-131-A (F1), laudo I1 §3.
 
 🔴 O ELO da SPEC: "nada esquecido PORQUE a conferência relê a InfoCap". Por isso este módulo é um caminho de código
 SEPARADO do que montou a lista: ele NÃO importa `madrugada` (o montador) — um guarda por AST no teste confere — e lê
@@ -11,7 +11,7 @@ SEPARADO do que montou a lista: ele NÃO importa `madrugada` (o montador) — um
                                                               alerta à corretora (conserto C1, RT-P1)
     `pendente(sem_conexao)` NÃO conta como feito (conserto C1, RT-P2): fica em `detalhes.sem_conexao`
 
-completude = (calculadas + pendentes COM motivo) ÷ esperadas · e à parte calculadas ÷ cotáveis. `calculando` às 05:30
+completude = (calculadas + pendentes COM motivo) ÷ esperadas · e à parte calculadas ÷ cotáveis. `calculando` na hora da conferência
 não conta como feito (nunca contou: só `calculada`/`pendente` entram no numerador) — e o que está em voo SEM batida do
 motor há mais de 15 min vai para `detalhes.calculando_sem_batida`.
 """

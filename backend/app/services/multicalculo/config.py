@@ -245,9 +245,12 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
                       # §4 — no FUSO da corretora, 7 dias por semana (HH:MM). Prosseguir sobre sessão aberta só entre
                       # `prosseguir_de` e `prosseguir_ate`; a pessoa voltou → nova tentativa a cada `retentativa_min`
                       # (D-131-29, Founder 12/10: de hora em hora)
-                      "janela": {"preparar": "00:30", "calcular": "02:00", "conferir": "05:30", "desvio": "06:15",
-                                 "avisar": "06:45", "prosseguir_de": "01:00", "prosseguir_ate": "06:30",
-                                 "retentativa_min": 60},
+                      # SPEC-132 (Founder 14/10: "às 7h tudo cotado; a hora que começa não interessa"): calcular
+                      # 02:00 → 01:00 (espera a lista terminar) · `ultimo_inicio` (novo): depois dele NENHUM cálculo
+                      # começa · conferir 05:30 → 06:05. A conta da janela está em `madrugada.py`
+                      "janela": {"preparar": "00:30", "calcular": "01:00", "ultimo_inicio": "05:55",
+                                 "conferir": "06:05", "desvio": "06:15", "avisar": "06:45", "prosseguir_de": "01:00",
+                                 "prosseguir_ate": "06:30", "retentativa_min": 60},
                       # §4 — 1 a 3, na ordem do disparo; só `presets.OPCOES_DA_RENOVACAO`. ⛔ econômica e mínima
                       # NUNCA numa renovação (mutação 7): a validação recusa e volta a este padrão
                       "opcoes": ["anterior", "franquia_reduzida", "completa_mais"],
@@ -259,10 +262,11 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
                       # Lida CRUA pelo motor (F3, `_cfg_madrugada`); registrada aqui para a leitura validar e para a
                       # tela "Serviços" (que só regrava as chaves que edita) nunca apagá-la — costura F4
                       "prosseguir_aceites": [],
-                      # D-131-33 — 📊 o pico medido é 42 renovações de UM dono num dia (BLOCO 0 da 131-A §1): NIVELAR.
-                      # No máximo isto de pedidos por login (conta do Agger) por noite (1–60) 💭; o excedente é
-                      # ANTECIPADO para noites anteriores até `antecipar_ate_dias` antes (0–20) 💭 (lidos pela F1)
-                      "teto_por_conta_noite": 12,
+                      # SPEC-132 (Founder 14/10, revê a D-131-33 que fixava 12): SEM teto — null = o RELÓGIO decide
+                      # (`janela.ultimo_inicio`); o que não começou fica para a próxima noite, na frente. A corretora
+                      # pode pôr um teto por conta do Agger por noite, NUNCA abaixo de 30 (30–500). A antecipação (0–20
+                      # dias 💭) puxa o que vence nos próximos dias quando sobra relógio (lidos pela F1)
+                      "teto_por_conta_noite": None,
                       "antecipar_ate_dias": 7,
                       # D-131-16 (BLOCO 0 A5 📊 `per_c` > 0 em 20/20 nas duas corretoras, é a comissão da CORRETORA):
                       # a opção `anterior` leva a comissão do ano anterior + isto, em pontos percentuais (0–5) 💭
@@ -556,7 +560,8 @@ _HHMM = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 ANTECEDENCIA_DIAS_FAIXA = (1, 60)
 RETENTATIVA_MIN_FAIXA = (1, 360)
 TETO_SESSOES_CORRETORA_FAIXA = (1, 20)
-TETO_POR_CONTA_NOITE_FAIXA = (1, 60)
+#: SPEC-132 (Founder 14/10: "no mínimo 30"): o teto OPCIONAL por conta por noite. Sem ele (null) o relógio decide
+TETO_POR_CONTA_NOITE_FAIXA = (30, 500)
 ANTECIPAR_ATE_DIAS_FAIXA = (0, 20)
 COMISSAO_A_MAIS_PP_FAIXA = (0, 5)
 #: SPEC-131-B (D-131-04) — "Com qual conta" a renovação calcula: a do responsável (padrão) ou SEMPRE a da corretora
@@ -585,8 +590,16 @@ def _renovacao_coerente(bloco: Dict[str, Any]) -> None:
         logger.warning("[MC-CONFIG] servicos.renovacao.opcoes: 1 a 3 de anterior/franquia_reduzida/completa_mais — "
                        "fica o padrão")
         bloco["opcoes"] = list(pad["opcoes"])
+    # SPEC-132: o teto por conta por noite é OPCIONAL — null (o padrão) = o relógio decide; um número só de 30 a 500.
+    # Fora disso (o 12 antigo, 0, 10, texto) → null, com log: ⛔ nunca um teto abaixo de 30 chega à madrugada
+    teto = bloco.get("teto_por_conta_noite")
+    if teto is not None and not _inteiro_na_faixa(teto, TETO_POR_CONTA_NOITE_FAIXA):
+        logger.warning("[MC-CONFIG] servicos.renovacao.teto_por_conta_noite fora de %s–%s — fica sem teto (o relógio "
+                       "decide)", *TETO_POR_CONTA_NOITE_FAIXA)
+        bloco["teto_por_conta_noite"] = pad["teto_por_conta_noite"]
+    elif teto is not None:
+        bloco["teto_por_conta_noite"] = int(teto)
     for chave, faixa in (("teto_sessoes_corretora", TETO_SESSOES_CORRETORA_FAIXA),
-                         ("teto_por_conta_noite", TETO_POR_CONTA_NOITE_FAIXA),
                          ("antecipar_ate_dias", ANTECIPAR_ATE_DIAS_FAIXA)):
         if not _inteiro_na_faixa(bloco.get(chave), faixa):
             logger.warning("[MC-CONFIG] servicos.renovacao.%s fora de %s–%s — fica o padrão", chave, *faixa)
@@ -631,7 +644,32 @@ def _janela_limpa(janela: Any) -> Dict[str, Any]:
         logger.warning("[MC-CONFIG] servicos.renovacao.janela.prosseguir_de/ate fora de 00:00–07:00 — fica o padrão")
         pad = PADRAO_DO_PRODUTO["servicos"]["renovacao"]["janela"]
         limpa["prosseguir_de"], limpa["prosseguir_ate"] = pad["prosseguir_de"], pad["prosseguir_ate"]
+    # SPEC-132: a hora-limite de COMEÇAR um cálculo fica entre o calcular e a conferência (calcular < último ≤
+    # conferir − 10 min, o pior pedido 📊 ~9 min). Fora disso → a conferência menos 10 min (nunca antes do calcular+1)
+    limpa["ultimo_inicio"] = ultimo_inicio_coerente(limpa)
     return limpa
+
+
+#: SPEC-132 — o pior pedido de renovação (📊 LAUDO-I1 §2.4: login 54 s + teto de leitura 480 s + logout 14 s = 548 s)
+#: arredondado: quem começa na hora-limite termina antes da conferência
+MARGEM_ATE_A_CONFERENCIA_MIN = 10
+
+
+def ultimo_inicio_coerente(janela: Mapping[str, Any]) -> str:
+    """`janela.ultimo_inicio` (HH:MM) se calcular < ele ≤ conferir − margem; senão conferir − margem (≥ calcular + 1)."""
+    pad = PADRAO_DO_PRODUTO["servicos"]["renovacao"]["janela"]
+
+    def m(k: str) -> int:
+        v = janela.get(k)
+        return _minutos_hhmm(v if isinstance(v, str) and _HHMM.match(v) else pad[k])
+
+    calc, conf = m("calcular"), m("conferir")
+    teto = conf - MARGEM_ATE_A_CONFERENCIA_MIN
+    v = janela.get("ultimo_inicio")
+    if isinstance(v, str) and _HHMM.match(v) and calc < _minutos_hhmm(v) <= teto:
+        return v
+    alvo = max(calc + 1, teto)
+    return f"{alvo // 60:02d}:{alvo % 60:02d}"
 
 
 #: conserto C2 (red P4): o fim da madrugada para o Prosseguir, em minutos locais (07:00)
@@ -702,10 +740,11 @@ def comissao_a_mais_pp(cfg: Mapping[str, Any]) -> float:
     return float(v)
 
 
-def teto_por_conta_noite(cfg: Mapping[str, Any]) -> int:
-    """D-131-33: no máximo isto de pedidos de renovação por login do Agger por noite."""
+def teto_por_conta_noite(cfg: Mapping[str, Any]) -> Optional[int]:
+    """SPEC-132: None = sem teto (o relógio da madrugada decide). Configurado: 30–500 renovações por conta do Agger por
+    noite (só limita a ANTECIPAÇÃO; a que vence hoje sai sempre). Fora da faixa → None, nunca um teto abaixo de 30."""
     v = _bloco_da_renovacao(cfg).get("teto_por_conta_noite")
-    return int(v) if _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA) \
+    return int(v) if v is not None and _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA) \
         else PADRAO_DO_PRODUTO["servicos"]["renovacao"]["teto_por_conta_noite"]
 
 
@@ -1014,9 +1053,11 @@ def erros_da_edicao(servicos: Any = None, preferencias_de_seguradoras: Any = Non
                     erros.append(f"{onde}.padrao_dias: um número inteiro de dias, de {VALIDADE_DIAS_FAIXA[0]} a "
                                  f"{VALIDADE_DIAS_FAIXA[1]}")
             elif k == "teto_por_conta_noite":
-                if not _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA):
-                    erros.append(f"{onde}: um número inteiro, de {TETO_POR_CONTA_NOITE_FAIXA[0]} a "
-                                 f"{TETO_POR_CONTA_NOITE_FAIXA[1]}")
+                # SPEC-132: null = sem teto (o relógio decide); um número, só de 30 para cima — "nunca só 12"
+                if v is not None and not _inteiro_na_faixa(v, TETO_POR_CONTA_NOITE_FAIXA):
+                    erros.append(f"{onde}: sem limite, ou um número inteiro de {TETO_POR_CONTA_NOITE_FAIXA[0]} a "
+                                 f"{TETO_POR_CONTA_NOITE_FAIXA[1]} (o mínimo é {TETO_POR_CONTA_NOITE_FAIXA[0]} por "
+                                 "noite)")
             elif k == "antecipar_ate_dias":
                 if not _inteiro_na_faixa(v, ANTECIPAR_ATE_DIAS_FAIXA):
                     erros.append(f"{onde}: um número inteiro de dias, de {ANTECIPAR_ATE_DIAS_FAIXA[0]} a "

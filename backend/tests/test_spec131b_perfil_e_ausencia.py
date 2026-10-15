@@ -346,12 +346,15 @@ def test_sem_as_colunas_da_migration_a_tela_abre_mesmo_assim():
 def test_configurar_edita_as_chaves_da_madrugada_e_recusa_o_proibido():
     from app.services.multicalculo import config as CFG
 
-    ok = {"renovacao": {"opcoes": ["anterior", "franquia_reduzida"], "teto_por_conta_noite": 20,
+    # §9.3 (SPEC-132, Founder 14/10: "no mínimo 30"): o teto era 1–60 (20 passava); agora sem teto (null) ou 30–500
+    ok = {"renovacao": {"opcoes": ["anterior", "franquia_reduzida"], "teto_por_conta_noite": 40,
                         "antecipar_ate_dias": 0}}
     assert CFG.erros_da_edicao(ok) == []
+    assert CFG.erros_da_edicao({"renovacao": {"teto_por_conta_noite": None}}) == []      # sem limite
     for ruim in ({"opcoes": ["anterior", "economica"]}, {"opcoes": []}, {"opcoes": ["anterior", "anterior"]},
                  {"opcoes": ["anterior", "franquia_reduzida", "completa_mais", "minima"]},
-                 {"teto_por_conta_noite": 0}, {"teto_por_conta_noite": 61}, {"teto_por_conta_noite": 2.5},
+                 {"teto_por_conta_noite": 0}, {"teto_por_conta_noite": 12}, {"teto_por_conta_noite": 20},
+                 {"teto_por_conta_noite": 501}, {"teto_por_conta_noite": 30.5},
                  {"antecipar_ate_dias": 21}, {"antecipar_ate_dias": -1}):
         assert CFG.erros_da_edicao({"renovacao": ruim}), ruim
     # ⛔ a cotação não ganhou as chaves da renovação; o aceite do Prosseguir segue fora da tela

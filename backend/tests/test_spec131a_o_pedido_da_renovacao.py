@@ -143,8 +143,10 @@ def test_ramo_indisponivel_continua_compativel_com_quem_ja_a_usa():
 def test_o_padrao_da_renovacao_e_o_do_contrato():
     ren = CONFIG["servicos"]["renovacao"]
     assert ren["antecedencia_dias"] == 10 == CONFIG["renovacao"]["antecedencia_dias"]       # D-131-01
-    assert ren["janela"] == {"preparar": "00:30", "calcular": "02:00", "conferir": "05:30", "desvio": "06:15",
-                             "avisar": "06:45", "prosseguir_de": "01:00", "prosseguir_ate": "06:30",
+    # §9.3 (SPEC-132, Founder 14/10 "às 7h tudo cotado; a hora que começa não interessa"): era calcular 02:00 e
+    # conferir 05:30, sem hora-limite. Agora 01:00 (espera a lista) · `ultimo_inicio` 05:55 · conferir 06:05
+    assert ren["janela"] == {"preparar": "00:30", "calcular": "01:00", "ultimo_inicio": "05:55", "conferir": "06:05",
+                             "desvio": "06:15", "avisar": "06:45", "prosseguir_de": "01:00", "prosseguir_ate": "06:30",
                              "retentativa_min": 60}
     assert ren["opcoes"] == ["anterior", "franquia_reduzida", "completa_mais"]
     assert ren["teto_sessoes_corretora"] == 1
@@ -491,10 +493,15 @@ def test_a_fonte_le_o_per_c_do_documento_e_nada_mais(monkeypatch):
 
 def test_as_chaves_do_nivelamento_da_noite():
     ren = CONFIG["servicos"]["renovacao"]
-    assert ren["teto_por_conta_noite"] == 12 == CFG.teto_por_conta_noite(CONFIG)
+    # §9.3 (SPEC-132, Founder 14/10: "nunca pode ser só 12 … no mínimo 30"): o padrão era 12 (D-131-33, nivelar o pico
+    # de 42). Agora SEM teto (None = o relógio decide) e, configurado, só de 30 a 500; o 12 antigo gravado → sem teto
+    assert ren["teto_por_conta_noite"] is None and CFG.teto_por_conta_noite(CONFIG) is None
     assert ren["antecipar_ate_dias"] == 7 == CFG.antecipar_ate_dias(CONFIG)
-    for bloco, chave, esperado in (({"teto_por_conta_noite": 0}, "teto_por_conta_noite", 12),
-                                   ({"teto_por_conta_noite": 61}, "teto_por_conta_noite", 12),
+    for bloco, chave, esperado in (({"teto_por_conta_noite": 0}, "teto_por_conta_noite", None),
+                                   ({"teto_por_conta_noite": 12}, "teto_por_conta_noite", None),
+                                   ({"teto_por_conta_noite": 29}, "teto_por_conta_noite", None),
+                                   ({"teto_por_conta_noite": 501}, "teto_por_conta_noite", None),
+                                   ({"teto_por_conta_noite": 61}, "teto_por_conta_noite", 61),
                                    ({"teto_por_conta_noite": 30}, "teto_por_conta_noite", 30),
                                    ({"antecipar_ate_dias": 21}, "antecipar_ate_dias", 7),
                                    ({"antecipar_ate_dias": 0}, "antecipar_ate_dias", 0),

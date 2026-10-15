@@ -7,10 +7,10 @@
                        → dono.dono_da_apolice REAL (/prod_docs na rede dublê, vínculo REAL) → ficha (DUBLÊ: é a
                        InfoCap HTTP do detalhe) → de_apolice (DUBLÊ pelo CONTRATO da SPEC §5: AUTO/RE → pedido;
                        VIND → RamoIndisponivel('ramo_nao_cotado'); sigla desconhecida → RamoIndisponivel('ramo_desconhecido'))
-      02:00 calcular   madrugada.calcular_na_porta REAL → porta (DUBLÊ da classe, contrato F3: grava pedido + cálculos)
+      01:00 calcular   madrugada.calcular_na_porta REAL → porta (DUBLÊ da classe, contrato F3: grava pedido + cálculos)
                        → `calculando` → DORME (espera durável 129-A) → o "motor" fecha os cálculos com ofertas →
                        o despertador REAL acorda → releitura DERIVA `calculada`
-      05:30 conferir   conferencia_da_renovacao REAL (relê a InfoCap) → renovacao_dias
+      06:05 conferir   conferencia_da_renovacao REAL (relê a InfoCap) → renovacao_dias
       06:15 desvio     nada a desviar
       06:45 avisar     briefing_service.publicar REAL (o canal in-app que JÁ existe; entrega SÓ no painel) →
                        1 aviso por dono + 1 da corretora
@@ -458,7 +458,8 @@ def madrugada_inteira(m, c, *, motor=True) -> None:
     """O dia todo, passo a passo, pelo tick e pelo worker reais."""
     tick(m, local(0, 31))
     rodar(m, run_do_passo(m, c.id, "preparar")["id"], c.id)
-    tick(m, local(2, 1))
+    # §9.3 (SPEC-132, Founder 14/10): a janela mudou — calcular 02:00 → 01:00 e conferir 05:30 → 06:05 (a conta em madrugada.py)
+    tick(m, local(1, 1))
     calc = run_do_passo(m, c.id, "calcular")
     rodar(m, calc["id"], c.id)
     if motor:
@@ -467,7 +468,7 @@ def madrugada_inteira(m, c, *, motor=True) -> None:
         if m.banco.run(calc["id"]).get("status") == "waiting_input":
             acordar(m, calc["id"])
             rodar(m, calc["id"], c.id)
-    tick(m, local(5, 31))
+    tick(m, local(6, 6))
     rodar(m, run_do_passo(m, c.id, "conferir")["id"], c.id)
     tick(m, local(6, 16))
     rodar(m, run_do_passo(m, c.id, "desvio")["id"], c.id)
@@ -508,9 +509,10 @@ def test_o_fio_do_tick_ao_aviso(mundo_real):
         assert x["documento_mascarado"] == "***.***.***-00" and len(x["documento_hmac"]) == 64
         assert x["cliente_nome_curto"] == "Cliente"
 
-    # 02:01 — calcular: a PORTA REAL grava o CONTRATO (renovação, prioridade 7, madrugada, renovacao_id), ordem (ramo,
+    # §9.3 (SPEC-132, Founder 14/10): a janela mudou — calcular 02:00 → 01:00 e conferir 05:30 → 06:05 (a conta em madrugada.py)
+    # 01:01 — calcular: a PORTA REAL grava o CONTRATO (renovação, prioridade 7, madrugada, renovacao_id), ordem (ramo,
     # fimvig), com as opções e as coberturas que de_apolice (REAL) montou da ficha
-    tick(m, local(2, 1))
+    tick(m, local(1, 1))
     calc = run_do_passo(m, c.id, "calcular")
     rodar(m, calc["id"], c.id)
     assert m.banco.run(calc["id"]).get("error_message") is None, m.banco.run(calc["id"]).get("error_message")
@@ -533,8 +535,8 @@ def test_o_fio_do_tick_ao_aviso(mundo_real):
     assert m.banco.run(calc["id"])["status"] == "completed", m.banco.run(calc["id"]).get("error_message")
     assert sorted(x["estado"] for x in itens(m, c.id)) == ["calculada"] * 3 + ["pendente"] * 2
 
-    # 05:31 conferir · 06:16 desvio · 06:46 avisar
-    for hora, passo in (((5, 31), "conferir"), ((6, 16), "desvio"), ((6, 46), "avisar")):
+    # 06:06 conferir · 06:16 desvio · 06:46 avisar (§9.3 SPEC-132: a conferência era 05:30)
+    for hora, passo in (((6, 6), "conferir"), ((6, 16), "desvio"), ((6, 46), "avisar")):
         tick(m, local(*hora))
         r = run_do_passo(m, c.id, passo)
         rodar(m, r["id"], c.id)
@@ -595,6 +597,6 @@ def test_o_fio_nasce_vermelho_sem_o_registro(mundo, monkeypatch):
 def test_sem_o_aplicativo_ligado_nada_e_enfileirado(mundo):
     m = mundo
     c = montar_corretora(m, "token-a", renovacoes=cinco_renovacoes(), ligada=False)
-    for h, mi in ((0, 31), (2, 1), (5, 31), (6, 16), (6, 46)):
+    for h, mi in ((0, 31), (1, 1), (6, 6), (6, 16), (6, 46)):   # §9.3 SPEC-132: a janela nova
         tick(m, local(h, mi))
     assert runs_da_renovacao(m, c.id) == []

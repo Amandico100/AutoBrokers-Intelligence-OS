@@ -20,7 +20,8 @@ export type Efetivo = {
   antecedencia_dias?: number;
   reajuste_basica_pct?: Record<string, number | null>;
   opcoes?: string[];
-  teto_por_conta_noite?: number;
+  /** SPEC-132: null = sem limite (o relógio da madrugada decide); configurado, de 30 para cima */
+  teto_por_conta_noite?: number | null;
   antecipar_ate_dias?: number;
   /** SPEC-131-B G5 — "Com qual conta" (D-131-04): o Agger do responsável (padrão) ou sempre o da corretora */
   conta?: ContaDaRenovacao;

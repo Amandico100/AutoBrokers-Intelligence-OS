@@ -51,7 +51,8 @@ def test_duas_corretoras_na_mesma_madrugada_zero_cruzamento(mundo):
     m = mundo
     a = montar_corretora(m, "token-a", renovacoes=cinco_renovacoes())
     b = montar_corretora(m, "token-b", renovacoes=cinco_renovacoes()[:3])   # o MESMO nosnum nas duas
-    for hora, passo in (((0, 31), "preparar"), ((2, 1), "calcular"), ((5, 31), "conferir"), ((6, 16), "desvio"),
+    # §9.3 (SPEC-132, Founder 14/10): a janela mudou — calcular 02:00 → 01:00 e conferir 05:30 → 06:05 (a conta em madrugada.py)
+    for hora, passo in (((0, 31), "preparar"), ((1, 1), "calcular"), ((6, 6), "conferir"), ((6, 16), "desvio"),
                         ((6, 46), "avisar")):
         tick(m, local(*hora))
         for c in (a, b):
@@ -90,12 +91,13 @@ def test_duas_corretoras_na_mesma_madrugada_zero_cruzamento(mundo):
 def test_dois_ticks_um_run_por_passo_e_duas_preparacoes_zero_duplicata(mundo):
     m = mundo
     c = montar_corretora(m, "token-a", renovacoes=cinco_renovacoes())
-    for hora in ((0, 31), (0, 31), (0, 45), (2, 1), (2, 1), (2, 30)):
+    # §9.3 (SPEC-132, Founder 14/10): a janela mudou — calcular 02:00 → 01:00 e conferir 05:30 → 06:05 (a conta em madrugada.py)
+    for hora in ((0, 31), (0, 31), (0, 45), (1, 1), (1, 1), (1, 30)):
         tick(m, local(*hora))
     assert sorted(r["workflow_key"] for r in runs_da_renovacao(m, c.id)) == ["renovacao.calcular",
                                                                              "renovacao.preparar"]
     # fora da janela (1 h depois do horário) o tick não enfileira de novo, nem atrasado
-    tick(m, local(3, 5))
+    tick(m, local(2, 5))
     assert len(runs_da_renovacao(m, c.id)) == 2
 
     _preparar(m, c)
@@ -332,7 +334,7 @@ def test_a_dona_no_proprio_agger_vira_aguardando_e_o_desvio_vai_a_corretora_com_
     c = montar_corretora(m, "token-a", renovacoes=cinco_renovacoes())
     tick(m, local(0, 31))
     rodar(m, run_do_passo(m, c.id, "preparar")["id"], c.id)
-    tick(m, local(2, 1))
+    tick(m, local(1, 1))          # §9.3 SPEC-132: o calcular começa às 01:00
     calc = run_do_passo(m, c.id, "calcular")
     rodar(m, calc["id"], c.id)
     (auto,) = [x for x in itens(m, c.id) if x["ramo_sigla"] == "AUTO"]
@@ -347,12 +349,13 @@ def test_a_dona_no_proprio_agger_vira_aguardando_e_o_desvio_vai_a_corretora_com_
     acordar(m, calc["id"])
     rodar(m, calc["id"], c.id)
     assert next(x for x in itens(m, c.id) if x["id"] == auto["id"])["estado"] == "aguardando_agger"
-    # 05:31: o calcular para de esperar (passou da conferência) sem inventar estado
+    # 06:05: o calcular para de esperar (passou da conferência) sem inventar estado — e a hora-limite das 05:55 não
+    # toca no `aguardando_agger` (ele é do desvio)
     while m.banco.run(calc["id"])["status"] == "waiting_input":
         acordar(m, calc["id"])
         rodar(m, calc["id"], c.id)
     assert m.banco.run(calc["id"])["status"] == "completed"
-    tick(m, local(5, 31))
+    tick(m, local(6, 6))          # §9.3 SPEC-132: a conferência é 06:05
     rodar(m, run_do_passo(m, c.id, "conferir")["id"], c.id)
     d = _dia(m, c)
     assert (d["calculadas"], d["pendentes"], d["estado"]) == (2, 2, "incompleto")   # aguardando NÃO conta como feito
@@ -408,13 +411,18 @@ def test_o_horario_e_o_dia_sao_do_fuso_da_corretora(mundo):
     # 04:31 UTC = 00:31 em Manaus: a de Manaus prepara, com o dia LOCAL dela
     tick(m, datetime(2026, 10, 13, 4, 31, tzinfo=timezone.utc))
     assert sorted(r["idempotency_key"] for r in runs_da_renovacao(m, mao.id)) ==         [f"renov:preparar:{mao.id}:2026-10-13"]
+    # §9.3 (SPEC-132): o calcular de SP agora é 01:00 — o tick de 04:31 UTC (01:31 em SP) também o enfileirou, no dia
+    # LOCAL de SP; antes (02:00) a SP tinha só o preparar aqui
+    assert sorted(r["idempotency_key"] for r in runs_da_renovacao(m, sp.id)) == sorted(
+        [f"renov:preparar:{sp.id}:2026-10-13", f"renov:calcular:{sp.id}:2026-10-13"])
     # o passo é de UM dia local: 03:00 UTC do dia 14 = 00:00 local do 14 em SP → nada (antes das 00:30)
     tick(m, datetime(2026, 10, 14, 3, 0, tzinfo=timezone.utc))
-    assert len(runs_da_renovacao(m, sp.id)) == 1
+    assert len(runs_da_renovacao(m, sp.id)) == 2
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# ⑪ o PICO (D-131-33): teto por conta por noite + antecipação; a vencida nunca é cortada
+# ⑪ o PICO: teto por conta por noite + antecipação; a vencida nunca é cortada. §9.3 (SPEC-132): o teto agora é OPCIONAL
+#   e nunca abaixo de 30 (era 12 fixo, D-131-33) — o mecanismo é o mesmo, os números vão para a régua nova
 # ---------------------------------------------------------------------------------------------------------------------
 def _pronta(dono, calcular_em, n):
     return {"id": f"x{n}", "dono_user_id": dono, "calcular_em": calcular_em.isoformat(),
@@ -423,19 +431,22 @@ def _pronta(dono, calcular_em, n):
 
 def test_o_teto_por_conta_antecipa_a_sobra_e_nunca_corta_a_vencida():
     a, b = "dono-a", "dono-b"
-    vencidas_a = [_pronta(a, DIA - timedelta(days=k % 2), k) for k in range(15)]       # 15 > teto 12
+    vencidas_a = [_pronta(a, DIA - timedelta(days=k % 2), k) for k in range(33)]       # 33 > teto 30
     futuras_a = [_pronta(a, DIA + timedelta(days=3), 100 + k) for k in range(5)]
     futuras_b = [_pronta(b, DIA + timedelta(days=d), 200 + d) for d in range(1, 11)]   # dia+1 … dia+10
-    escolhidos, conta = M.escolher_da_noite(vencidas_a + futuras_a + futuras_b, DIA, teto=12, antecipar_ate_dias=7)
+    escolhidos, conta = M.escolher_da_noite(vencidas_a + futuras_a + futuras_b, DIA, teto=30, antecipar_ate_dias=7)
     ids = [x["id"] for x in escolhidos]
     assert all(x["id"] in ids for x in vencidas_a), "uma vencida foi cortada pelo teto"
     assert not any(x["id"] in ids for x in futuras_a), "antecipou numa conta que já passou do teto"
     assert [x["id"] for x in escolhidos if x["dono_user_id"] == b] == [f"x{200 + d}" for d in range(1, 8)]
-    assert conta == {"vencidas": 15, "antecipadas": 7, "acima_do_teto": 3}
-    assert ids[:15] == [x["id"] for x in sorted(vencidas_a, key=lambda x: (x["fimvig"], 2, x["nosnum"]))]
+    assert conta == {"vencidas": 33, "antecipadas": 7, "acima_do_teto": 3}
+    assert ids[:33] == [x["id"] for x in sorted(vencidas_a, key=lambda x: (x["fimvig"], 2, x["nosnum"]))]
     # CONTROLE: com teto folgado a sobra da conta A também é antecipada
-    _, folgado = M.escolher_da_noite(vencidas_a + futuras_a, DIA, teto=30, antecipar_ate_dias=7)
-    assert folgado == {"vencidas": 15, "antecipadas": 5, "acima_do_teto": 0}
+    _, folgado = M.escolher_da_noite(vencidas_a + futuras_a, DIA, teto=40, antecipar_ate_dias=7)
+    assert folgado == {"vencidas": 33, "antecipadas": 5, "acima_do_teto": 0}
+    # SPEC-132: sem teto (o padrão) TODAS entram na fila — o relógio decide até onde a noite chega
+    _, sem = M.escolher_da_noite(vencidas_a + futuras_a + futuras_b, DIA, teto=None, antecipar_ate_dias=7)
+    assert sem == {"vencidas": 33, "antecipadas": 5 + 7, "acima_do_teto": 0}
 
 
 def test_a_antecipada_sai_esta_noite_mas_nao_e_cobrada_pela_conferencia(mundo):
