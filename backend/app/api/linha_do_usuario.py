@@ -9,8 +9,9 @@ ações manda também `por_user_id` (quem clicou), que TEM de ser o próprio `us
     GET  /api/linha-do-usuario/qr           ?company_id&user_id → {qr, estado, tentativa_id, motivo}
     POST /api/linha-do-usuario/desconectar  {company_id, user_id, por_user_id} → {ok, estado}
 
-Estados: nao_conectada · aguardando_qr · conectada · desconectada · limite · desligada. Com a chave
-`LINHA_DO_USUARIO_LIGADA` ausente o GET responde 200 `{estado:"desligada"}`; o teto cheio volta no CORPO
+Estados: nao_conectada · aguardando_qr · conectada · desconectada · limite · desligada. Quando a chave
+`LINHA_DO_USUARIO_LIGADA` não liga ESTA pessoa (ausente, ou ela fora da lista de user_id — `estado.ligada_para`) ou
+ela não é membro ativo da corretora, o GET responde 200 `{estado:"desligada"}`; o teto cheio volta no CORPO
 (`{estado:"limite"}`; no POST /conectar com 409). ⛔ Nenhum telefone em claro sai daqui; o QR só para quem pediu.
 """
 from __future__ import annotations
