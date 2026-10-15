@@ -192,7 +192,7 @@ async def enviar_boas_vindas(db: Any, linha: Optional[Dict[str, Any]]) -> Dict[s
     try:
         linha = linha or {}
         iid = str(linha.get("integration_id") or "")
-        if not iid or not linha.get("ativa") or not ENT.ligada():
+        if not iid or not linha.get("ativa") or not ENT.ligada_para(linha.get("owner_user_id")):
             return {"status": "ignorado"}
         trava = _TRAVAS.setdefault(iid, asyncio.Lock())
         async with trava:
