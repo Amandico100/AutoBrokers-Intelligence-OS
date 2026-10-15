@@ -43,7 +43,7 @@ export const auxiliaresAreas: ModuleArea[] = [
 ];
 
 export const auxiliaresGaleria: GalleryItem[] = [
-  { key: 'resumo', icon: icons.auxiliares, title: 'Resumo de Atendimentos', description: 'Resume conversas recentes, identifica pendências e prepara próximos passos.', category: 'Análise', status: { tone: 'success', label: 'Pronto para ativar' }, href: '/dashboard/auxiliares/galeria/resumo-atendimentos', cta: 'Ver detalhes' },
+  { key: 'resumo', icon: icons.auxiliares, title: 'Resumo de Atendimentos', description: 'Resume conversas recentes, identifica pendências e prepara próximos passos.', category: 'Análise', status: { tone: 'success', label: 'Pronto para ativar' }, href: '/dashboard/auxiliares/resumo-atendimentos?aba=resumos', cta: 'Ver detalhes' },
   { key: 'cobranca', icon: icons.cobranca, title: 'Cobrança Inteligente', description: 'Prepara lembretes de pagamento e boletos pendentes.', category: 'Financeiro', status: { tone: 'neutral', label: 'Em breve' }, cta: 'Em breve' },
   { key: 'followup', icon: icons.enviar, title: 'Follow-up de Propostas', description: 'Identifica propostas paradas e sugere a próxima mensagem.', category: 'Comercial', status: { tone: 'neutral', label: 'Em breve' }, cta: 'Em breve' },
   { key: 'docs', icon: icons.documento, title: 'Conferência de Documentos', description: 'Verifica documentos faltantes em assistências e sinistros.', category: 'Documentos', status: { tone: 'neutral', label: 'Em breve' }, cta: 'Em breve' },
