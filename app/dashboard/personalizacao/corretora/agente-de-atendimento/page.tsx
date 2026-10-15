@@ -1,6 +1,8 @@
 import { DetailHeader } from '@/components/patterns';
 import { icons } from '@/lib/icons';
-import { AgentConfigClient } from '../AgentConfigClient';
+// SPEC-139 (EXTRA-001.9): a página mudou de casa (era agentes/even); o formulário é o MESMO
+// que o AutoBrokers usa — mora em agentes/ e é importado de lá, nunca copiado.
+import { AgentConfigClient } from '../../agentes/AgentConfigClient';
 
 export const metadata = { title: 'Agente de Atendimento · AutoBrokers' };
 
