@@ -28,7 +28,7 @@ export interface VisualDaCapa {
 export const PALETA: Readonly<Record<string, VisualDaCapa>> = {
   'caca-comissao':           { icone: 'HandCoins',           matiz: 150, h: 148 },
   'carteira-blindada':       { icone: 'ShieldCheck',         matiz: 205, h: 234 },
-  'checklist-6h':            { icone: 'Sunrise',             matiz: 38,  h: 70 },
+  'checklist-6h':            { icone: 'Sunrise',             matiz: 38,  h: 58 },
   'clientes-perdidos':       { icone: 'UserSearch',          matiz: 230, h: 272 },
   'cobranca-feita':          { icone: 'ReceiptText',         matiz: 158, h: 158 },
   'contabilidade-pronta':    { icone: 'BookOpenCheck',       matiz: 175, h: 177 },
@@ -56,6 +56,29 @@ export const SLUGS_DA_LOJA: readonly string[] = Object.keys(PALETA).sort();
 
 export function visualDaCapa(slug: string): VisualDaCapa {
   return PALETA[APELIDOS[slug] ?? slug] ?? VISUAL_PADRAO_DA_CAPA;
+}
+
+/**
+ * Sem slug (quem chama só tem o ícone e a matiz do catálogo): o aplicativo da tabela com o MESMO ícone e a MESMA matiz;
+ * se não houver, a matiz do laudo vira matiz de capa pela mesma régua da tabela (interpolação entre os pontos dela,
+ * na ordem), e o ícone fica o pedido. Determinístico: o mesmo par dá sempre a mesma cor.
+ */
+export function visualPorIconeEMatiz(icone: string, matiz: number): VisualDaCapa {
+  const m = Number.isFinite(matiz) ? ((Math.round(matiz) % 360) + 360) % 360 : VISUAL_PADRAO_DA_CAPA.matiz;
+  for (const v of Object.values(PALETA)) if (v.icone === icone && v.matiz === m) return v;
+  const pontos = Object.values(PALETA).filter((v) => v.matiz > 120).map((v) => [v.matiz, v.h] as const)
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let h: number;
+  if (m <= 120) h = PALETA['checklist-6h'].h; // a única quente da tabela: toda quente nova vira âmbar
+  else if (m <= pontos[0][0]) h = pontos[0][1];
+  else if (m >= pontos[pontos.length - 1][0]) h = pontos[pontos.length - 1][1];
+  else {
+    const i = pontos.findIndex(([x]) => x >= m);
+    const [x0, y0] = pontos[i - 1];
+    const [x1, y1] = pontos[i];
+    h = x1 === x0 ? y1 : Math.round(y0 + ((m - x0) * (y1 - y0)) / (x1 - x0));
+  }
+  return { icone: icone || VISUAL_PADRAO_DA_CAPA.icone, matiz: m, h };
 }
 
 // ── as cores ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -92,7 +115,7 @@ const RECEITAS: Record<Tema, Receita> = {
     glifo: [1, 0], traco1: [0.44, 0.13], traco2: [0.6, 0.15, 40],
   },
   escuro: {
-    fundo: [0.235, 0.045], fundo2: [0.155, 0.035, 32], luz: [0.7, 0.13],
+    fundo: [0.25, 0.06], fundo2: [0.16, 0.045, 32], luz: [0.76, 0.14],
     cor: [0.62, 0.13], forte: [0.41, 0.11], acento: [0.56, 0.12, 40],
     tinta: [0.84, 0.07], sombra: [0.09, 0.025], vidro: [0.41, 0.05], vidro2: [0.3, 0.04],
     glifo: [0.985, 0.015], traco1: [0.93, 0.06], traco2: [0.72, 0.14, 40],
@@ -145,7 +168,10 @@ export function tokensDaCapa(h: number, tema: Tema): TokensDaCapa {
   const sentido = h < 120 ? -1 : 1;
   for (const papel of Object.keys(receita) as Papel[]) {
     const [L, C, dh = 0] = receita[papel];
-    saida[papel] = oklchHex(L, C, (h + sentido * dh + 360) % 360);
+    // e nas quentes os tons ESCUROS andam mais 8° para o vermelho (como o pintor faz): o âmbar escuro em OKLCH ~60°
+    // é marrom-oliva; em ~50°, é cobre
+    const desvio = sentido < 0 && L < 0.6 ? -8 : 0;
+    saida[papel] = oklchHex(L, C, (h + sentido * dh + desvio + 360) % 360);
   }
   return saida;
 }
