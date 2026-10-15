@@ -14277,6 +14277,10 @@ duas leituras (D-132C-05). ⚠️ `neq` também exclui `channel IS NULL` — �
 ## P-132C-02 · 🤖 Sem Redis, o dedup do webhook é pulado
 `webhook.py:2552`: a reentrega da mesma mensagem responde 2× (J-P3, padrão pré-existente). **Destrava:** dedup pelo id da mensagem no
 banco quando o Redis falta. **De quem:** 🤖. **Custa esquecer:** o corretor recebe a resposta duas vezes num soluço do Redis.
+↳ **15/10 (SPEC-131-0-B2): 🟡 CONTINUA, menor.** O anti-eco da LINHA DO USUÁRIO (o que o sistema mandou voltar como pergunta) agora é
+durável no banco (`linha_mensagens_do_sistema`, id + hash; D-1310B2-04). A reentrega da MESMA mensagem sem Redis ainda dá 2 respostas na
+linha (📊 red team A5c: `['turno_da_linha', 'turno_da_linha']`) e no central da 132-C — os dois usam o mesmo `_is_duplicate_namespaced` em
+Redis (`webhook.py:2544`).
 
 ## P-132C-03 · 🤖 O corretor cujo número É a linha de atendimento da corretora não recebe explicação
 O anti-laço cala de propósito (J-P6, red team C2). **Destrava:** no Meu perfil, avisar "este número é o WhatsApp de atendimento da
@@ -14286,6 +14290,9 @@ da corretora) o atalho "não funciona" sem motivo.
 ## P-132C-04 · 🤖 `whatsapp_atalho_tentativas` e `whatsapp_atalho_estado` crescem sem limpeza
 J-P7; a migration `_05` já criou o índice do `atualizado_em` para a limpeza. **Destrava:** uma Rotina que apague tentativas > 24 h e
 estado > 30 dias. **De quem:** 🤖. **Custa esquecer:** tabela que só cresce.
+↳ **15/10 (SPEC-131-0-B2): ✅ FECHADA para a linha do usuário** — `limpar_anti_eco` apaga `linha_mensagens_do_sistema` > 7 dias dentro do
+job diário que existe (`attendance_purge_check`, `ab3dec6`; nenhum scheduler novo). 🟡 **CONTINUA** para `whatsapp_atalho_tentativas` e
+`whatsapp_atalho_estado` (as tabelas do central), que seguem sem limpeza.
 
 ## P-132C-05 · 🤖 A trava por telefone não tem guarda que fique vermelho
 `entrada.py`: a sonda A6 SEM a trava continua verde (o banco em memória serializa) (J-P8). **Destrava:** um teste com dois turnos realmente
@@ -14329,3 +14336,79 @@ resposta ao corretor (FUTURA).
 
 ### P-132D-02 · 🔴 `proposta_html.py` não compilava no Python 3.11 da produção — CONSERTADO em `486b51e`
 📊 14/10: barra invertida e aspas iguais aninhadas dentro de f-string (só o 3.12+ aceita; os testes rodavam em 3.14). O arquivo é importado sob demanda: a API subia "saudável" e TODA página `/r/` (cotação, renovação, carteira, QCM) dava 500 (📊 link de exemplo 500, link aleatório 404). As 2 linhas do `tabindex` vinham da 130-A (`d91edb3`) e a 3ª da 131-B (`64ed0ab`). Guarda novo: `backend/tests/test_o_backend_compila_no_python_da_producao.py` (verde agora, vermelho com o arquivo antigo). **Destrava:** 🧑 Implantar `smith-api` e `smith-worker`. **Custa esquecer:** nenhum link de proposta abre em produção.
+
+### 131-0-B2 · a linha do usuário (fase 1) — 15/10/2026 · [relatório](reports/SPEC-131-0-B2-EXECUTION-REPORT.md)
+
+## P-1310B2-01 · 🧑🤖 M1–M6 não foram medidas com o celular
+O Founder não pareou (o túnel do receptor caiu no limite de 2 h). 📊 Sem o celular: o QR em `data.Qrcode`, 5 QRs a ~20 s e `QRTimeout`
+(`forceLogout:true`); o GO de teste com `DATABASE_SAVE_MESSAGES=false` (M5 parcial). **Destrava:** T-178 (o chip, 10 min) → o gerente mede
+se o `fromMe` de "Mensagem para você" chega (JID/LID), se a resposta notifica, a RAM por instância, os eventos de aparelho cheio/14 dias, o
+history sync e o id do envio. **De quem:** 🧑 parear · 🤖 medir. **Custa esquecer:** ligar a linha sem saber se ela recebe (M1 negativo →
+D-132F-01, o central).
+
+## P-1310B2-02 · 🤖 Membro removido: o CASCADE apaga a linha no banco sem logout da instância
+`fk_integrations_owner_membro … ON DELETE CASCADE`; a instância do GO segue pareada ao celular (o webhook passa a 401). Membro inativado:
+eventos ignorados, sessão viva (juiz P3). **Destrava:** logout/apagar a instância quando a pessoa sai da corretora (antes do CASCADE).
+**De quem:** 🤖. **Custa esquecer:** um ex-funcionário segue com um aparelho "AutoBrokers" vinculado que ninguém vê.
+
+## P-1310B2-03 · 🤖 Nenhum produtor grava `linha_do_usuario` em `perfil.channels`
+O destino existe no `DeliveryExecutor`, mas nada o põe nos canais do perfil (juiz P4). **Destrava:** gravar o canal quando a linha
+conecta (e tirar ao desconectar). **De quem:** 🤖. **Custa esquecer:** o Founder liga `AVISOS_WHATSAPP_LIGADO` e nada sai — ligar = chave +
+canal.
+
+## P-1310B2-04 · 🤖 Os avisos "licença do Agger" e "falha de conexão" não têm chamador
+Os tipos `licenca_do_agger` e `falha_de_conexao` existem em `avisos.TIPOS`, mas ninguém os publica. **Destrava:** os dois detectores publicarem pelo `DeliveryExecutor`. **De quem:** 🤖.
+**Custa esquecer:** a lista de tipos promete avisos que nunca saem.
+
+## P-1310B2-05 · 🤖 O teto de 240/min por IP do webhook GO é compartilhado — e a linha vê o aparelho inteiro
+`core/rate_limit.py:28`: todas as instâncias do mesmo GO postam do mesmo IP; a linha recebe grupos e status do celular pessoal (descartados,
+mas contados no teto). 💭 Inferência, não medida (juiz P2). **Destrava:** medir na M3 (T-178); limite por instância. **De quem:** 🤖.
+**Custa esquecer:** num pico, o atendimento dos segurados recebe 429.
+
+## P-1310B2-06 · 🤖 Dois "Conectar" ao mesmo tempo passam o teto por 1
+`teto_cheio` e o `start` não são atômicos. **Destrava:** reserva atômica (único no banco ou lock). **De quem:** 🤖. **Custa esquecer:**
+valor marginal hoje (teto 💭 20); importa quando o teto for apertado.
+
+## P-1310B2-07 · 🤖 `descartadas_total` é contado em memória
+Perde até 49 por linha num restart. **Destrava:** gravar a cada evento ou no desligar. **De quem:** 🤖. **Custa esquecer:** só a métrica
+de privacidade fica baixa (valor marginal).
+
+## P-1310B2-08 · 🤖 Props mortas `pesquisaNaWeb` em `Composer.tsx` e `FolhaDoMais.tsx`
+Sobra da D-1310B2-07 (default false → invisível). **Destrava:** apagar as props e os ramos. **De quem:** 🤖. **Custa esquecer:** limpeza.
+
+## P-1310B2-09 · 🤖 O porteiro do agente e `routine_tools.py:61` contam a linha como "canal conectado"
+`porteiro_do_agente.py:98` e `routine_tools.py:61` contam toda integração ativa sem olhar o purpose (confirmação P-a). A saída segue
+barrada por `pode_enviar`. **Destrava:** excluir `linha_do_usuario` nas duas contagens. **De quem:** 🤖. **Custa esquecer:** uma corretora
+sem canal de atendimento parece "com WhatsApp" na tela e na permissão de ligar.
+
+## P-1310B2-10 · 🤖 A frase dos 10 dias sem sinal do celular não sai
+O contrato do provedor não traz o "último sinal do celular". **Destrava:** medir na M4 (T-178) que evento o GO manda. **De quem:** 🤖.
+**Custa esquecer:** a pessoa só descobre quando a linha cai aos 14 dias.
+
+## P-1310B2-11 · 🤖 O id do envio do ATENDIMENTO já é coletável (P-E0012-02)
+`webhook.py:2208`: com `evolution_go._post` devolvendo o id e `whatsapp_service.coletar_ids_enviados`, a P-E0012-02 pode ser fechada.
+**Destrava:** usar `coletar_ids_enviados` no envio do atendimento. **De quem:** 🤖. **Custa esquecer:** a P-E0012-02 segue aberta com a
+ferramenta pronta.
+
+## P-1310B2-12 · 🧑🤖 A pasta solta `.claude/worktrees/agent-a9a2e4c052c5b0caa` não apagou
+"Invalid argument" ao apagar (uma árvore do Intelligence-OS). **Destrava:** conferir se há LINK (junction) dentro antes de apagar — nunca
+apagar seguindo link (lição de 03/10, o intake do portal) — e apagar à mão. **De quem:** 🧑🤖. **Custa esquecer:** os scanners da bateria
+varrem a pasta.
+
+## P-1310B2-13 · 🤖 A tela do número pareado com `purpose=linha_do_usuario` mostraria a linha mais recente da corretora
+`whatsapp_channel.py:1042` (confirmação P-b): devolve o número MASCARADO da linha de alguém. Rota interna. **Destrava:** recusar o purpose
+na rota. **De quem:** 🤖. **Custa esquecer:** um número pessoal (mascarado) numa tela que não é do dono.
+
+## P-1310B2-14 · 🤖 O CSS da proposta perdeu `@media 1024` e `.hero.wrap 720` (PRÉ-EXISTENTE na `origin/main`)
+`test_spec131b_conserto_k1::test_design_o_aumento_nunca_e_vantagem` falha no HEAD e na base `5f9bdac` (triagem da bateria). **Destrava:**
+achar o commit que tirou as regras e repô-las. **De quem:** 🤖. **Custa esquecer:** a página de proposta no notebook perde o layout que a
+131-B aprovou.
+
+## A drenagem das pendências que a SPEC-131-0-B2 tocou
+| P | estado |
+|---|---|
+| P-132C-01 | não tocada — é a Fila do atalho, ✅ FECHADA em 14/10 (o pacote do gerente usou este número para o dedup sem Redis, que é a P-132C-02) |
+| P-132C-02 | 🟡 CONTINUA, menor — o anti-eco da linha é durável; a reentrega sem Redis ainda responde 2× (linha e central) |
+| P-132C-04 | ✅ FECHADA para a linha (job diário) · 🟡 CONTINUA para as tabelas do central |
+| P-132D-01 | 🟡 CONTINUA — T-174 antes de Implantar o `smith-web` (T-180) |
+| P-E0012-02 | 🟡 CONTINUA, destravada — ver P-1310B2-11 |
