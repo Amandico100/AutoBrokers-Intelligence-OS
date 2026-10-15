@@ -20,6 +20,8 @@ A ORDEM DA DECISÃO (todo aviso válido termina com UM registro; nunca levanta):
     1. tipo conhecido? company_id e user_id são uuid?           não → recusa; nada lido, nada gravado
     2. a linha CONECTADA do dono NESTA corretora                não → 'sem_linha'
        (`estado.linha_do_dono`: filtro company_id + purpose + dono no banco, reconferido aqui em Python)
+    2b. `LINHA_DO_USUARIO_LIGADA` liga ESTA pessoa?             não → 'linha_desligada' (`estado.ligada_para`: a
+       chave ausente, ou a pessoa fora da lista de user_id) — nada sai, mesmo com o tipo na chave dos avisos
     3. o tipo está na chave?                                    não → 'avisos_desligados' ("teria enviado")
     4. envia pela linha (o contrato da L2, abaixo)              0 enviadas / exceção → 'falha_no_envio'
                                                                 L2 não instalada      → 'envio_indisponivel'
@@ -84,6 +86,7 @@ SECAO_DA_RENOVACAO = "renovacao"
 FRASES = {
     "avisos_desligados": f"avisos pelo WhatsApp desligados ({CHAVE}) — registrado como 'teria enviado'",
     "sem_linha": "a pessoa não tem o WhatsApp dela conectado ao AutoBrokers — não há por onde avisar",
+    "linha_desligada": "a linha do WhatsApp está desligada para esta pessoa (LINHA_DO_USUARIO_LIGADA) — nada sai",
     "falha_no_envio": "a linha está conectada, mas a mensagem não saiu",
     "envio_indisponivel": "o envio pela linha do usuário ainda não está instalado",
     "envio_sem_resposta": "o envio pela linha não respondeu a tempo — pode ter saído",
@@ -220,8 +223,12 @@ async def avisar(db: Any, *, company_id: Any, user_id: Any, tipo: Any, texto_mar
         linha = None
 
     motivo: Optional[str]
+    from app.services.linha_do_usuario.estado import ligada_para
+
     if not linha:
         motivo = "sem_linha"
+    elif not ligada_para(uid):
+        motivo = "linha_desligada"
     elif tipo not in tipos_ligados():
         motivo = "avisos_desligados"
     else:
