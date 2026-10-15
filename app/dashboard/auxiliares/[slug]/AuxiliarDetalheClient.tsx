@@ -13,7 +13,7 @@
 // O Configurar dos aplicativos com rotina continua sendo o painel de hoje — `PainelDeRotinas`. 🔴 SPEC-078 C.4: o
 // painel mora DENTRO da tela do aplicativo; nunca um link para outra página.
 //
-// SPEC-139 · L4: a Cobrança SAIU do modal — o Configurar dela é `cobranca/AbaConfigurar` (o formulário extraído, o
+// SPEC-139 · L4: a Cobrança SAIU do modal — o Configurar dela é `cobranca-feita/AbaConfigurar` (o formulário extraído, o
 // MESMO corpo gravado), registrado em ABAS_DO_APLICATIVO. Por isso o painel (e o modal dentro dele) só é montado
 // quando a aba Configurar DESTE aplicativo é da casca (`componente === null`): na Cobrança ele nunca monta, e o
 // caminho para configurar é sempre a aba (Instalar → `?aba=configurar`; o passo do "Como começar" → a mesma aba).
