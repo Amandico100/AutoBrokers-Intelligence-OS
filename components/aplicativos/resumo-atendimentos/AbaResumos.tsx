@@ -10,6 +10,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Sparkles } from 'lucide-react';
+
+import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/Icon';
@@ -22,6 +25,10 @@ import { runResumoAtendimentos, fetchResumoConversations, fetchRun } from '@/lib
 import type { AuxiliaryRun, AuxiliaryRunOutput, ResumoConversation } from '@/lib/auxiliaries/types';
 
 type RunState = 'idle' | 'loading' | 'success' | 'error';
+
+// Conserto B da SPEC-139 (juiz de design, Resumos 79): o rótulo mono de 10 px em `text-faint` vira `text-sm` legível;
+// "Executar resumo agora" usa `BOTAO_PRIMARIO`; o rodapé do resultado não fala "tokens" nem custo em dólar (é dado de
+// operação, não do corretor) — só quanto tempo levou. As chamadas de dados são as mesmas (as-telas-no-lugar guarda).
 
 function friendlyError(err?: string): string {
   const e = (err || '').toLowerCase();
@@ -70,7 +77,7 @@ function SelectorRow({
     >
       <div className="min-w-0">
         <p className="truncate text-sm text-foreground">{title}</p>
-        {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
+        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
       </div>
       <span
         className={cn('h-3.5 w-3.5 shrink-0 rounded-full border', active ? 'border-primary bg-primary' : 'border-border')}
@@ -81,8 +88,6 @@ function SelectorRow({
 
 function RunMeta({ run }: { run: AuxiliaryRun | null }) {
   if (!run) return null;
-  const tokens = run.token_usage?.total_tokens;
-  const cost = typeof run.cost_usd === 'number' ? run.cost_usd : undefined;
   const start =
     (typeof run.started_at === 'string' && run.started_at) ||
     (typeof run.created_at === 'string' && run.created_at) ||
@@ -91,14 +96,10 @@ function RunMeta({ run }: { run: AuxiliaryRun | null }) {
   let duration: string | undefined;
   if (start && end) {
     const ms = new Date(end).getTime() - new Date(start).getTime();
-    if (ms >= 0 && Number.isFinite(ms)) duration = `${(ms / 1000).toFixed(1)}s`;
+    if (ms >= 0 && Number.isFinite(ms)) duration = `${(ms / 1000).toFixed(1).replace('.', ',')} segundos`;
   }
-  const parts: string[] = [];
-  if (typeof tokens === 'number') parts.push(`${tokens} tokens`);
-  if (typeof cost === 'number' && cost > 0) parts.push(`$${cost.toFixed(4)}`);
-  if (duration) parts.push(duration);
-  if (parts.length === 0) return null;
-  return <p className="font-mono text-[10px] text-faint">{parts.join(' · ')}</p>;
+  if (!duration) return null;
+  return <p className="text-xs text-muted-foreground">Resumo pronto em {duration}.</p>;
 }
 
 export default function AbaResumos() {
@@ -173,7 +174,7 @@ export default function AbaResumos() {
       </div>
 
       <div className="space-y-2">
-        <p className="font-mono text-[10px] uppercase tracking-[0.06em] text-faint">Escolha o atendimento</p>
+        <p className="text-sm font-medium text-foreground">Escolha o atendimento</p>
         {convs === null && !convError ? (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-muted-foreground">
             <Icon icon={icons.renovacao} size={14} className="animate-spin" /> Carregando conversas…
@@ -208,19 +209,24 @@ export default function AbaResumos() {
         )}
       </div>
 
-      <Button onClick={execute} disabled={state === 'loading'}>
+      <button
+        type="button"
+        onClick={execute}
+        disabled={state === 'loading'}
+        className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium transition-opacity disabled:cursor-not-allowed disabled:opacity-50 ${BOTAO_PRIMARIO}`}
+      >
         {state === 'loading' ? (
           <>
-            <Icon icon={icons.renovacao} size={16} className="mr-2 animate-spin" />
-            Executando…
+            <Icon icon={icons.renovacao} size={16} className="animate-spin" />
+            Resumindo…
           </>
         ) : (
           <>
-            <Icon icon={icons.enviar} size={16} className="mr-2" />
-            Executar resumo agora
+            <Sparkles className="h-4 w-4" strokeWidth={1.6} aria-hidden="true" />
+            Resumir agora
           </>
         )}
-      </Button>
+      </button>
 
       {state === 'loading' && (
         <DetailSection>
