@@ -9,7 +9,10 @@
 //   4. a cor vem SÓ da paleta; o claro e o escuro são a MESMA arte (mesma geometria, outra tabela);
 //   5. a paleta cobre todo aplicativo da loja com o MESMO ícone do catálogo; vizinhos na galeria com matizes distintas;
 //   6. o ícone sobrevive ao recorte 4:1 do cabeçalho (y 250..650) e fica na área segura;
-//   7. vários na mesma página: nenhum id repetido entre capas.
+//   7. vários na mesma página: nenhum id repetido entre capas;
+//   8. o PRODUTO: CapaGerada.tsx (renderizado) desenha a composição da direção A; cover_url vence; sem texto.
+//
+// Numa árvore sem node_modules: NODE_PATH=<node_modules da árvore principal> (typescript, react, react-dom).
 //
 // LINHA DE CONTROLE (CLAUDE.md §9.2/§9.3): cada guarda roda também contra uma entrada que ele DEVE reprovar — e a
 // mutação 2 roda de verdade: uma CÓPIA de composicoes.ts com um <text> injetado (o original nunca é tocado).
@@ -17,6 +20,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -258,6 +262,62 @@ console.log('\n7. várias capas na mesma página: nenhum id repetido');
     }
   }
   checar(repetidos === 0, `${vistos.size} ids, nenhum de duas capas`);
+}
+
+console.log('\n8. o PRODUTO: CapaGerada desenha a composição (renderizado de verdade, React no servidor)');
+{
+  // o componente real (CapaGerada.tsx) transpilado com o TypeScript do projeto e carregado com um `require` que entrega o
+  // React instalado, o `cn` e o MESMO módulo de composições que o teste mediu acima
+  const require = createRequire(path.join(RAIZ, 'package.json'));
+  const ts = require('typescript');
+  const React = require('react');
+  const { renderToStaticMarkup } = require('react-dom/server');
+  const carregarCapa = (composicoes) => {
+    const fonte = fs.readFileSync(path.join(AQUI, 'CapaGerada.tsx'), 'utf8');
+    const js = ts.transpileModule(fonte, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+      fileName: 'CapaGerada.tsx',
+    }).outputText;
+    const mod = { exports: {} };
+    const req = (id) => {
+      if (id === './capas/composicoes') return composicoes;
+      if (id === '@/lib/utils') return { cn: (...c) => c.filter(Boolean).join(' ') };
+      return require(id);
+    };
+    new Function('require', 'module', 'exports', js)(req, mod, mod.exports);
+    return mod.exports;
+  };
+  const { CapaGerada, svgsDaCapa } = carregarCapa(capas);
+  const html = (props) => renderToStaticMarkup(React.createElement(CapaGerada, props));
+
+  const gerada = html({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203, className: 'aspect-[16/9]' });
+  const esperado = svgsDaCapa({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203 });
+  checar(gerada.includes(esperado.claro) && gerada.includes(esperado.escuro),
+    'a capa sem cover_url é o SVG da composição — claro E escuro, os mesmos bytes do motor');
+  checar(esperado.claro === capaSvg({ slug: 'renovacao', direcao: capas.DIRECAO_DO_PRODUTO, tema: 'claro' }) && capas.DIRECAO_DO_PRODUTO === 'A',
+    'a direção do produto é a A · Placa (D-139-03), e é a mesma do motor');
+  checar(/dark:hidden/.test(gerada) && /hidden dark:block/.test(gerada), 'o tema escolhe qual aparece (dark:hidden / hidden dark:block)');
+  checar(proibidos(gerada.replace(/<\/?div[^>]*>/g, '')).length === 0, 'a capa renderizada não tem texto, imagem nem endereço externo');
+  checar(/motion-reduce:transform-none/.test(html({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203, crescerNoHover: true })),
+    'o crescer no hover respeita prefers-reduced-motion');
+
+  const comFoto = html({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203, coverUrl: 'https://exemplo.invalid/capa.webp' });
+  checar(comFoto.includes('<img') && comFoto.includes('https://exemplo.invalid/capa.webp') && !comFoto.includes('<svg'),
+    'cover_url VENCE: a imagem do Founder, e nenhuma capa gerada junto');
+
+  // sem slug (quem só passa ícone + matiz): a MESMA capa da linha da tabela com esse par
+  const semSlug = svgsDaCapa({ icone: 'ReceiptText', matiz: 158 });
+  const comSlug = svgsDaCapa({ slug: 'cobranca-feita', icone: 'ReceiptText', matiz: 158 });
+  checar(geometria(semSlug.claro) === geometria(comSlug.claro) && semSlug.claro.match(/#[0-9a-f]{6}/g).join() === comSlug.claro.match(/#[0-9a-f]{6}/g).join(),
+    'sem slug, o par ícone + matiz dá a mesma cor e a mesma figura da linha da tabela');
+  checar(svgsDaCapa({ icone: 'Plug', matiz: 999 }).claro === svgsDaCapa({ icone: 'Plug', matiz: 999 }).claro
+    && proibidos(svgsDaCapa({ icone: '<text>x</text>', matiz: Number.NaN }).claro).length === 0,
+    'um par desconhecido (ou lixo) cai numa capa determinística e limpa — o nome do ícone nunca é escrito no SVG');
+
+  // a MUTAÇÃO 2 da SPEC no produto: o componente renderizando um motor que injeta <text> fica VERMELHO
+  const mutante = carregarCapa({ ...capas, capaSvg: (p) => capas.capaSvg(p).replace('</svg>', '<text x="80" y="120">Renovação</text></svg>') });
+  const sujo = renderToStaticMarkup(React.createElement(mutante.CapaGerada, { slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203 }));
+  checar(proibidos(sujo).includes('<text>'), 'controle: o produto com um motor que escreve <text> fica VERMELHO');
 }
 
 console.log(falhas === 0 ? '\nTUDO VERDE' : `\n${falhas} FALHA(S)`);
