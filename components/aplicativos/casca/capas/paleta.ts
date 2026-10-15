@@ -81,6 +81,18 @@ export function visualPorIconeEMatiz(icone: string, matiz: number): VisualDaCapa
   return { icone: icone || VISUAL_PADRAO_DA_CAPA.icone, matiz: m, h };
 }
 
+/**
+ * A linha da paleta de UM pedido — a regra única que a capa (`capaSvg`) e o tile do ícone (`estiloDoTile`) usam, para
+ * os dois nunca discordarem (SPEC-139 · costura L6): com slug conhecido, a linha do slug; sem slug (ou um slug que a
+ * tabela ainda não conhece, quando o pedido traz o ícone), o par ícone + matiz do catálogo.
+ */
+export function visualDoPedido(pedido: { slug?: string | null; icone?: string; matiz?: number }): VisualDaCapa {
+  const porSlug = pedido.slug ? visualDaCapa(pedido.slug) : null;
+  return porSlug && (porSlug !== VISUAL_PADRAO_DA_CAPA || pedido.icone === undefined)
+    ? porSlug
+    : visualPorIconeEMatiz(pedido.icone ?? '', pedido.matiz ?? Number.NaN);
+}
+
 // ── as cores ────────────────────────────────────────────────────────────────────────────────────────────────────────
 // Cada papel tem UMA luminosidade (L) e UM croma (C) por tema, iguais para todos os aplicativos; só a matiz muda
 // (`dh` desloca a matiz para o segundo tom do degradê). O claro e o escuro são a MESMA arte com outra tabela.
