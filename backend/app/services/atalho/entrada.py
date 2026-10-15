@@ -105,11 +105,16 @@ def numero_do_produto(db: Any, telefone: Any) -> bool:
     try:
         if repo.numero_de_corretora(db, telefone):
             return True
-        linhas = _dados(db.table("integrations").select("id").eq("is_active", True)
+        linhas = _dados(db.table("integrations").select("id, purpose").eq("is_active", True)
                         .in_("paired_phone_e164", fs).execute())
-        linhas += _dados(db.table("integrations").select("id").eq("is_active", True)
+        linhas += _dados(db.table("integrations").select("id, purpose").eq("is_active", True)
                          .in_("identifier", digitos).execute())
-        return bool(linhas)
+        # 🔴 SPEC-131-0-B2 (conserto B3) — a LINHA DO USUÁRIO (o WhatsApp PESSOAL de um corretor) não é instância do
+        # produto: o número continua sendo de uma pessoa, e o central não a cala por ter conectado a linha. Sem laço: o
+        # que o central manda a esse número chega à instância da linha como conversa ALHEIA → descartado no portão dela.
+        from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+
+        return any(str(x.get("purpose") or "").strip().lower() != PURPOSE_DA_LINHA for x in linhas)
     except Exception as erro:  # noqa: BLE001
         logger.warning("[ATALHO] anti-laço não conferido (%s) — cala", type(erro).__name__)
         return True
