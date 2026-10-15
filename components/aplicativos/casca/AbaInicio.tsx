@@ -102,14 +102,15 @@ export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioPro
       {faltaPasso && comoComecar}
 
       {item.o_que_faz.length > 0 && (
-        <Bloco titulo="O que faz" primeiro={!item.descricao && !faltaPasso}>
+        // SPEC-139 §4.4: o "Em breve" é honesto — diz o que ele VAI fazer, nunca que já faz
+        <Bloco titulo={emBreve ? 'O que ele vai fazer' : 'O que faz'} primeiro={!item.descricao && !faltaPasso}>
           <ul className="space-y-3">
             {tarefas.map((t, i) => (
               <li key={i} className="flex items-start gap-3">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={2} aria-hidden="true" />
                 <span>
                   <span className="block text-sm text-foreground">{t.tarefa}</span>
-                  <span className="block text-xs text-muted-foreground">{t.frequencia}</span>
+                  {t.frequencia && <span className="block text-xs text-muted-foreground">{t.frequencia}</span>}
                 </span>
               </li>
             ))}
@@ -123,7 +124,7 @@ export function AbaInicio({ item, passos, atividade, hrefDuvidas }: AbaInicioPro
       )}
 
       {(item.promessa || ganhoComNumero) && (
-        <Bloco titulo="O que a corretora ganha">
+        <Bloco titulo={emBreve ? 'O que a corretora vai ganhar' : 'O que a corretora ganha'}>
           {/* Número só se for MEDIDO nesta corretora; senão, a promessa diz o que SERÁ medido (CLAUDE.md §12.1). */}
           <div className="rounded-xl border border-primary/20 bg-brand-soft p-5">
             {ganhoComNumero && (
