@@ -5,7 +5,7 @@
  *
  * Rode: node scripts/a-loja-de-aplicativos.test.mjs
  *
- *   /dashboard/auxiliares → AuxiliaresClient → CardDoAplicativo → CapaGerada(slug → paleta + composição A; cover_url vence)
+ *   /dashboard/auxiliares → AuxiliaresClient → CardDoAplicativo → CapaGerada(slug → paleta + composição C; cover_url vence)
  *   /dashboard/auxiliares/cobranca-feita?aba=configurar → ABAS_DO_APLICATIVO → o arquivo que a casca carrega → o MESMO
  *     formulário do modal (o dourado da L2: os 7 cenários, o MESMO sha256) → a MESMA rota de gravação (company_id da sessão)
  *   ?aba=cobrancas → o arquivo da aba → a rota que ele lê, EXECUTADA com duas corretoras (só a da sessão volta)
@@ -143,9 +143,9 @@ checar(rel(arquivoDoEndereco('/dashboard/auxiliares/galeria/follow-up-whatsapp')
 checar(arquivoDoEndereco('/dashboard/nao-existe-139/x/y') === null, 'CONTROLE: um endereço inventado não tem arquivo');
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// [1] A galeria → o card → a capa (paleta + composição A; cover_url vence) e o tile com a cor da MESMA paleta
+// [1] A galeria → o card → a capa (paleta + composição C; cover_url vence) e o tile com a cor da MESMA paleta
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-console.log('\n[1] /dashboard/auxiliares → AuxiliaresClient → CardDoAplicativo → CapaGerada(slug → paleta + A)');
+console.log('\n[1] /dashboard/auxiliares → AuxiliaresClient → CardDoAplicativo → CapaGerada(slug → paleta + C)');
 const C = modulo('lib/auxiliaries/catalog.ts');
 const COMPOSICOES = modulo('components/aplicativos/casca/capas/composicoes.ts');
 const PALETA = modulo('components/aplicativos/casca/capas/paleta.ts');
@@ -185,18 +185,20 @@ for (const slug of LOJA) {
   for (const tema of ['claro', 'escuro']) {
     if (!h.includes(COMPOSICOES.capaSvg({ slug, direcao: COMPOSICOES.DIRECAO_DO_PRODUTO, tema }))) capaErrada.push(`${slug} ${tema}`);
   }
-  const estilo = tileDo(h);
+  // D-139-CB-03 (conserto B): o tile do card só existe com a capa do Founder — a cor dele se mede num card com cover_url
+  if (tileDo(h) !== '') tileErrado.push(`${slug} (tile ao lado da capa gerada)`);
+  const estilo = tileDo(html(CARD.CardDoAplicativo, { item: itemDe(slug, { cover_url: 'https://exemplo.invalid/c.webp' }) }));
   if (varDoTile(estilo, 'claro') !== tintaDe(slug, 'claro') || varDoTile(estilo, 'escuro') !== tintaDe(slug, 'escuro')) {
     tileErrado.push(`${slug} (${estilo || 'sem tile'})`);
   }
 }
-checar(COMPOSICOES.DIRECAO_DO_PRODUTO === 'A', 'a direção do produto é a A · Placa (D-139-03)');
-checar(capaErrada.length === 0, `os ${LOJA.length} cards desenham a capa da composição A pela linha do slug (claro E escuro)`, capaErrada.slice(0, 3).join(' · '));
-checar(tileErrado.length === 0, `o tile do ícone dos ${LOJA.length} cards tem a TINTA da paleta do slug (claro e escuro)`, tileErrado.slice(0, 2).join(' · '));
-// o caso que separa "a matiz do laudo" de "a matiz da capa": o Radar (262° no laudo → 300° na capa)
-const radar = tileDo(html(CARD.CardDoAplicativo, { item: itemDe('radar-mercado-regulacao') }));
-checar(PALETA.visualDaCapa('radar-mercado-regulacao').h === 300 && varDoTile(radar, 'claro') === tintaDe('radar-mercado-regulacao', 'claro'),
-  'o Radar: o tile bate com a capa (h 300), não com a matiz 262 do laudo');
+checar(COMPOSICOES.DIRECAO_DO_PRODUTO === 'C', 'a direção do produto é a C · Cena (a escolha do Founder, 15/10)');
+checar(capaErrada.length === 0, `os ${LOJA.length} cards desenham a capa da composição C pela linha do slug (claro E escuro)`, capaErrada.slice(0, 3).join(' · '));
+checar(tileErrado.length === 0, `capa gerada: nenhum card repete o ícone num tile; com cover_url, o tile dos ${LOJA.length} tem a TINTA da paleta do slug (claro e escuro)`, tileErrado.slice(0, 2).join(' · '));
+// o caso que separa "a matiz do laudo" de "a matiz da capa": o Radar (262° no laudo → 214° na capa, conserto B)
+const radar = tileDo(html(CARD.CardDoAplicativo, { item: itemDe('radar-mercado-regulacao', { cover_url: 'https://exemplo.invalid/r.webp' }) }));
+checar(PALETA.visualDaCapa('radar-mercado-regulacao').h === 214 && varDoTile(radar, 'claro') === tintaDe('radar-mercado-regulacao', 'claro'),
+  'o Radar: o tile bate com a capa (h 214), não com a matiz 262 do laudo');
 checar(tintaDe('radar-mercado-regulacao', 'claro') !== PALETA.tokensDaCapa(262, 'claro').tinta,
   'CONTROLE: a tinta de 262° é OUTRA cor (o guarda consegue ver a diferença)');
 
@@ -243,7 +245,8 @@ const itemRadar = itemDe('radar-mercado-regulacao');
 const propsCab = { item: itemRadar, botao: C.botaoPrincipal(itemRadar), conexoes: [], resumoDosPassos: '0 de 1 prontos', ocupado: false, erro: '', onAcao() {} };
 const cab = html(CAB.CabecalhoDoAplicativo, propsCab);
 const cabCompacto = html(CAB.CabecalhoDoAplicativo, { ...propsCab, compacto: true });
-checar(cab.includes(COMPOSICOES.capaSvg({ slug: 'radar-mercado-regulacao', direcao: 'A', tema: 'escuro' })), 'o cabeçalho desenha a capa da linha do slug');
+checar(cab.includes(COMPOSICOES.capaSvg({ slug: 'radar-mercado-regulacao', direcao: COMPOSICOES.DIRECAO_DO_PRODUTO, tema: 'escuro', enquadramento: 'cabecalho' })),
+  'o cabeçalho desenha a capa da linha do slug, no quadro do cabeçalho (a cena inteira no 4:1)');
 // D-139-L6-01: com a capa GERADA o cabeçalho completo não repete o ícone num tile (a placa da capa É o ícone); com a
 // capa do Founder (cover_url) o tile volta; o compacto (sem capa) sempre tem o tile — e todo tile tem a tinta do slug
 const cabRadarFoto = html(CAB.CabecalhoDoAplicativo, { ...propsCab, item: { ...itemRadar, cover_url: 'https://exemplo.invalid/r.webp' } });
