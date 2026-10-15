@@ -18,14 +18,23 @@
 //   C · Cena  — três peças do TRABALHO do aplicativo (documento, cartão, mensagem, calendário, gráfico, recibo, lista) em
 //               perspectiva leve, e o ícone num selo.
 
-import { tokensDaCapa, visualDaCapa, type Tema, type TokensDaCapa } from './paleta';
+import { PALETA, VISUAL_PADRAO_DA_CAPA, tokensDaCapa, visualDaCapa, visualPorIconeEMatiz, type Tema, type TokensDaCapa } from './paleta';
 import { ICONES_SVG } from './icones-svg';
 
 export type Direcao = 'A' | 'B' | 'C';
+
+/**
+ * A direção que o PRODUTO desenha (CapaGerada). SPEC-139 §3 / D-139-03: a prancha foi ao Founder e, sem resposta, vai a de
+ * maior nota — A · Placa. Trocar de direção é mudar só esta linha.
+ */
+export const DIRECAO_DO_PRODUTO: Direcao = 'A';
 export type { Tema };
 
 export interface PedidoDaCapa {
-  slug: string;
+  /** o aplicativo (a linha da paleta). Sem ele, vale o par icone + matiz do catálogo */
+  slug?: string | null;
+  icone?: string;
+  matiz?: number;
   direcao: Direcao;
   tema: Tema;
 }
@@ -82,9 +91,9 @@ const TELA = `width="${LARGURA}" height="${ALTURA}"`;
 
 /** O grão fino (papel/filme): ruído em cinza, por cima de tudo, em luz suave. */
 const grao = (p: string, semente: number): string =>
-  `<filter id="${p}g" x="0" y="0" width="1" height="1"><feTurbulence type="fractalNoise" baseFrequency=".38" numOctaves="2" seed="${semente % 97}" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>`;
+  `<filter id="${p}g" x="0" y="0" width="1" height="1"><feTurbulence type="fractalNoise" baseFrequency=".2" numOctaves="2" seed="${semente % 97}" stitchTiles="stitch"/><feColorMatrix values="0 0 0 9 -4 0 0 0 9 -4 0 0 0 9 -4 0 0 0 0 1"/></filter>`;
 const camadaDeGrao = (p: string, tema: Tema): string =>
-  `<rect ${TELA} filter="url(#${p}g)" opacity="${tema === 'claro' ? '.22' : '.18'}" style="mix-blend-mode:soft-light"/>`;
+  `<rect ${TELA} filter="url(#${p}g)" opacity="${tema === 'claro' ? '.05' : '.07'}" style="mix-blend-mode:overlay"/>`;
 
 const desfoque = (id: string, d: number): string =>
   `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${d}"/></filter>`;
@@ -96,8 +105,8 @@ function placa(p: string, k: string, x: number, y: number, lado: number, raio: n
     : `<rect x="${n(x + dx + encolhe)}" y="${n(y + dy + encolhe)}" width="${n(lado - 2 * encolhe)}" height="${n(lado - 2 * encolhe)}" rx="${n(raio - encolhe)}" ${extra}/>`;
   const defs =
     linear(`${p}${k}t`, t.cor, t.forte, 'x1=".2" y1="0" x2=".7" y2="1"') +
-    linear(`${p}${k}s`, '#fff', '#fff', 'x2="0" y2="1"', tema === 'claro' ? 0.5 : 0.34, 0) +
-    linear(`${p}${k}e`, '#fff', '#fff', 'x2="0" y2="1"', tema === 'claro' ? 0.9 : 0.5, 0.08) +
+    linear(`${p}${k}s`, '#fff', '#fff', 'x2="0" y2="1"', tema === 'claro' ? 0.5 : 0.48, 0) +
+    linear(`${p}${k}e`, '#fff', '#fff', 'x2="0" y2="1"', tema === 'claro' ? 0.9 : 0.7, 0.1) +
     linear(`${p}${k}d`, '#000', '#000', 'x2="0" y2="1"', 0, tema === 'claro' ? 0.16 : 0.3) +
     `<clipPath id="${p}${k}c">${forma()}</clipPath>`;
   const cx = x + lado / 2;
@@ -133,8 +142,8 @@ function direcaoA(p: string, nome: string, t: TokensDaCapa, tema: Tema, r: () =>
     `<rect x="${x}" y="${y}" width="${lado}" height="${lado}" rx="84" transform="rotate(${giro * k} ${cx} ${cy}) translate(${62 * k} ${-34 * k})" fill="${claro ? t.cor : t.vidro}" fill-opacity="${n((claro ? 0.26 : 0.5) / k)}" stroke="#fff" stroke-opacity="${n((claro ? 0.9 : 0.14) / k)}" stroke-width="2.5"/>`;
   return (
     `<defs>${linear(`${p}f`, t.fundo, t.fundo2, 'x1="0" y1="0" x2="1" y2="1"')}` +
-    radial(`${p}h`, cx, cy, 440, t.cor, claro ? 0.6 : 0.55) +
-    radial(`${p}l`, cx - 40, cy - 60, 250, t.luz, claro ? 0.6 : 0.3) +
+    radial(`${p}h`, cx, cy, 620, t.cor, claro ? 0.55 : 0.72) +
+    radial(`${p}l`, cx - 40, cy - 60, 260, t.luz, claro ? 0.6 : 0.5) +
     radial(`${p}k`, ax, ay, 760, t.acento, claro ? 0.7 : 0.5) +
     radial(`${p}m`, 1450, 860, 620, t.cor, claro ? 0.5 : 0.38) +
     radial(`${p}s`, ox, oy, raios[4], t.acento, claro ? 0.75 : 0.5) +
@@ -331,16 +340,24 @@ function direcaoC(p: string, slug: string, nome: string, t: TokensDaCapa, tema: 
 // ── a entrada ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** O <svg> inteiro da capa. Mesmo pedido → mesmos bytes (o teste confere). */
-export function capaSvg({ slug, direcao, tema }: PedidoDaCapa): string {
-  const visual = visualDaCapa(slug);
+export function capaSvg({ slug, icone: iconePedido, matiz, direcao, tema }: PedidoDaCapa): string {
+  // com slug: a linha da tabela. Sem slug: o par ícone + matiz do catálogo (a mesma capa sempre para o mesmo par)
+  // (um slug que a tabela ainda não conhece também cai no par: o aplicativo novo ganha a cor do laudo, não a padrão)
+  const porSlug = slug ? visualDaCapa(slug) : null;
+  const visual = porSlug && (porSlug !== VISUAL_PADRAO_DA_CAPA || iconePedido === undefined)
+    ? porSlug
+    : visualPorIconeEMatiz(iconePedido ?? '', matiz ?? Number.NaN);
+  // o par que É uma linha da tabela vira aquele aplicativo (a mesma capa, com ou sem slug)
+  const daTabela = (porSlug === visual ? slug : null) || Object.keys(PALETA).find((k) => PALETA[k] === visual);
+  const chave = daTabela || slug || `${visual.icone}|${visual.matiz}`;
   const t = tokensDaCapa(visual.h, tema);
-  const semente = hash(slug);
+  const semente = hash(chave);
   const r = sorteio(semente);
   // o prefixo dos ids: único por capa, para várias capas conviverem na mesma página
-  const p = `c${hash(`${slug}|${direcao}|${tema}`).toString(36)}`;
+  const p = `c${hash(`${chave}|${direcao}|${tema}`).toString(36)}`;
   const corpo =
     direcao === 'A' ? direcaoA(p, visual.icone, t, tema, r, semente)
       : direcao === 'B' ? direcaoB(p, visual.icone, t, tema, r, semente)
-        : direcaoC(p, slug, visual.icone, t, tema, r, semente);
+        : direcaoC(p, daTabela ?? '', visual.icone, t, tema, r, semente);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LARGURA} ${ALTURA}" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">${corpo}</svg>`;
 }
