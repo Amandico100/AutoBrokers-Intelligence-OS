@@ -52,14 +52,17 @@ const RETORNO_DO_CLIENTE: Record<string, string> = {
   outro: 'respondeu algo fora do previsto',
 };
 
+// Rótulos CURTOS (juiz de design 139 R2, Cobranças 2): a pílula de 50 caracteres quebrava em 2 linhas no celular. O
+// detalhe que saiu daqui continua ao lado de quem age: o botão "Marcar como encaminhado ao cliente" e o porquê de
+// `NAO_LIBERA` ao lado do "Liberar reenvio".
 const SITUACAO_HUMANA: Record<string, string> = {
-  entregue_equipe: 'Entregue à equipe — falta encaminhar ao cliente',
+  entregue_equipe: 'Falta encaminhar ao cliente',
   parcial: 'Texto foi, PDF não',
-  incerto: 'Não sei se saiu — precisa de conferência',
+  incerto: 'Não sei se saiu — confira',
   suprimido: 'Cliente pediu para não receber',
   falhou: 'Não saiu',
-  adiado: 'Adiado — tenta na próxima execução',
-  liberado: 'Liberada — sai na próxima execução, pelo modo de envio configurado',
+  adiado: 'Adiada para o próximo envio',
+  liberado: 'Liberada para o próximo envio',
 };
 
 function situacaoEmPortugues(item: PendenciaDaCobranca): string {
@@ -161,7 +164,9 @@ export function PendenciasDaCobranca({ titulo = 'Pendências da cobrança', clas
     <div className={cn('rounded-xl border border-border bg-surface p-4', className)} data-pendencias-da-cobranca>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-base font-semibold text-foreground">{titulo}</h2>
-        <p className="text-sm text-muted-foreground">O que já saiu e ainda espera alguém. Envios em teste não aparecem aqui.</p>
+        {/* D-139-G-01 (gerente): aqui o nome vai INTEIRO — quem age precisa saber quem é —, e a tela diz por quê (a
+            lista "O que saiu", que só informa, mascara) */}
+        <p className="text-sm text-muted-foreground">O que já saiu e ainda espera alguém, com o nome inteiro para você agir. Envios em teste não aparecem aqui.</p>
       </div>
 
       {erroPendencias && (
