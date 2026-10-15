@@ -133,12 +133,15 @@ export interface ItemDoCatalogo {
  * briefing do dia. Ela mudou de casa inteira: apagar o conteúdo e mandar o
  * corretor para a ficha do Auxiliar teria deixado ele sem o briefing.
  *
- * As outras duas ainda moram sob `galeria/` e o port é dívida registrada.
+ * SPEC-139 (P-16): as três telas viraram a ABA DO TRABALHO na casa do próprio aplicativo (`[slug]?aba=`). Os
+ * endereços antigos (`checklist-6h/hoje`, `galeria/follow-up-whatsapp`, `galeria/resumo-atendimentos`) dão 307 para
+ * cá — mas quem pergunta aqui já recebe o endereço NOVO, sem o salto. A aba de cada um é a de ABAS_DO_APLICATIVO (o
+ * teste da loja confere que cada endereço daqui abre uma aba que existe).
  */
 export const TELA_DE_EXECUCAO: Record<string, string> = {
-  'checklist-6h': '/dashboard/auxiliares/checklist-6h/hoje',
-  'follow-up-whatsapp': '/dashboard/auxiliares/galeria/follow-up-whatsapp',
-  'resumo-atendimentos': '/dashboard/auxiliares/galeria/resumo-atendimentos',
+  'checklist-6h': '/dashboard/auxiliares/checklist-6h?aba=hoje',
+  'follow-up-whatsapp': '/dashboard/auxiliares/follow-up-whatsapp?aba=follow-ups',
+  'resumo-atendimentos': '/dashboard/auxiliares/resumo-atendimentos?aba=resumos',
 };
 
 /**
@@ -243,7 +246,12 @@ export const INSTALAR_JA_LIGA: ReadonlySet<string> = new Set(['renovacao']);
  * `componente` = o módulo em `components/aplicativos/<pasta>/Aba<Nome>.tsx`, escrito como `'<pasta>/Aba<Nome>'`
  * (ex.: `'renovacao/AbaRenovacoes'`), carregado por import dinâmico pela casca. O módulo exporta `default` um
  * componente React que recebe `PropsDaAba`. `null` = a casca desenha (Início, Dúvidas, e o Configurar dos aplicativos
- * com rotina — o painel de hoje, Cobrança intocada).
+ * com rotina — o painel de rotinas de hoje). SPEC-139: a Cobrança saiu do modal e tem o Configurar PRÓPRIO
+ * (`cobranca/AbaConfigurar`, o formulário extraído do painel, mesmo corpo gravado).
+ *
+ * 🔴 Um arquivo de aba que ainda não existe NÃO quebra o build nem a tela: o import dinâmico da casca é um contexto
+ * do webpack (`webpackInclude` só de `Aba*.tsx`) — o que não está no disco simplesmente não entra no contexto, e a
+ * aba diz "esta parte ainda está sendo preparada". O teste da loja lista os que faltam (`PENDENTES_DA_COSTURA`).
  */
 export interface AbaDoAplicativo {
   id: string;
@@ -284,11 +292,60 @@ export const ABAS_DO_APLICATIVO: Record<string, AbaDoAplicativo[]> = {
     { id: 'configurar', rotulo: 'Configurar', componente: 'quem-cobra-menos/AbaConfigurar' },   // G3
     ABA_DUVIDAS,
   ],
+  // SPEC-139 · L2 — a Cobrança sai do modal e entra na casa: o Configurar é o formulário EXTRAÍDO do painel (o mesmo
+  // corpo gravado — o teste dourado do ELO), e "Cobranças" é o que saiu (só leitura, só desta corretora)
+  'cobranca-feita': [
+    ABA_INICIO,
+    { id: 'configurar', rotulo: 'Configurar', componente: 'cobranca/AbaConfigurar' },   // L2
+    { id: 'cobrancas', rotulo: 'Cobranças', componente: 'cobranca/AbaCobrancas' },      // L2
+    ABA_DUVIDAS,
+  ],
+  // SPEC-139 · L3 (P-16) — as telas que já funcionavam, MOVIDAS para a aba do trabalho. O Checklist tem o Configurar
+  // PRÓPRIO (o perfil do briefing é da corretora — não exige instalar).
+  'checklist-6h': [
+    ABA_INICIO,
+    { id: 'hoje', rotulo: 'Hoje', componente: 'checklist-6h/AbaHoje' },                          // L3
+    { id: 'configurar', rotulo: 'Configurar', componente: 'checklist-6h/AbaConfigurar' },        // L3
+    ABA_DUVIDAS,
+  ],
+  // D-139-L4-02 — Follow-up e Resumo são SOB DEMANDA: sem Configurar. 📊 B1 da L3 (15/10): 0 rotinas ligadas aos dois;
+  // e o painel de rotinas não tem rotina para eles (`ROTINA_DO_AUXILIAR` em PainelDeRotinas só conhece a Cobrança) —
+  // a aba seria um painel vazio que convida a criar uma rotina que não existe. O que se escolhe (o atendimento, o tom)
+  // mora na própria aba do trabalho. (painel vazio 45 × sem Configurar 85)
+  'follow-up-whatsapp': [
+    ABA_INICIO,
+    { id: 'follow-ups', rotulo: 'Follow-ups', componente: 'follow-up-whatsapp/AbaFollowUps' },   // L3
+    ABA_DUVIDAS,
+  ],
+  'resumo-atendimentos': [
+    ABA_INICIO,
+    { id: 'resumos', rotulo: 'Resumos', componente: 'resumo-atendimentos/AbaResumos' },          // L3
+    ABA_DUVIDAS,
+  ],
 };
 
 /**
- * As abas que ESTE aplicativo mostra: Dúvidas só com dúvida escrita; Configurar some no "em breve" (não há o que
- * configurar) e no aplicativo com rotina que ainda não foi instalado (o painel exige a instalação).
+ * SPEC-139 (D-139-L4-02) — os aplicativos SOB DEMANDA e a aba onde se usa cada um: no "Como começar" o passo de
+ * configurar vira "usar" e leva à aba do trabalho (não há Configurar para onde levar).
+ */
+export const APLICATIVOS_SOB_DEMANDA: Readonly<Record<string, { aba: string; rotulo: string; detalhe: string }>> = {
+  'follow-up-whatsapp': { aba: 'follow-ups', rotulo: 'Follow-ups', detalhe: 'Escolha o atendimento e o tom, e peça o rascunho.' },
+  'resumo-atendimentos': { aba: 'resumos', rotulo: 'Resumos', detalhe: 'Escolha o atendimento, ou deixe no automático, e peça o resumo.' },
+};
+
+/**
+ * SPEC-139 — os aplicativos cujo Configurar PRÓPRIO também exige a instalação: a regra da Cobrança é uma rotina DA
+ * instalação (a mesma que o modal gravava), então antes de instalar não há o que configurar — "Instalar" leva direto
+ * ao Configurar (`AuxiliarDetalheClient`). A Renovação, a Cotação e o QCM configuram sem instalar.
+ */
+export const CONFIGURAR_EXIGE_INSTALAR: ReadonlySet<string> = new Set(['cobranca-feita']);
+
+/**
+ * As abas que ESTE aplicativo mostra: Dúvidas só com dúvida escrita; Configurar some no aplicativo com rotina que
+ * ainda não foi instalado (o painel exige a instalação).
+ *
+ * 🔴 SPEC-139 (mutação 6 da régua): o "Em breve" é HONESTO — só Início e Dúvidas. Nada de Configurar nem da aba do
+ * trabalho (não há trabalho), e o botão principal é o "Em breve" desabilitado (`botaoPrincipal`), nunca Ligar.
  */
 export function abasDoAplicativo(
   item: Pick<ItemDoCatalogo, 'slug' | 'faq' | 'estado' | 'instalado' | 'sem_rotina'>,
@@ -296,9 +353,10 @@ export function abasDoAplicativo(
   const base = ABAS_DO_APLICATIVO[item.slug] ?? ABAS_PADRAO;
   return base.filter((a) => {
     if (a.id === 'duvidas') return item.faq.length > 0;
+    if (item.estado === 'em_breve') return a.id === 'inicio';
     if (a.id === 'configurar') {
-      if (item.estado === 'em_breve') return false;
-      if (a.componente === null && !item.sem_rotina && !item.instalado) return false;
+      const exigeInstalar = a.componente === null || CONFIGURAR_EXIGE_INSTALAR.has(item.slug);
+      if (exigeInstalar && !item.sem_rotina && !item.instalado) return false;
     }
     return true;
   });
@@ -307,8 +365,10 @@ export function abasDoAplicativo(
 /**
  * K3 (juiz de design 2): as abas de trabalho em LISTA ganham largura (`max-w-7xl`); as de leitura ficam em 5xl.
  * Devolve as que ESTE aplicativo tem — a página (servidor) passa a lista pronta para a casca (cliente).
+ * SPEC-139: "Cobranças" é lista (por dia) → larga. "Hoje", "Follow-ups" e "Resumos" eram telas de leitura em 5xl e
+ * continuam assim (o conteúdo foi MOVIDO, não redesenhado).
  */
-export const ABAS_LARGAS: readonly string[] = ['renovacoes', 'cotacoes'];
+export const ABAS_LARGAS: readonly string[] = ['renovacoes', 'cotacoes', 'cobrancas'];
 export function abasLargas(abas: AbaDoAplicativo[]): string[] {
   return abas.filter((a) => ABAS_LARGAS.includes(a.id)).map((a) => a.id);
 }
@@ -386,6 +446,8 @@ export function botaoPrincipal(
   item: Pick<ItemDoCatalogo, 'slug' | 'estado' | 'conectores_pendentes' | 'falta_para_existir' | 'sem_rotina'>,
 ): BotaoPrincipal {
   const aqui = `/dashboard/auxiliares/${item.slug}`;
+  // 🔴 SPEC-139 (mutação 6 da régua): o "Em breve" NUNCA tem Ligar nem Instalar — vem ANTES de qualquer outra regra
+  // (inclusive a da Renovação, em que instalar já liga). O teste da loja fica VERMELHO se isto virar ação.
   if (item.estado === 'em_breve') {
     return { tipo: 'desabilitado', rotulo: 'Em breve', motivo: item.falta_para_existir };
   }
@@ -483,6 +545,9 @@ export function passosDoComoComecar(
   fontes: FontesDoComoComecar,
 ): PassoDoComoComecar[] {
   const aqui = `/dashboard/auxiliares/${item.slug}`;
+  // SPEC-139 (mutação 6): o "Em breve" não tem passo nenhum — nem "Ligar" (não existe o que ligar). A casca mostra
+  // "Ainda não está pronto" com o que falta, e o contador "N de M prontos" não aparece.
+  if (item.estado === 'em_breve') return [];
   const ligado = item.estado === 'ligado';
   const passoLigar: PassoDoComoComecar = {
     chave: 'ligar',
@@ -573,26 +638,66 @@ export function passosDoComoComecar(
     ];
   }
 
-  const conexoes: PassoDoComoComecar[] = item.conexoes.map((c) => ({
-    chave: `conexao:${c.slug}`,
-    titulo: `Conectar ${c.nome}`,
-    detalhe: c.pronto ? `${c.nome} está conectado.` : `A conexão é da corretora: conecta uma vez, serve a todos os aplicativos.`,
-    estado: c.pronto ? 'pronto' : c.pronto === false ? 'falta' : 'nao_sei',
-    link: c.onde,
-    rotuloDoLink: 'Conectar',
-  }));
+  const conexoes: PassoDoComoComecar[] = item.conexoes.map((c): PassoDoComoComecar => {
+    const cobranca = item.slug === 'cobranca-feita' ? PASSOS_DA_COBRANCA[c.slug] : undefined;
+    return {
+      chave: `conexao:${c.slug}`,
+      titulo: cobranca?.titulo ?? `Conectar ${c.nome}`,
+      detalhe: c.pronto
+        ? cobranca?.pronto ?? `${c.nome} está conectado.`
+        : cobranca?.falta ?? `A conexão é da corretora: conecta uma vez, serve a todos os aplicativos.`,
+      estado: c.pronto ? 'pronto' : c.pronto === false ? 'falta' : 'nao_sei',
+      link: c.onde,
+      rotuloDoLink: 'Conectar',
+    };
+  });
+  const sobDemanda = APLICATIVOS_SOB_DEMANDA[item.slug];
+  if (sobDemanda) {
+    // D-139-L4-02: sem Configurar — o passo é USAR, na aba do trabalho
+    const usar: PassoDoComoComecar = {
+      chave: 'usar',
+      titulo: `Usar na aba ${sobDemanda.rotulo}`,
+      detalhe: sobDemanda.detalhe,
+      estado: item.instalado ? 'pronto' : 'falta',
+      link: `${aqui}?aba=${sobDemanda.aba}`,
+      rotuloDoLink: 'Abrir',
+    };
+    return [...conexoes, usar, passoLigar];
+  }
+  const regrasDaCobranca = item.slug === 'cobranca-feita';
   const configurar: PassoDoComoComecar = {
     chave: 'configurar',
-    titulo: item.instalado ? 'Configurar' : 'Instalar e configurar',
+    titulo: regrasDaCobranca
+      ? (item.instalado ? 'Escolher as regras da cobrança' : 'Instalar e escolher as regras da cobrança')
+      : (item.instalado ? 'Configurar' : 'Instalar e configurar'),
     detalhe: item.rotinas > 0
       ? `${item.rotinas === 1 ? '1 rotina configurada' : `${item.rotinas} rotinas configuradas`}.`
-      : 'Diga o que ele faz, quando e para quem.',
+      : regrasDaCobranca
+        ? 'Para quem, quando e de que jeito o boleto sai.'
+        : 'Diga o que ele faz, quando e para quem.',
     estado: item.rotinas > 0 ? 'pronto' : 'falta',
     link: item.instalado ? `${aqui}?aba=configurar` : null,
     rotuloDoLink: item.instalado ? 'Configurar' : null,
   };
   return [...conexoes, configurar, passoLigar];
 }
+
+/**
+ * SPEC-139 §4.2 — o "Como começar" da Cobrança diz o que cada conexão É para ela: o portal (de onde sai o boleto) e o
+ * número que envia (por onde o boleto chega ao cliente). Os outros aplicativos seguem "Conectar <nome>".
+ */
+const PASSOS_DA_COBRANCA: Record<string, { titulo: string; pronto: string; falta: string }> = {
+  insurance_portal: {
+    titulo: 'Conectar o portal da seguradora',
+    pronto: 'O portal está conectado: é dele que saem as parcelas vencidas e os boletos.',
+    falta: 'É do portal que saem as parcelas vencidas e os boletos. A conexão é da corretora e serve a todos os aplicativos.',
+  },
+  whatsapp_zapi: {
+    titulo: 'Conectar o número que envia',
+    pronto: 'O WhatsApp da corretora está conectado: os boletos saem por ele, espaçados.',
+    falta: 'Os boletos chegam ao cliente pelo WhatsApp da corretora. Conecte o número antes de ligar.',
+  },
+};
 
 /** "2 de 4 prontos" */
 export function contagemDosPassos(passos: PassoDoComoComecar[]): { prontos: number; total: number } {
@@ -793,6 +898,23 @@ async function renovacoesCalculadasNoMes(supabase: SupabaseClient, companyId: st
   }
 }
 
+/**
+ * SPEC-139 — "O que faz" aceita as duas formas que o catálogo tem: `{tarefa, frequencia}` (a de todos) e o texto
+ * solto (📊 15/10: `tarefas-agendadas` gravou 3 strings — a tela desenhava 3 linhas VAZIAS). O texto vira a tarefa,
+ * sem frequência; o que não é nem uma coisa nem outra sai.
+ */
+export function lerTarefas(bruto: unknown): TarefaDoAuxiliar[] {
+  if (!Array.isArray(bruto)) return [];
+  const tarefas: TarefaDoAuxiliar[] = [];
+  for (const t of bruto as unknown[]) {
+    if (typeof t === 'string' && t.trim()) tarefas.push({ tarefa: t.trim(), frequencia: '' });
+    else if (t && typeof t === 'object' && typeof (t as any).tarefa === 'string' && (t as any).tarefa.trim()) {
+      tarefas.push({ tarefa: (t as any).tarefa, frequencia: typeof (t as any).frequencia === 'string' ? (t as any).frequencia : '' });
+    }
+  }
+  return tarefas;
+}
+
 function lerFaq(bruto: unknown): DuvidaDoAplicativo[] {
   if (!Array.isArray(bruto)) return [];
   return bruto
@@ -960,7 +1082,7 @@ export async function catalogoDaCorretora(
         categorias: Array.isArray(t.categories) ? t.categories : [],
         estado_catalogo: estadoCatalogo,
         estado: derivarEstado(estadoCatalogo, i?.status ?? null, pendentes.length),
-        o_que_faz: Array.isArray(t.what_it_does) ? t.what_it_does : [],
+        o_que_faz: lerTarefas(t.what_it_does),
         promessa: t.value_promise ?? null,
         fontes: Array.isArray(t.data_sources) ? t.data_sources : [],
         falta_para_existir: t.missing_for_launch ?? null,
