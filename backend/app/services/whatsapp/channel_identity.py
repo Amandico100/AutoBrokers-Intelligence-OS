@@ -71,6 +71,16 @@ isso tem escopo, `purpose` e nome PRÓPRIOS (`plataforma:assistente`,
 `assistente`, `ab-ast-<base>`). 🔴 Sem isso ele caía em "corretora": gravava
 `purpose='observer'` e ganhava o MESMO nome de instância do QCM — o QR do
 assistente substituiria o número do Quem Cobra Menos.
+
+**A linha do usuário** (SPEC-131-0-B2, D-1310B2-01) — o WhatsApp PESSOAL de um
+corretor, pareado no Meu perfil, para ele falar com o AutoBrokers na conversa
+consigo mesmo. É a ÚNICA família que tem DONO: uma instância por PESSOA, e o
+dono entra no escopo e no nome (`linha_do_usuario`, `ab-lu-<base>-<dono>`).
+🔴 Sem o dono, dois corretores da mesma corretora dividiriam o nome — e o QR do
+primeiro seria entregue ao segundo. Por isso pedir o nome desta família SEM
+dono é erro (`ValueError`), nunca um nome "da corretora": adivinhar seria
+parear o celular de uma pessoa na sessão de outra.
+Os outros purposes não leem o dono, e o nome deles não muda um byte.
 """
 
 from __future__ import annotations
@@ -101,6 +111,14 @@ PURPOSE_DO_ASSISTENTE = "assistente"
 ESCOPO_DO_ASSISTENTE = "plataforma:assistente"
 _PREFIXO_ASSISTENTE = "ab-ast"
 
+# SPEC-131-0-B2 — a linha do usuário: o WhatsApp de UMA PESSOA (o dono), não da corretora.
+# O escopo é o próprio purpose; o dono entra na chave do pareamento e no nome.
+PURPOSE_DA_LINHA = "linha_do_usuario"
+_PREFIXO_DA_LINHA = "ab-lu"
+# Quantos hex do user_id entram no nome. 12 hex = 48 bits: dentro de UMA corretora (o nome também
+# carrega a base da corretora), a chance de dois donos colidirem é desprezível.
+_TAMANHO_DO_DONO = 12
+
 
 def _base(company_id: str) -> str:
     return str(company_id or "").replace("-", "")[:_TAMANHO_DA_BASE]
@@ -110,17 +128,32 @@ def _slug(valor: str) -> str:
     return "".join(ch for ch in str(valor or "").lower() if ch.isalnum())[:10]
 
 
+def dono_canonico(owner_user_id) -> str:
+    """O user_id do dono na forma canônica (uuid minúsculo). Vazio ou fora de forma → `ValueError`.
+
+    A linha do usuário NUNCA nasce sem dono: sem ele não há como saber de quem é o QR.
+    """
+    bruto = str(owner_user_id or "").strip().lower()
+    hexa = bruto.replace("-", "")
+    if len(hexa) != 32 or any(ch not in "0123456789abcdef" for ch in hexa):
+        raise ValueError("linha_do_usuario_sem_dono")
+    return f"{hexa[:8]}-{hexa[8:12]}-{hexa[12:16]}-{hexa[16:20]}-{hexa[20:]}"
+
+
 def escopo_de(purpose: str) -> str:
-    """Normaliza o `purpose` para um dos dois escopos que existem de verdade.
+    """Normaliza o `purpose` para um dos escopos que existem de verdade.
 
     Devolve ``"corretora"``, ``"auxiliary:<slug>"`` ou — só para o número da
     plataforma com que o corretor conversa (SPEC-132-C) —
-    ``"plataforma:assistente"``. Qualquer outra coisa cai no número da
-    corretora — inclusive valor desconhecido.
+    ``"plataforma:assistente"``, ou — só para o WhatsApp pessoal de um corretor
+    (SPEC-131-0-B2) — ``"linha_do_usuario"``. Qualquer outra coisa cai no número
+    da corretora — inclusive valor desconhecido.
     O padrão é o conservador: um `purpose` novo e não previsto compartilha a
     linha existente em vez de criar um pareamento que ninguém pediu.
     """
     p = str(purpose or "observer").strip().lower()
+    if p == PURPOSE_DA_LINHA:
+        return PURPOSE_DA_LINHA
     if p == PURPOSE_DO_ASSISTENTE or p == ESCOPO_DO_ASSISTENTE:
         return ESCOPO_DO_ASSISTENTE
     if p.startswith(PREFIXO_AUXILIAR):
@@ -132,15 +165,17 @@ def escopo_de(purpose: str) -> str:
 def numero_proprio(purpose: str) -> bool:
     """Este propósito exige um WhatsApp SEPARADO (e portanto outro QR)?
 
-    Verdadeiro para auxiliares e para o assistente da plataforma. Observador, atendimento e acionamento dividem
+    Verdadeiro para auxiliares, para o assistente da plataforma e para a linha do
+    usuário. Observador, atendimento e acionamento dividem
     a linha da corretora — pedir outro QR para eles seria pedir à atendente um
     pareamento a mais para um poder que a sessão dela já tem.
     """
     escopo = escopo_de(purpose)
-    return escopo.startswith(PREFIXO_AUXILIAR) or escopo == ESCOPO_DO_ASSISTENTE
+    return (escopo.startswith(PREFIXO_AUXILIAR) or escopo == ESCOPO_DO_ASSISTENTE
+            or escopo == PURPOSE_DA_LINHA)
 
 
-def nome_da_instancia(company_id: str, purpose: str = "observer") -> str:
+def nome_da_instancia(company_id: str, purpose: str = "observer", dono=None) -> str:
     """O nome desta corretora no Evolution Go, para este propósito.
 
     Determinístico: mesma corretora e mesmo escopo devolvem sempre o mesmo nome,
@@ -151,9 +186,15 @@ def nome_da_instancia(company_id: str, purpose: str = "observer") -> str:
     📊 Para `observer` o resultado é idêntico ao que produção já usa
     (`ab-obs-04b5cdbc04-1`), e isso é requisito, não coincidência: o acervo é
     indexado por ele.
+
+    `dono` só é lido para a linha do usuário (e lá é OBRIGATÓRIO — `ValueError` sem ele):
+    `ab-lu-<base da corretora>-<12 hex do dono>`. Para os outros purposes é ignorado.
     """
     base = _base(company_id)
     escopo = escopo_de(purpose)
+    if escopo == PURPOSE_DA_LINHA:
+        hexa = dono_canonico(dono).replace("-", "")[:_TAMANHO_DO_DONO]
+        return f"{_PREFIXO_DA_LINHA}-{base}-{hexa}"
     if escopo == ESCOPO_DO_ASSISTENTE:
         return f"{_PREFIXO_ASSISTENTE}-{base}"
     if escopo.startswith(PREFIXO_AUXILIAR):
@@ -180,6 +221,8 @@ __all__ = [
     "purpose_canonico",
     "escopo_de",
     "numero_proprio",
+    "dono_canonico",
+    "PURPOSE_DA_LINHA",
     "FUNCOES_DO_NUMERO_DA_CORRETORA",
     "PREFIXO_AUXILIAR",
     "PURPOSE_DO_ASSISTENTE",
