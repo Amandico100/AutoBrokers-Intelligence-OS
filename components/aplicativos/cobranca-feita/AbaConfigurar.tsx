@@ -139,7 +139,7 @@ export function AbaConfigurar({ item }: Partial<PropsDaAba> = {}) {
     : erroDoSalvar
       || (mostrarMotivo && f.motivo)
       || (!alterado && salvo ? 'Configuração salva.' : '')
-      || (nova ? 'Esta rotina ainda não existe: confira e salve para criar.' : '');
+      || (nova ? 'Esta agenda ainda não existe: confira e salve para criar.' : '');
 
   if (!item?.instalado) {
     return (
@@ -170,20 +170,20 @@ export function AbaConfigurar({ item }: Partial<PropsDaAba> = {}) {
   }
 
   const avancadoExtra = (
-    <Grupo id="cobranca-rotina" titulo="Esta rotina" descricao="Testes, outra rotina e apagar.">
+    <Grupo id="cobranca-rotina" titulo="Mais opções" descricao="O reenvio de teste, uma segunda agenda e apagar.">
       <Linha rotulo="Reenvio dos boletos de teste"
         info="Em Teste, cada boleto sai uma vez só para o seu número. Liberar faz os já enviados em teste saírem de novo na próxima execução. Envios reais a segurados não são afetados.">
         <LiberarReenvioDeTeste />
       </Linha>
       {!nova && (
-        <Linha rotulo="Outra rotina"
-          info="Uma segunda rotina deste aplicativo, com outro horário ou outras seguradoras. A maioria das corretoras usa uma só.">
-          <button type="button" className={BOTAO_SECUNDARIO} onClick={() => carregar('new')}>Criar outra rotina</button>
+        <Linha rotulo="Outra agenda"
+          info="Uma segunda agenda deste aplicativo, com outro horário ou outras seguradoras. A maioria das corretoras usa uma só.">
+          <button type="button" className={BOTAO_SECUNDARIO} onClick={() => carregar('new')}>Criar outra agenda</button>
         </Linha>
       )}
       {rotina && (
-        <Linha rotulo="Apagar esta rotina" info="O histórico de execuções também é removido. A configuração não volta.">
-          <Confirmar titulo="Apagar esta rotina?" descricao="O histórico de execuções também será removido." acao="Apagar" perigo
+        <Linha rotulo="Apagar esta agenda" info="O histórico das execuções também é removido. A configuração não volta.">
+          <Confirmar titulo="Apagar esta agenda?" descricao="O histórico das execuções também será removido." acao="Apagar" perigo
             onConfirmar={() => agir('delete')}>
             <button type="button" className={BOTAO_SECUNDARIO} disabled={agindo}>Apagar</button>
           </Confirmar>
@@ -198,14 +198,14 @@ export function AbaConfigurar({ item }: Partial<PropsDaAba> = {}) {
       {!ligado && (rotinas.length > 0) && (
         <p className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-foreground" role="note">
           <AlertTriangle size={16} strokeWidth={1.6} className="mt-0.5 shrink-0 text-warning" aria-hidden />
-          <span>O aplicativo está <strong>desligado</strong>: nenhuma rotina dele roda, nem as ativas. A configuração fica guardada.</span>
+          <span>O aplicativo está <strong>desligado</strong>: nenhuma cobrança sai até você ligar. A configuração fica guardada.</span>
         </p>
       )}
 
       {(rotinas.length > 1 || (nova && rotinas.length > 0)) && (
-        <Grupo id="cobranca-qual" titulo="Qual rotina" descricao="Este aplicativo tem mais de uma rotina.">
+        <Grupo id="cobranca-qual" titulo="Qual agenda" descricao="Este aplicativo tem mais de uma agenda.">
           <div className="p-4">
-            <Segmentado<string> rotulo="Qual rotina" valor={escolhida ?? 'new'} onChange={(v) => carregar(v)}
+            <Segmentado<string> rotulo="Qual agenda" valor={escolhida ?? 'new'} onChange={(v) => carregar(v)}
               opcoes={[
                 ...rotinas.map((r) => ({ valor: r.id, titulo: rotuloDaAgenda(r.schedule) })),
                 ...(nova ? [{ valor: 'new', titulo: 'Nova' }] : []),
@@ -216,19 +216,30 @@ export function AbaConfigurar({ item }: Partial<PropsDaAba> = {}) {
 
       {rotina && (
         <Grupo id="cobranca-situacao" titulo="Situação" descricao={rotuloDaAgenda(rotina.schedule)}>
-          <Linha rotulo="Esta rotina"
+          {/* juiz de design 139 (Configurar §2): com o aplicativo DESLIGADO, "Ativa · Pausar" contradizia o "Desligado ·
+              Ligar" do cabeçalho. Desligado, a agenda ativa fica NEUTRA ("vai rodar quando você ligar") e sem Pausar —
+              quem decide se roda é o Ligar lá em cima. Nenhum estado gravado muda: é só o que a tela diz. */}
+          <Linha rotulo="Esta agenda"
             info="Pausada, ela não roda mesmo com o aplicativo ligado. Reativar zera a contagem de falhas seguidas.">
             <div className="flex flex-wrap items-center gap-2">
-              <Selo tom={rotina.is_active ? 'success' : 'neutral'} rotulo={rotina.is_active ? 'Ativa' : 'Pausada'} />
+              {rotina.is_active && !ligado ? (
+                <Selo tom="neutral" rotulo="Vai rodar quando você ligar o aplicativo" />
+              ) : (
+                <Selo tom={rotina.is_active ? 'success' : 'neutral'} rotulo={rotina.is_active ? 'Ativa' : 'Pausada'} />
+              )}
               {rotina.consecutive_failures >= 5 && <Selo tom="danger" rotulo="Parou por falhas seguidas" />}
-              <button type="button" className={BOTAO_SECUNDARIO} disabled={agindo}
-                onClick={() => agir(rotina.is_active ? 'pause' : 'activate')}>
-                {agindo && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                {rotina.is_active ? 'Pausar' : 'Reativar'}
-              </button>
+              {(ligado || !rotina.is_active) && (
+                <button type="button" className={BOTAO_SECUNDARIO} disabled={agindo}
+                  onClick={() => agir(rotina.is_active ? 'pause' : 'activate')}>
+                  {agindo && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+                  {rotina.is_active ? 'Pausar' : 'Reativar'}
+                </button>
+              )}
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
-              Próxima: {quando(rotina.next_run_at)} · última: {quando(rotina.last_run_at)}
+              {ligado
+                ? <>Próxima: {quando(rotina.next_run_at)} · última: {quando(rotina.last_run_at)}</>
+                : <>Última: {quando(rotina.last_run_at)}</>}
             </p>
             {avisoDaRotina && <p className="mt-2 text-sm text-danger" role="alert">{avisoDaRotina}</p>}
           </Linha>
