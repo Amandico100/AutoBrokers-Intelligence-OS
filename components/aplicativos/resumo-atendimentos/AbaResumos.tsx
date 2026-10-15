@@ -49,7 +49,7 @@ function fmtDateShort(s?: string | null): string {
 
 function subtitleFor(c: ResumoConversation): string {
   const bits: string[] = [];
-  if (typeof c.message_count === 'number') bits.push(`${c.message_count} msg${c.message_count === 1 ? '' : 's'}`);
+  if (typeof c.message_count === 'number') bits.push(`${c.message_count} ${c.message_count === 1 ? 'mensagem' : 'mensagens'}`);
   const d = fmtDateShort(c.updated_at || c.created_at);
   if (d) bits.push(d);
   return bits.join(' · ');
