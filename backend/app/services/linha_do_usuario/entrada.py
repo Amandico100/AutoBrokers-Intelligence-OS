@@ -19,7 +19,8 @@ conversa nunca passa nem pelo normalizador. Dela sobra só +1 num contador em me
 🔴 O ANTI-ECO (D-1310B2-04) — a resposta do sistema volta pelo webhook como `fromMe` NA MESMA conversa. Três camadas,
 qualquer uma cala: (1) o PREFIXO "▸ AutoBrokers" (toda mensagem do sistema o leva) · (2) o SHA-256 do texto enviado
 nos últimos 💭 10 min (`linha_mensagens_do_sistema`, gravado ANTES do envio: o eco pode chegar antes da linha
-seguinte) · (3) o id da mensagem, quando o provedor o devolve (hoje o `evolution_go._post` não devolve — M6).
+seguinte) · (3) o id da mensagem que o provedor devolve no envio (`evolution_go._post` → `SendResult.
+provider_message_id` → `whatsapp_service.coletar_ids_enviados`), gravado DEPOIS do envio (M6, L4-B).
 Banco ilegível na checagem → CALA (uma pergunta perdida é melhor que um laço robô↔robô na conta da pessoa).
 
 🔴 O `descartadas_total` NÃO tem incremento atômico no banco. Ler-e-gravar por mensagem descartada custaria DUAS idas ao
@@ -319,6 +320,21 @@ def _registrar_anti_eco(db: Any, row: Dict[str, Any], textos: List[str],
         _t(db, "linha_mensagens_do_sistema").insert(linhas).execute()
 
 
+def _registrar_ids_enviados(db: Any, row: Dict[str, Any], enviados: List[Tuple[str, str]]) -> None:
+    """M6 — a 3ª camada do anti-eco: o id que o PROVEDOR deu a cada balão que saiu (`whatsapp_service.
+    coletar_ids_enviados`), gravado DEPOIS do envio (antes não existe). Uma linha por id, com o hash do balão; o
+    único (integration_id, message_id) recusa repetido. Falha de um não impede os outros e nunca sobe: o hash,
+    gravado ANTES, já cala o eco do mesmo texto — o id cobre o eco cujo texto o aparelho mudou."""
+    agora = datetime.now(timezone.utc).isoformat()
+    for texto, mid in enviados:
+        try:
+            _t(db, "linha_mensagens_do_sistema").insert({
+                "integration_id": str(row["id"]), "company_id": _low(row["company_id"]), "message_id": str(mid),
+                "hash_texto": _sha(texto), "enviada_em": agora}).execute()
+        except Exception as erro:  # noqa: BLE001
+            logger.warning("[LINHA] id do envio nao gravado (%s) — o hash cobre o eco", type(erro).__name__)
+
+
 def _em_mensagens_com_prefixo(texto_markdown: Any) -> List[str]:
     from app.services.atalho import envio as AENV
 
@@ -334,9 +350,9 @@ async def enviar_pela_linha(db: Any, linha: Optional[Dict[str, Any]], texto_mark
     "▸ AutoBrokers\\n", o hash gravado em `linha_mensagens_do_sistema` ANTES, pelo cinto `atalho.envio.enviar` (a
     exceção EXATA do anti-laço: destino == o número desta linha). `linha` = o dict de `estado.linha_do_dono`.
 
-    Devolve `{enviadas, ids, motivo?}`. `ids` fica vazio enquanto o provedor não devolver o id do envio (M6:
-    `evolution_go._post` responde só `ok`). Chave desligada, linha inativa/de outro dono, sem número → nada sai.
-    Nunca levanta."""
+    Devolve `{enviadas, ids, motivo?}`. `ids` = os ids que o provedor deu aos balões que saíram (M6), cada um gravado
+    em `linha_mensagens_do_sistema` DEPOIS do envio (o hash vai ANTES); provedor que não devolve id → `ids` vazio.
+    Chave desligada, linha inativa/de outro dono, sem número → nada sai. Nunca levanta."""
     vazio: Dict[str, Any] = {"enviadas": 0, "ids": []}
     try:
         if not ligada():
@@ -362,10 +378,14 @@ async def enviar_pela_linha(db: Any, linha: Optional[Dict[str, Any]], texto_mark
             return {**vazio, "motivo": "anti_eco_nao_gravado"}
         from app.services.atalho import envio as AENV
         from app.services.whatsapp.integration_secrets import prepare_integration_for_runtime
+        from app.services.whatsapp_service import coletar_ids_enviados
 
         integracao = prepare_integration_for_runtime(row)
-        n = await AENV.enviar(integracao, numero, textos, db=db)
-        return {"enviadas": int(n or 0), "ids": []}
+        with coletar_ids_enviados() as enviados:
+            n = await AENV.enviar(integracao, numero, textos, db=db)
+        if enviados:
+            await asyncio.to_thread(_registrar_ids_enviados, db, row, enviados)
+        return {"enviadas": int(n or 0), "ids": [mid for _, mid in enviados]}
     except Exception as erro:  # noqa: BLE001
         logger.error("[LINHA] envio pela linha falhou (%s)", type(erro).__name__)
         return {**vazio, "motivo": "erro"}
