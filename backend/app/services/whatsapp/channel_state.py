@@ -156,6 +156,45 @@ PROVEDORES_SONDAVEIS = ("evolution-go",)
 # contestar: quem já diz `disconnected` não está mentindo, está esperando.
 ESTADOS_QUE_AFIRMAM = (CONECTADO, CONECTANDO)
 
+# 🔴 SPEC-131-0-B2 (conserto B2) — a LINHA DO USUÁRIO (o WhatsApp PESSOAL de um
+# corretor) passa pelo heartbeat como os canais (o estado dela é verdade da TELA),
+# com três diferenças, todas dela e só dela:
+#   · religa com o corpo do pareamento dela (sem `HISTORY_SYNC`);
+#   · a queda NÃO vira cartão na Caixa do Admin nem "alarme de entrega" — a
+#     SPEC §4: a desconexão da linha aparece SÓ NA TELA da pessoa;
+#   · quando o provedor responde que a sessão não está de pé, a desconexão é
+#     registrada pela função da linha (`linha_do_usuario.estado.registrar_desconexao`).
+# (literal, e não um import de `channel_identity`: este módulo é carregado SOZINHO pelos guardas do canal;
+# `test_spec1310b2_a_linha_nao_vaza` confere que é o mesmo texto de `channel_identity.PURPOSE_DA_LINHA`)
+PURPOSE_DA_LINHA_DO_USUARIO = "linha_do_usuario"
+
+MOTIVO_DA_QUEDA_NO_HEARTBEAT = "heartbeat_sem_sessao"
+
+
+def _e_linha_do_usuario(integracao: object) -> bool:
+    return isinstance(integracao, dict) and str(
+        integracao.get("purpose") or "").strip().lower() == PURPOSE_DA_LINHA_DO_USUARIO
+
+
+def _corpo_do_connect_da_linha(url_de_entrega: str) -> dict:
+    """O corpo do `/instance/connect` da linha do usuário — o do ORQUESTRADOR (um lugar só), sem `HISTORY_SYNC`."""
+    from app.services.whatsapp.pairing_orchestrator import PairingOrchestrator
+
+    return PairingOrchestrator._corpo_do_connect(url_de_entrega, PURPOSE_DA_LINHA_DO_USUARIO)
+
+
+async def _registrar_queda_da_linha(db: Any, integracao: dict) -> None:
+    """A queda da linha, gravada pela função da L1 (nunca levanta, nunca alarma)."""
+    try:
+        from app.services.linha_do_usuario import estado as linha_estado
+
+        r = await asyncio.to_thread(linha_estado.registrar_desconexao, db, integracao,
+                                    MOTIVO_DA_QUEDA_NO_HEARTBEAT)
+        logger.info("[HEARTBEAT] linha do usuário %s desconectada (%s)", integracao.get("id"),
+                    (r or {}).get("motivo") or (r or {}).get("ignorado") or (r or {}).get("ok"))
+    except Exception as erro:  # noqa: BLE001
+        logger.warning("[HEARTBEAT] queda da linha do usuário não registrada (%s)", type(erro).__name__)
+
 
 def _env_int(nome: str, padrao: int, minimo: int = 1) -> int:
     try:
@@ -649,12 +688,16 @@ async def _reconectar_evolution_go(integracao: dict, agora: datetime) -> Optiona
 
     _ULTIMA_RECONEXAO[chave] = (tentativas + 1, agora)
     try:
+        url_de_entrega = build_webhook_url(publico, "evolution-go", webhook_token)
+        # 🔴 SPEC-131-0-B2 (conserto B2) — a LINHA DO USUÁRIO religa com o MESMO corpo do pareamento dela
+        # (`EVENTOS_DA_LINHA_DO_USUARIO`, SEM `HISTORY_SYNC`): o histórico do aparelho inteiro de uma pessoa nunca é
+        # pedido — nem na 1ª queda de socket. Os outros canais seguem byte a byte com o corpo único.
         async with httpx.AsyncClient(timeout=TIMEOUT_SONDA_SEGUNDOS) as cliente:
             resposta = await cliente.post(
                 f"{base}/instance/connect",
                 headers={"apikey": token},
-                json=corpo_do_connect(
-                    build_webhook_url(publico, "evolution-go", webhook_token)),
+                json=corpo_do_connect(url_de_entrega) if not _e_linha_do_usuario(integracao)
+                else _corpo_do_connect_da_linha(url_de_entrega),
             )
         if resposta.status_code < 400:
             _ULTIMA_RECONEXAO[chave] = (0, agora)   # deu certo: zera a escada
@@ -839,8 +882,10 @@ async def verificar_canais(
                     # `paired_phone_e164` entra para o gravador do telefone
                     # poder comparar antes de escrever. Sem ele, seria um
                     # UPDATE por corretora a cada cinco minutos, para sempre.
+                    # `owner_user_id` (SPEC-131-0-B2): a queda da linha do usuário é
+                    # registrada pela função dela, que relê a linha pelo DONO.
                     .select("id, company_id, provider, purpose, instance_id, token, "
-                            "base_url, channel_status, last_seen_at, paired_phone_e164")
+                            "base_url, channel_status, last_seen_at, paired_phone_e164, owner_user_id")
                     .eq("is_active", True)
                     .in_("provider", list(PROVEDORES_SONDAVEIS))
                     .limit(500).execute().data or [])
@@ -854,10 +899,11 @@ async def verificar_canais(
     # saber QUAIS corretoras entram no ciclo — ver a nota em
     # `_ultima_entrega_por_corretora` sobre por que a lista é obrigatória.
     ultima_entrega = await _ultima_entrega_por_corretora(
-        db, empresas={str(l.get("company_id") or "") for l in linhas})
+        db, empresas={str(l.get("company_id") or "") for l in linhas if not _e_linha_do_usuario(l)})
 
     for linha in linhas:
         resumo["verificados"] += 1
+        da_linha = _e_linha_do_usuario(linha)
         try:
             resposta = await sondar(linha)
             idade = idade_em_minutos(linha.get("last_seen_at"), momento)
@@ -912,7 +958,9 @@ async def verificar_canais(
                 ultima_entrega=ultima_entrega.get(str(linha.get("company_id") or "")),
                 agora=momento,
             )
-            if entrega["alarmar"]:
+            # A linha do usuário nunca grava conversa de atendimento: o alarme de
+            # entrega não se aplica a ela (SPEC-131-0-B2, conserto B2).
+            if entrega["alarmar"] and not da_linha:
                 resumo["mudos"] += 1
                 logger.error(
                     "[ENTREGA] canal %s (%s) diz CONECTADO e não grava conversa — motivo=%s horas=%s",
@@ -946,7 +994,16 @@ async def verificar_canais(
             else:
                 resumo["contestados"] += 1
 
-            if decisao["alarmar"]:
+            if decisao["alarmar"] and da_linha:
+                # SPEC-131-0-B2 (conserto B2): a queda da linha é SÓ DA TELA — nenhum
+                # cartão na Caixa do Admin. Com o provedor respondendo que a sessão
+                # não está de pé, a desconexão é registrada pela função da linha —
+                # só para a linha que ESTAVA conectada (no meio do QR quem decide é o
+                # pareamento, não o heartbeat).
+                if (decisao["motivo"] == "sonda_respondeu" and decisao["novo_estado"] == DESCONECTADO
+                        and normalizar_estado(linha.get("channel_status")) == CONECTADO):
+                    await _registrar_queda_da_linha(db, linha)
+            elif decisao["alarmar"]:
                 resumo["alarmes"] += 1
                 logger.error(
                     "[HEARTBEAT] canal %s (%s) afirmava '%s' e virou '%s' — motivo=%s idade=%s min",
