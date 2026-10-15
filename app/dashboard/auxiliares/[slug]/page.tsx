@@ -22,6 +22,7 @@ import {
   atividadeRecente,
   auxiliarPorSlug,
   podeLigar,
+  preferenciasDoBriefing,
   type FontesDoComoComecar,
   type PassoDaProntidao,
 } from '@/lib/auxiliaries/catalog';
@@ -71,6 +72,32 @@ async function fontesDoComoComecar(companyId: string, userId: string): Promise<F
   return { prontidao: passos, meuAgger };
 }
 
+/**
+ * Conserto A da 139 (red team B4): o "Como começar" do Checklist das 6h mede o que o Configurar DELE grava — o perfil
+ * do briefing diário da corretora (`briefing_profiles`, `user_id` nulo; o mesmo que `POST /api/dashboard/briefing`
+ * atualiza). Só LEITURA, filtrada pela corretora da SESSÃO (CLAUDE.md §7). Falhou → `null` ("não deu para conferir").
+ * ⚠️ Lido direto, e não pelo GET do backend: aquele CRIA o perfil padrão na primeira leitura — abrir uma página não
+ * escreve no banco.
+ */
+async function preferenciasDoChecklist(
+  supabase: ReturnType<typeof getSupabaseAdmin>, companyId: string,
+): Promise<FontesDoComoComecar['briefing']> {
+  try {
+    const { data, error } = await supabase
+      .from('briefing_profiles')
+      .select('schedule_spec, is_active, created_at, updated_at')
+      .eq('company_id', companyId)
+      .eq('cadence', 'daily')
+      .is('user_id', null)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (error) return null;
+    return preferenciasDoBriefing((data && data[0]) || null);
+  } catch {
+    return null;
+  }
+}
+
 export default async function AuxiliarPage({
   params,
 }: {
@@ -89,7 +116,10 @@ export default async function AuxiliarPage({
     atividadeRecente(supabase, sessao.companyId, item),
     LEEM_A_PRONTIDAO.has(item.slug)
       ? fontesDoComoComecar(sessao.companyId, sessao.userId)
-      : Promise.resolve<FontesDoComoComecar>({ prontidao: null, meuAgger: null }),
+      : item.slug === 'checklist-6h'
+        ? preferenciasDoChecklist(supabase, sessao.companyId)
+            .then((briefing): FontesDoComoComecar => ({ prontidao: null, meuAgger: null, briefing }))
+        : Promise.resolve<FontesDoComoComecar>({ prontidao: null, meuAgger: null }),
   ]);
 
   return (
