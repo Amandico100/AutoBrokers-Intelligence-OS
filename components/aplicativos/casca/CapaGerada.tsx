@@ -4,7 +4,7 @@
 //
 // Com `cover_url` (a capa do Founder, 1600×900 WebP ≤ 150 KB, sem texto): a imagem, `loading="lazy"`; se ela não
 // carregar, cai na gerada. Sem `cover_url`: a capa GERADA em código — o SVG de `capas/composicoes.ts` na direção do
-// produto (DIRECAO_DO_PRODUTO), com a cor da paleta única (`capas/paleta.ts`). Sem foto, sem texto, zero requisição,
+// produto (DIRECAO_DO_PRODUTO — a C · Cena, escolhida pelo Founder), montada para o lugar (`enquadramento`), com a cor da paleta única (`capas/paleta.ts`). Sem foto, sem texto, zero requisição,
 // a mesma capa sempre para o mesmo aplicativo.
 //
 // Claro e escuro: a MESMA composição com a outra tabela de cor; as duas vão no HTML e o tema escolhe qual aparece
@@ -16,7 +16,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 
 import { cn } from '@/lib/utils';
-import { capaSvg, DIRECAO_DO_PRODUTO } from './capas/composicoes';
+import { capaSvg, DIRECAO_DO_PRODUTO, type Enquadramento } from './capas/composicoes';
 
 export interface CapaGeradaProps {
   icone: string;
@@ -32,6 +32,8 @@ export interface CapaGeradaProps {
   esmaecer?: boolean;
   /** a imagem cresce no hover do card (`group`) — nunca com `prefers-reduced-motion` */
   crescerNoHover?: boolean;
+  /** onde a capa aparece — a C monta a cena para o lugar (card · cabecalho · destaque). Padrão: card */
+  enquadramento?: Enquadramento;
 }
 
 /** `--app-h` = a matiz do laudo: ainda usada pelo tile do ícone (`.icone-aplicativo`). */
@@ -40,17 +42,17 @@ export function estiloDaMatiz(matiz: number): CSSProperties {
 }
 
 /** Os dois SVGs (claro e escuro) da capa gerada — puro, para o teste e para quem precisar do desenho fora do React. */
-export function svgsDaCapa(pedido: { slug?: string | null; icone: string; matiz: number }): { claro: string; escuro: string } {
-  const base = { slug: pedido.slug || undefined, icone: pedido.icone, matiz: pedido.matiz, direcao: DIRECAO_DO_PRODUTO };
+export function svgsDaCapa(pedido: { slug?: string | null; icone: string; matiz: number; enquadramento?: Enquadramento }): { claro: string; escuro: string } {
+  const base = { slug: pedido.slug || undefined, icone: pedido.icone, matiz: pedido.matiz, direcao: DIRECAO_DO_PRODUTO, enquadramento: pedido.enquadramento };
   return { claro: capaSvg({ ...base, tema: 'claro' }), escuro: capaSvg({ ...base, tema: 'escuro' }) };
 }
 
 export function CapaGerada({
-  icone, matiz, slug, coverUrl, className, esmaecer = false, crescerNoHover = false,
+  icone, matiz, slug, coverUrl, className, esmaecer = false, crescerNoHover = false, enquadramento = 'card',
 }: CapaGeradaProps) {
   const [quebrou, setQuebrou] = useState(false);
   const usarImagem = Boolean(coverUrl) && !quebrou;
-  const svgs = useMemo(() => (usarImagem ? null : svgsDaCapa({ slug, icone, matiz })), [usarImagem, slug, icone, matiz]);
+  const svgs = useMemo(() => (usarImagem ? null : svgsDaCapa({ slug, icone, matiz, enquadramento })), [usarImagem, slug, icone, matiz, enquadramento]);
   const crescer = crescerNoHover
     ? 'transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none'
     : '';
@@ -68,7 +70,7 @@ export function CapaGerada({
           className={cn('h-full w-full object-cover', crescer)}
         />
       ) : svgs ? (
-        <div className={cn('capa-aplicativo absolute inset-0', crescer)} data-capa="gerada" data-direcao={DIRECAO_DO_PRODUTO}>
+        <div className={cn('capa-aplicativo absolute inset-0', crescer)} data-capa="gerada" data-direcao={DIRECAO_DO_PRODUTO} data-enquadramento={enquadramento}>
           <div className="absolute inset-0 dark:hidden" dangerouslySetInnerHTML={{ __html: svgs.claro }} />
           <div className="absolute inset-0 hidden dark:block" dangerouslySetInnerHTML={{ __html: svgs.escuro }} />
         </div>
