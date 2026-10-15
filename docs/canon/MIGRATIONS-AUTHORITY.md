@@ -270,3 +270,20 @@ advisors antes e depois, e canário Amandus → Resulta → AutoFleet.
 - [`EXECUTION-MASTER-PLAN.md`](EXECUTION-MASTER-PLAN.md) — Etapas 1 e 2
 - [`specs/SPEC-054-foundation-hardening-schema-governance.md`](specs/SPEC-054-foundation-hardening-schema-governance.md) — §8.1, §11, §12
 - [`audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md`](audits/AUDIT-SPEC-054-foundation-hardening-schema-governance-2026-07-24.md) — §5
+
+---
+
+## 11. Aplicadas depois do manifesto — o par arquivo → versão
+
+> Acrescentada em 15/10/2026 (SPEC-139, P5 do juiz). O prefixo do NOME do arquivo não é a versão gravada em
+> `supabase_migrations.schema_migrations`: o registro usa o carimbo do momento da aplicação. Quem procura a versão pelo nome
+> não acha. Esta tabela é o par, a partir de 15/10; as anteriores estão nos relatórios das SPECs.
+
+| arquivo (`backend/supabase/migrations/`) | versão no banco | 📊 sha256[0:16] do arquivo | aplicada | SPEC |
+|---|---|---|---|---|
+| `20261015_01_spec1310b2_linha_do_usuario.sql` | `20261015053220` | `1c2fa38abb6f040f` | 15/10/2026, pelo gerente | 131-0-B2 |
+| `20261016_01_spec139_conteudo_dos_aplicativos.sql` | `20261015122333` | `d78f271281279019` | 15/10/2026, pelo gerente | 139 |
+| `20261016_02_spec139_a_duvida_da_cobranca.sql` | `20261015142645` | `e227e37a8d36a7d9` | 15/10/2026, pelo gerente | 139 |
+
+📊 sha conferido em 15/10 (`Get-FileHash -Algorithm SHA256` no HEAD `dbd6da1`); versões lidas no banco pelo juiz e pela confirmação da 139
+e pelo relatório da 131-0-B2. APPLY / VERIFY / ROLLBACK de cada uma: no próprio arquivo e no relatório da SPEC.
