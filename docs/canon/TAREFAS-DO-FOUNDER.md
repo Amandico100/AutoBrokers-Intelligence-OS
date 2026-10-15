@@ -257,6 +257,8 @@
 > 13. **15/10 (SPEC-131-0-B2 construída, DESLIGADA):** **T-178** (parear o chip e medir — substitui a T-175) · **T-179** (Implantar
 >    `smith-api` e `smith-worker`, nada liga) · **T-180** (Implantar `smith-web`, depois da T-174 e fora do horário de atendimento) →
 >    **T-181** (ligar a linha, só depois da T-178 e do canário) · **T-182** (avisos por tipo — ainda não).
+> 14. **15/10 (SPEC-139 construída, a loja de aplicativos):** ~~T-177~~ ✅ (você escolheu a C) · **T-174** primeiro → **T-183** (Implantar o
+>    `smith-web`, pode ser o MESMO da T-180, fora do horário de atendimento) → **T-184** (o canário da loja, 10 min).
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -461,7 +463,9 @@
 - [ ] **T-176** ⏳ 🧑 **antes da primeira corretora PAGANTE** · **Subir o servidor para o plano KVM4** (D-132F-08) — e, junto, separar o
       Evolution GO das linhas dos usuários num servidor próprio (SPEC-131-0-B2 §4, "Capacidade"). **Esperado:** a execução refaz a conta do
       teto de linhas (`LINHA_DO_USUARIO_MAX_LINHAS`) com a memória nova. · *de:* D-132F-08
-- [ ] **T-177** ⏳ 🧑 **quando o chat da SPEC-139 mandar o link, 2 min** · **Escolher a direção das capas da loja: A, B ou C** (D-132F-03) —
+- [x] **T-177** ✅ **FECHADA 15/10 — você escolheu a C · Cena** ("Eu escolho a opção C", D-139-07); o produto desenha a C e a prancha
+      diz "Escolhida pelo Founder: C". Trocar depois = uma linha (`DIRECAO_DO_PRODUTO`). · ~~quando o chat da SPEC-139 mandar o link, 2 min~~ ·
+      **Escolher a direção das capas da loja: A, B ou C** (D-132F-03) —
       abra a prancha (3 estilos × 4 aplicativos, claro e escuro) e responda no chat *"capas: A"* (ou B, ou C). Sem resposta, a execução segue
       com a de maior nota (A) e você pode trocar depois. Não gostou de nenhuma: crie as suas (1600×900, sem texto) e mande os arquivos — elas
       entram pelo `cover_url`. · *de:* S139 §3
@@ -511,6 +515,45 @@
       `todos` **não ligam nada** (de propósito). 📊 Hoje ligar não teria efeito: nenhum código grava a linha nos canais do perfil
       (P-1310B2-03) e os avisos de licença e de falha não têm quem os publique (P-1310B2-04). **Esperado (depois das duas):** às 06:45 o
       aviso das renovações chega na sua "Mensagem para você". · *de:* S131-0-B2 §4
+
+> **15/10 (SPEC-139 — a loja de aplicativos; branch `spec/139-a-loja-de-aplicativos`):** capas ilustradas feitas em código (a C, a sua
+> escolha), todo aplicativo na mesma casa, a Cobrança sem modal (com a aba Cobranças), o Checklist das 6h, o Follow-up e o Resumo dentro
+> do próprio aplicativo, e Personalização → Corretora com equipe, conhecimento, custos e o agente. **Nenhuma regra de envio mudou.** As 2
+> mudanças de texto do catálogo (as Dúvidas) **já estão no banco** (📊 versões `20261015122333` e `20261015142645`). A T-177 fechou; nasceram
+> a T-183 e a T-184.
+
+- [ ] **T-183** ⏳ 🧑 **depois da T-174, FORA do horário de atendimento, 15 min (pode ser o MESMO Implantar da T-180)** · **Implantar o
+      `smith-web` com a loja** (P-132D-01: o build do site já derrubou o servidor em 14/10). Só o `smith-web` é preciso: no backend a 139
+      mudou um link (o da Equipe), e o endereço antigo continua redirecionando. Nenhuma variável nova.
+      1. EasyPanel → `smith-web` → **Implantar**.
+      2. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao`.
+      **Esperado:** `commit` começando pelo do push da SPEC-139 (o gerente diz qual na resposta final) e `build_em_brasilia` de hoje.
+      **Se der errado:** o painel ou a API caem durante o build → anote a hora e mande no chat; `/api/versao` com commit antigo → Implantar o
+      `smith-web` de novo. · *de:* S139 §10.1 · P-132D-01
+- [ ] **T-184** ⏳ 🧑 **depois da T-183, 10 min, no celular E no notebook** · **O canário da loja** — logado como administrador da sua
+      corretora:
+      1. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/auxiliares`.
+         **Esperado:** no topo, o destaque com a capa ilustrada (no celular, a capa em cima e o texto embaixo); cada card com uma capa
+         colorida com as peças do trabalho dele e o ícone num selo — sem o ícone repetido num quadradinho ao lado; os "Em breve" sem botão
+         Ligar; nenhuma rolagem para o lado no celular.
+      2. Troque para o escuro: `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/configuracoes?aba=aparencia`
+         → **Modo de cor** → escuro → volte ao endereço do passo 1. **Esperado:** as capas com cor (sem "lixa" granulada), as peças tingidas da
+         cor de cada aplicativo. Depois volte ao claro.
+      3. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/auxiliares/cobranca-feita?aba=configurar`.
+         **Esperado:** os grupos do Configurar em português de gente (nenhuma palavra "rotina"), a mensagem com botões de campo ("Primeiro
+         nome"…). 🔴 **NÃO clique em Salvar** — se mexer em algo e aparecer "Alterações não salvas", clique **Descartar**. Se a aba
+         Configurar não aparecer, a Cobrança não está instalada nesta corretora: **não instale**; olhe só o Início. Depois a aba
+         **Cobranças**: 📊 hoje ela fica vazia (nenhuma cobrança saiu ainda) — o certo é dizer isso, sem erro.
+      4. Os 4 endereços antigos (cole um de cada vez):
+         - `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/auxiliares/galeria/follow-up-whatsapp`
+         - `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/auxiliares/checklist-6h/hoje`
+         - `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/personalizacao/agentes/even`
+         - `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/personalizacao/custos`
+         **Esperado:** a barra de endereço muda sozinha para `…/follow-up-whatsapp?aba=follow-ups`, `…/checklist-6h?aba=hoje`,
+         `…/personalizacao/corretora/agente-de-atendimento` e `…/personalizacao/corretora/custos`, e a tela abre (é a única prova que falta:
+         o servidor de teste só conseguiu ver o redirecionamento ANTES do login).
+      **Se der errado:** a loja ainda antiga → `Ctrl+F5`; uma página 404, em branco ou com erro → print, o endereço e a hora no chat. Diga
+      também o que achou das capas no seu celular. · *de:* S139 §5.1/§6
 
 ### ① Implantar e conferir — não depende de nada
 
