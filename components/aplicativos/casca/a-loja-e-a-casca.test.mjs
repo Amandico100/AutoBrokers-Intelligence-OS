@@ -119,10 +119,10 @@ const abasCob = C.abasDoAplicativo({ slug: 'cobranca-feita', faq: [], estado: 'd
 checar(abasCob.map((a) => a.id).join(',') === 'inicio,cobrancas', 'Cobrança não instalada, sem dúvidas: Início · Cobranças (o Configurar exige instalar)', abasCob.map((a) => a.id).join(','));
 const abasCobInst = C.abasDoAplicativo({ slug: 'cobranca-feita', faq, estado: 'pausado', instalado: true, sem_rotina: false });
 checar(abasCobInst.map((a) => a.id).join(',') === 'inicio,configurar,cobrancas,duvidas', 'Cobrança instalada: Início · Configurar · Cobranças · Dúvidas', abasCobInst.map((a) => a.id).join(','));
-checar(abasCobInst.find((a) => a.id === 'configurar')?.componente === 'cobranca/AbaConfigurar' &&
-  abasCobInst.find((a) => a.id === 'cobrancas')?.componente === 'cobranca/AbaCobrancas' &&
+checar(abasCobInst.find((a) => a.id === 'configurar')?.componente === 'cobranca-feita/AbaConfigurar' &&
+  abasCobInst.find((a) => a.id === 'cobrancas')?.componente === 'cobranca-feita/AbaCobrancas' &&
   abasCobInst.find((a) => a.id === 'cobrancas')?.rotulo === 'Cobranças',
-  'o Configurar da Cobrança é o PRÓPRIO (cobranca/AbaConfigurar — nunca o painel com o modal) e "Cobranças" é cobranca/AbaCobrancas');
+  'o Configurar da Cobrança é o PRÓPRIO (cobranca-feita/AbaConfigurar — nunca o painel com o modal) e "Cobranças" é cobranca-feita/AbaCobrancas (a pasta é o slug)');
 checar(C.abasLargas(abasCobInst).join(',') === 'cobrancas', '"Cobranças" é lista: ganha largura');
 checar(C.abaValida(abasCob, 'renovacoes') === 'inicio', 'CONTROLE: ?aba=renovacoes num aplicativo sem a aba → Início');
 const abasBreve = C.abasDoAplicativo({ slug: 'caca-comissao', faq, estado: 'em_breve', instalado: false, sem_rotina: false });
@@ -163,9 +163,9 @@ checar(C.abaValida(C.abasDoAplicativo({ slug: 'checklist-6h', faq, estado: 'liga
 
 // O contrato do import dinâmico (SPEC §5): cada componente é `<pasta>/Aba<Nome>` que o `webpackInclude` da casca enxerga.
 // Um arquivo que ainda não existe NÃO quebra o build (contexto do webpack: o que não está no disco não entra) — a aba diz
-// "sendo preparada". Os que L2/L3 escrevem ficam em PENDENTES_DA_COSTURA até chegarem; 🧵 a COSTURA esvazia esta lista.
-const PENDENTES_DA_COSTURA = new Set(['cobranca/AbaConfigurar', 'cobranca/AbaCobrancas', 'checklist-6h/AbaHoje',
-  'checklist-6h/AbaConfigurar', 'follow-up-whatsapp/AbaFollowUps', 'resumo-atendimentos/AbaResumos']);
+// "sendo preparada". Os que L2/L3 escreveram ficaram em PENDENTES_DA_COSTURA até chegarem — 🧵 a COSTURA (L6) os trouxe e
+// a lista ficou VAZIA: daqui em diante todo componente registrado TEM de existir no disco.
+const PENDENTES_DA_COSTURA = new Set([]);
 const INCLUIR = new RegExp(/webpackInclude:\s*\/(.+?)\/\s*\*\//.exec(
   fs.readFileSync(path.join(RAIZ, 'components/aplicativos/casca/AbasDoAplicativo.tsx'), 'utf8'))[1]);
 const faltando = [];
