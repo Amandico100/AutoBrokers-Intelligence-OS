@@ -61,10 +61,26 @@ export function Ajuda({ titulo, children }: { titulo: string; children: ReactNod
   );
 }
 
+/**
+ * O que o campo do `NumeroComBotoes` grava quando a pessoa DIGITA — puro, exportado para o teste chamar o handler REAL.
+ * `null` = não muda nada. Sem `lerDigitado` (Renovação, Cotação): só os dígitos, dentro da faixa, e vazio não muda.
+ * Com `lerDigitado` (a Cobrança, conserto A da 139): o valor é o que ELE devolve, sem faixa — o campo grava o mesmo
+ * que o formulário de antes gravava (`numeroDigitadoNoModal`), e quem prende a faixa é o motor.
+ */
+export function numeroDoCampo(
+  texto: string, min: number, max: number, lerDigitado?: (texto: string) => number,
+): number | null {
+  if (lerDigitado) return lerDigitado(texto);
+  if (texto.trim() === '') return null;
+  return Math.min(max, Math.max(min, Math.round(Number(texto.replace(/\D/g, '')))));
+}
+
 /** Número inteiro com − / + (44 px no celular, 40 a partir de 640 — K3), dentro da faixa que veio do backend. */
-export function NumeroComBotoes({ id, valor, min, max, onChange, sufixo, rotulo, desabilitado }: {
+export function NumeroComBotoes({ id, valor, min, max, onChange, sufixo, rotulo, desabilitado, lerDigitado }: {
   id: string; valor: number; min: number; max: number; onChange: (n: number) => void; sufixo?: string; rotulo: string;
   desabilitado?: boolean;
+  /** como ler o que se DIGITA (ver `numeroDoCampo`); os botões − / + continuam dentro da faixa */
+  lerDigitado?: (texto: string) => number;
 }) {
   const limitar = (n: number) => Math.min(max, Math.max(min, Math.round(n)));
   const botao = 'inline-flex h-11 w-11 sm:h-10 sm:w-10 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:bg-surface-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -81,9 +97,8 @@ export function NumeroComBotoes({ id, valor, min, max, onChange, sufixo, rotulo,
         className="h-10 w-16 rounded-lg border border-border bg-background px-2 text-center text-sm tabular-nums text-foreground"
         value={Number.isFinite(valor) ? String(valor) : ''}
         onChange={(e) => {
-          const n = Number(e.target.value.replace(/\D/g, ''));
-          if (e.target.value.trim() === '') return;
-          onChange(limitar(n));
+          const n = numeroDoCampo(e.target.value, min, max, lerDigitado);
+          if (n !== null) onChange(n);
         }}
         aria-describedby={`${id}-faixa`}
       />
