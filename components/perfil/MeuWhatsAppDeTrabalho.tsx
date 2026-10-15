@@ -8,13 +8,18 @@ import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-import { fraseDoErro, type MeuPerfil } from './useMeuPerfil';
+import { MinhaLinhaDoWhatsApp } from './MinhaLinhaDoWhatsApp';
+import { fraseDoErro, useLinhaDoWhatsApp, type MeuPerfil } from './useMeuPerfil';
 
 /**
  * SPEC-131-B G3 (D-131-41) — "Meu WhatsApp de trabalho": SÓ o número em que a pessoa atende os clientes, confirmado por
  * ela. A página de renovação usa este número no "Quero renovar" (o cliente responde ao dono da carteira).
- * Nenhum pareamento, nada em `integrations`: o número de atendimento da corretora e o do Quem Cobra Menos são outros e
- * não mudam. O envio continua saindo do aparelho de quem clica.
+ * O número em si não é pareado: o número de atendimento da corretora e o do Quem Cobra Menos são outros e não mudam.
+ * O envio continua saindo do aparelho de quem clica.
+ *
+ * SPEC-131-0-B2 L3 — no TOPO da aba, a "linha do usuário" (`MinhaLinhaDoWhatsApp`): a pessoa pode conectar o PRÓPRIO
+ * WhatsApp por QR e conversar com o AutoBrokers em "Mensagem para você". Com a linha conectada, a frase "o AutoBrokers
+ * não se conecta a ele" deixa de ser verdade — a aba diz o que vale para cada estado (CLAUDE.md §9.3).
  *
  * SPEC-132-C C1 (D-132C-02) — "Usar pelo WhatsApp": a pessoa prova que o número é DELA mandando, do próprio celular, o
  * código "ATIVAR 123456" ao número do AutoBrokers. Verificado, ela conversa com o AutoBrokers pelo WhatsApp como no chat.
@@ -58,6 +63,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
   const [codigo, setCodigo] = useState<Codigo | null>(null);
   const [pedindo, setPedindo] = useState(false);
   const [erroDoCodigo, setErroDoCodigo] = useState('');
+  const { linha, setLinha, carregar: recarregarLinha } = useLinhaDoWhatsApp();
 
   useEffect(() => {
     if (atual) { setEditando(!atual.confirmado); setNumero(atual.numero ? exibir(atual.numero) : ''); setConfirmo(false); }
@@ -69,6 +75,10 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
   const verificado = Boolean(atual?.verificado && atual?.numero);
   // conserto P1 (SPEC-132-C): o código amarra o número DECLARADO — sem número salvo e confirmado, não há código
   const numeroConfirmado = Boolean(atual?.confirmado && atual?.numero && !editando);
+  // a linha do usuário: conectada, o AutoBrokers LÊ a conversa "Mensagem para você" do aparelho da pessoa
+  const linhaConectada = linha?.estado === 'conectada';
+  // a linha ofertada já é o jeito de falar pelo WhatsApp: o "Em breve" do número central deixaria de ser verdade
+  const linhaOfertada = Boolean(linha && linha.estado !== 'desligada');
 
   const gravar = async (corpo: Record<string, unknown>, ok: string) => {
     setOcupado(true); setErro(''); setAviso('');
@@ -102,6 +112,8 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
 
   return (
     <div className="space-y-4">
+      <MinhaLinhaDoWhatsApp linha={linha} aoMudar={setLinha} recarregar={recarregarLinha} />
+
       <div className="space-y-1">
         <h3 className="text-base font-semibold text-foreground">Meu WhatsApp de trabalho</h3>
         <p className="text-sm text-muted-foreground">
@@ -126,7 +138,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
             </button>
             <Confirmar titulo="Tirar o seu WhatsApp de trabalho?"
               descricao={verificado
-                ? 'O "Quero renovar" passa a ir para o número da corretora, e você deixa de falar com o AutoBrokers pelo WhatsApp.'
+                ? 'O "Quero renovar" passa a ir para o número da corretora, e você deixa de falar com o AutoBrokers pelo número dele no WhatsApp.'
                 : 'O "Quero renovar" passa a ir para o número da corretora.'}
               acao="Tirar" perigo onConfirmar={() => gravar({ numero: null }, 'Número tirado.')}>
               <button type="button" disabled={ocupado} className={cn(BOTAO_SECUNDARIO, 'text-danger')}>
@@ -168,7 +180,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
         </form>
       )}
 
-      {atual?.disponivel !== false && (
+      {atual?.disponivel !== false && (atalhoDisponivel || verificado || !linhaOfertada) && (
         <section aria-labelledby="atalho-whatsapp-titulo" className="space-y-3 rounded-xl border border-border bg-surface p-4">
           <h4 id="atalho-whatsapp-titulo" className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <MessageCircle size={16} strokeWidth={1.6} aria-hidden />
@@ -247,8 +259,10 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
       <p className="flex items-start gap-2 rounded-lg border border-border-soft p-3 text-sm text-muted-foreground">
         <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele, e nada vai para os seus clientes.
-          {verificado ? ' Quando você escreve para o AutoBrokers, ele responde a você, pelo número dele.' : ''}
+          {linhaConectada
+            ? 'O número acima serve para o "Quero renovar" dos clientes. No WhatsApp que você conectou, o AutoBrokers lê só a conversa "Mensagem para você" e responde ali: as suas outras conversas não são lidas nem guardadas, e nada vai para os seus clientes.'
+            : 'É só o número: o AutoBrokers não se conecta a ele nem envia nada por ele, e nada vai para os seus clientes.'}
+          {verificado ? ' Quando você escreve para o número do AutoBrokers, ele responde a você, pelo número dele.' : ''}
         </span>
       </p>
       {erro && <p className="text-sm text-danger" role="alert">{erro}</p>}
