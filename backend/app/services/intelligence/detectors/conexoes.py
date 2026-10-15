@@ -125,10 +125,16 @@ def canais_com_problema(integracoes: list[dict]) -> list[dict]:
     demoveu para `unknown` porque ninguém confirmou nada). Misturar as duas
     faria o briefing anunciar como queda algo que não foi medido.
     """
+    from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA
+
     saida = []
     for i in integracoes or []:
         if not bool(i.get("is_active")):
             continue  # desligada de propósito: decisão, não defeito
+        if str(i.get("purpose") or "").strip().lower() == PURPOSE_DA_LINHA:
+            # SPEC-131-0-B2 (conserto B2): a linha do usuário é o WhatsApp PESSOAL de um corretor — a queda dela
+            # aparece SÓ na tela dele (SPEC §4), nunca no briefing da corretora
+            continue
         estado = str(i.get("channel_status") or "").lower()
         if estado in ESTADOS_TRANSITORIOS:
             continue
