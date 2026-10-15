@@ -12,7 +12,11 @@ export default function ConhecimentoPage() {
           icon={icons.conhecimento}
           title="Conhecimento"
           subtitle="Documentos e fontes privadas da sua corretora, com status real de processamento."
-          breadcrumb={[{ label: 'Personalização', href: '/dashboard/personalizacao' }, { label: 'Conhecimento' }]}
+          breadcrumb={[
+            { label: 'Personalização', href: '/dashboard/personalizacao' },
+            { label: 'Corretora', href: '/dashboard/personalizacao/corretora' },
+            { label: 'Conhecimento' },
+          ]}
         />
         <KnowledgeClient />
       </div>
