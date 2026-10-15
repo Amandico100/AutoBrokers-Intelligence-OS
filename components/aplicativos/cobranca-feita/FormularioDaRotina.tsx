@@ -7,16 +7,43 @@
 // todo clique chama o hook (`useFormularioDaRotina`), que chama as funções puras de `formulario.ts`. Os porquês de
 // cada campo (SPEC-078, SPEC-EXTRA-001, SPEC-EXTRA-001.6) vieram com ele.
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ChevronDown } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Plus } from 'lucide-react';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Grupo, Linha, NumeroComBotoes, Segmentado } from '@/components/aplicativos/configurar/pecas';
 import { cn } from '@/lib/utils';
 
-import { CHAVES_DA_MENSAGEM, DIAS_DA_SEMANA, MODOS_COM_MOTOR, diasMarcados } from './formulario';
+import { DIAS_DA_SEMANA, MODOS_COM_MOTOR, diasMarcados, numeroDigitadoNoModal } from './formulario';
 import type { FormularioDaRotinaAberto } from './useFormularioDaRotina';
+
+/**
+ * Os campos da mensagem com NOME DE GENTE (juiz de design 139, Configurar §3): o chip insere o campo no texto — o
+ * VALOR gravado continua o MESMO token (`{primeiro_nome}`), igual a quem o digitasse. `{cliente_nome}` e `{apolice}`
+ * são sinônimos que o motor também aceita (`CHAVES_DA_MENSAGEM`): continuam valendo se digitados, mas não ganham chip.
+ */
+const CAMPOS_DA_MENSAGEM: { chave: string; nome: string }[] = [
+  { chave: '{primeiro_nome}', nome: 'Primeiro nome' },
+  { chave: '{nome_segurado}', nome: 'Nome completo' },
+  { chave: '{nome_atendente}', nome: 'Quem assina' },
+  { chave: '{nome_corretora}', nome: 'Nome da corretora' },
+  { chave: '{nome_seguradora}', nome: 'Seguradora' },
+  { chave: '{numero_parcela}', nome: 'Número da parcela' },
+  { chave: '{item_segurado}', nome: 'Bem segurado' },
+  { chave: '{numero_apolice}', nome: 'Número da apólice' },
+  { chave: '{vencimento}', nome: 'Vencimento' },
+  { chave: '{valor}', nome: 'Valor' },
+  { chave: '{recibo}', nome: 'Recibo' },
+  { chave: '{portal}', nome: 'Portal' },
+];
+
+/** O texto com o campo inserido onde está o cursor (sem cursor: no fim). Puro. */
+function comCampoInserido(texto: string, chave: string, inicio: number | null, fim: number | null): string {
+  const a = inicio ?? texto.length;
+  const b = fim ?? a;
+  return `${texto.slice(0, a)}${chave}${texto.slice(b)}`;
+}
 
 const CAMPO =
   'h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground sm:h-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60';
@@ -55,7 +82,20 @@ export function FormularioDaRotina({
     billingDiasEntreCobrancas,
   } = derivados;
   const [avancado, setAvancado] = useState(false);
+  const caixaDaMensagem = useRef<HTMLTextAreaElement>(null);
   const id = (nome: string) => `${prefixo}-${nome}`;
+  /** O chip do campo: insere o token onde está o cursor — a MESMA gravação de quem digita no texto. */
+  const inserirCampo = (chave: string) => {
+    const caixa = caixaDaMensagem.current;
+    const inicio = caixa ? caixa.selectionStart : null;
+    f.setBillingConfig({ message_template: comCampoInserido(textoDaMensagem, chave, inicio, caixa ? caixa.selectionEnd : null) });
+    const pos = (inicio ?? textoDaMensagem.length) + chave.length;
+    requestAnimationFrame(() => {
+      if (!caixa) return;
+      caixa.focus();
+      caixa.setSelectionRange(pos, pos);
+    });
+  };
   const marcados = diasMarcados(form);
 
   return (
@@ -63,11 +103,11 @@ export function FormularioDaRotina({
       {/* 🔴 SPEC-078 D.1/D.2 — o NOME é o do aplicativo (fixo), e "o que ele faz" é LEITURA quando o aplicativo tem
           motor próprio: em cobrança `instructions` é inerte (`routine_engine` desvia antes do prompt). Em rotina
           genérica (que roda por modelo de linguagem) ele funciona e continua editável. */}
-      <Grupo id={id('o-que-faz')} titulo="O que ele faz" descricao={`Rotina de ${auxiliarNome}.`}>
+      <Grupo id={id('o-que-faz')} titulo="O que ele faz" descricao={`O que ${auxiliarNome} repete em cada execução.`}>
         <Linha rotulo="Em cada execução" htmlFor={billingConfig ? undefined : id('instrucoes')}
           info={billingConfig
             ? 'Isto é o que o aplicativo faz, e não muda. O que você personaliza abaixo é quando ele roda e como ele fala.'
-            : 'Descreva a tarefa completa, como se instruísse um assistente. É o texto que a rotina segue em toda execução.'}>
+            : 'Descreva a tarefa completa, como se instruísse um assistente. É o texto que ele segue em toda execução.'}>
           {billingConfig ? (
             <p className="whitespace-pre-wrap text-sm leading-6 text-foreground-2">
               {form.instructions || 'Varre os portais das seguradoras selecionadas, encontra os inadimplentes, baixa os boletos disponíveis e monta o relatório.'}
@@ -94,7 +134,7 @@ export function FormularioDaRotina({
         <>
           <Grupo id={id('seguradoras')} titulo="Onde ele procura" descricao="As seguradoras em que ele procura parcelas em atraso.">
             <Linha rotulo="Seguradoras"
-              info="Marque quantas quiser. A rotina procura em uma por vez e junta tudo num relatório só. Só aparecem prontas as seguradoras que a corretora conectou e em que a cobrança automática já existe.">
+              info="Marque quantas quiser. Ele procura em uma por vez e junta tudo num relatório só. Só aparecem prontas as seguradoras que a corretora conectou e em que a cobrança automática já existe.">
               {cobrancaDegradada && (
                 <Atencao>
                   Não deu para confirmar quais seguradoras estão prontas agora. Nenhuma aparece como pronta até a
@@ -223,10 +263,25 @@ export function FormularioDaRotina({
           <Grupo id={id('mensagem')} titulo="A mensagem" descricao="O texto que vai junto com o boleto.">
             <div className="space-y-3 p-4">
               <label htmlFor={id('texto')} className="text-sm font-medium text-foreground">Mensagem ao cliente</label>
-              <textarea id={id('texto')} value={textoDaMensagem} disabled={desabilitado} rows={8}
+              <textarea id={id('texto')} ref={caixaDaMensagem} value={textoDaMensagem} disabled={desabilitado} rows={8}
                 onChange={(e) => f.setBillingConfig({ message_template: e.target.value })}
-                className={cn(AREA, 'font-mono')} />
-              <p className="text-sm text-muted-foreground">Campos disponíveis: {CHAVES_DA_MENSAGEM.join(' · ')}</p>
+                className={cn(AREA, 'leading-6')} />
+              <div className="space-y-2">
+                <p id={id('campos')} className="text-sm text-muted-foreground">
+                  Toque num campo para colocá-lo no texto. Na hora de enviar, ele vira o dado de cada segurado.
+                </p>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={id('campos')}>
+                  {CAMPOS_DA_MENSAGEM.map((c) => (
+                    <button key={c.chave} type="button" disabled={desabilitado} data-campo={c.chave}
+                      aria-label={`Colocar o campo ${c.nome} no texto`}
+                      onClick={() => inserirCampo(c.chave)}
+                      className="inline-flex h-11 items-center gap-1 rounded-full border border-border bg-background px-3 text-sm text-foreground transition-colors hover:bg-surface-2 disabled:opacity-50 sm:h-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <Plus size={14} strokeWidth={1.6} className="text-muted-foreground" aria-hidden />
+                      {c.nome}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {chavesDesconhecidas.length > 0 && (
                 <Atencao>
                   Estes campos não existem e vão sair <strong>em branco</strong> na mensagem: {chavesDesconhecidas.join(', ')}
@@ -235,9 +290,13 @@ export function FormularioDaRotina({
               {/* 🔴 SPEC-078 E.3 — a mensagem EXATA que o segurado leria. Em Teste, o que chega no celular leva um
                   cabeçalho de simulação — e isso FICA: teste indistinguível do real é como se manda o real achando
                   que é teste. */}
-              <details className="rounded-lg border border-border-soft bg-background p-3">
-                <summary className="flex min-h-[44px] cursor-pointer items-center text-sm font-medium text-foreground">
+              {/* juiz de design 139 (Configurar §4): o indicador de abrir. O `<details>` nativo já anuncia aberto/fechado
+                  ao leitor de tela; a seta gira com o estado. */}
+              <details className="group rounded-lg border border-border-soft bg-background p-3">
+                <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 rounded-md text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                   Ver como o segurado vai ler
+                  <ChevronDown size={18} strokeWidth={1.6} aria-hidden
+                    className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
                 </summary>
                 <p className="mt-2 whitespace-pre-wrap rounded-md bg-surface-2 px-3 py-2 text-sm leading-6 text-foreground">
                   {previaDaMensagem}
@@ -302,8 +361,8 @@ export function FormularioDaRotina({
 
       <Grupo id={id('relatorio')} titulo={billingConfig ? 'O relatório' : 'Entrega'}
         descricao={billingConfig ? 'Quem recebe o resumo de cada execução.' : 'Para onde vai o resultado de cada execução.'}>
-        <Linha rotulo={billingConfig ? 'Relatório da rotina' : 'Entrega'}>
-          <Segmentado<'whatsapp' | 'none'> rotulo={billingConfig ? 'Relatório da rotina' : 'Entrega'} desabilitado={desabilitado}
+        <Linha rotulo={billingConfig ? 'Relatório de cada execução' : 'Entrega'}>
+          <Segmentado<'whatsapp' | 'none'> rotulo={billingConfig ? 'Relatório de cada execução' : 'Entrega'} desabilitado={desabilitado}
             valor={form.channel === 'whatsapp' ? 'whatsapp' : 'none'}
             opcoes={[{ valor: 'whatsapp', titulo: 'WhatsApp' }, { valor: 'none', titulo: 'Só histórico' }]}
             onChange={(c) => f.mudar({ channel: c })} />
@@ -324,7 +383,7 @@ export function FormularioDaRotina({
             <span>
               <span className="block text-base font-semibold text-foreground">Avançado</span>
               <span className="block text-sm text-muted-foreground">
-                {billingConfig ? 'Quantos boletos por vez e o intervalo entre cobranças da mesma pessoa.' : 'O que mais dá para fazer com esta rotina.'}
+                {billingConfig ? 'Quantos boletos por vez e o intervalo entre cobranças da mesma pessoa.' : 'O que mais dá para fazer aqui.'}
               </span>
             </span>
             <ChevronDown size={18} strokeWidth={1.6} aria-hidden
@@ -335,14 +394,16 @@ export function FormularioDaRotina({
               <Grupo id={id('limites')} titulo="Limites">
                 <Linha rotulo="Máximo de boletos por execução" htmlFor={id('max')}
                   info="Para o primeiro teste, 1 ou 2. Quem não couber hoje volta amanhã de onde parou.">
+                  {/* 🔴 conserto A da 139 (red team B3): o que se DIGITA grava o MESMO número que o modal de antes
+                      (`parseInt(v || '10')`); os botões − / + ficam na faixa. */}
                   <NumeroComBotoes id={id('max')} rotulo="boletos por execução" valor={billingMaxBoletos} min={1} max={50}
-                    sufixo="boletos" desabilitado={desabilitado}
+                    sufixo="boletos" desabilitado={desabilitado} lerDigitado={(t) => numeroDigitadoNoModal(t, '10')}
                     onChange={(n) => f.setBillingConfig({ max_boletos_por_execucao: n })} />
                 </Linha>
                 <Linha rotulo="Dias entre cobranças do mesmo segurado" htmlFor={id('dias')}
                   info="A mesma pessoa não é cobrada de novo antes disso — nem por outra seguradora. Quem ficar de fora aparece no relatório, com a data em que volta.">
                   <NumeroComBotoes id={id('dias')} rotulo="dias entre cobranças" valor={billingDiasEntreCobrancas} min={1} max={30}
-                    sufixo="dias" desabilitado={desabilitado}
+                    sufixo="dias" desabilitado={desabilitado} lerDigitado={(t) => numeroDigitadoNoModal(t, '7')}
                     onChange={(n) => f.setBillingConfig({ dias_entre_cobrancas_do_mesmo_segurado: n })} />
                 </Linha>
               </Grupo>
