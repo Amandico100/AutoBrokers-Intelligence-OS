@@ -16,5 +16,5 @@
 import { redirect } from 'next/navigation';
 
 export default function Redireciona() {
-  redirect('/dashboard/auxiliares/checklist-6h/hoje');
+  redirect('/dashboard/auxiliares/checklist-6h?aba=hoje');
 }
