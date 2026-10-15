@@ -46,6 +46,11 @@ logger = logging.getLogger(__name__)
 #: (`app/api/conversations/route.ts:197`, sem filtro de canal) — é lá que ela aparece. A coluna é `text` sem CHECK
 #: (`schema_completo.sql:1031`, default 'web'). D-132C-05 (proposta, nota 88 × 'whatsapp' 35).
 CANAL_DO_ATALHO = "whatsapp_assistente"
+#: SPEC-131-0-B2 — a ORIGEM do turno que veio pela LINHA DO USUÁRIO (o WhatsApp do próprio corretor, a conversa consigo
+#: mesmo). A conversa é a MESMA do canal do atalho (D-1310B2-03); o "via" fica no `payload.origem` de cada pergunta em
+#: `messages` (📊 15/10 `conversations` não tem coluna `metadata` — 26 colunas, information_schema), e a saída é
+#: `linha_do_usuario.entrada.enviar_pela_linha` (o prefixo, o anti-eco, a própria conta).
+ORIGEM_DA_LINHA = "linha_do_usuario"
 #: 💭 uma conversa nova depois de 12 h de silêncio
 JANELA_DA_CONVERSA = timedelta(hours=12)
 #: 💭 o teto de mensagens por membro por dia (o dia de Brasília)
@@ -304,17 +309,17 @@ async def subir_midia(db: Any, integracao: Dict[str, Any], company_id: Any, user
 # a pergunta (como o BFF grava) e a chamada ao chat
 # =====================================================================================================================
 def gravar_pergunta(db: Any, conversa: Dict[str, Any], company_id: str, texto: str, anexos: List[Dict[str, Any]],
-                    client_request_id: str) -> Optional[str]:
+                    client_request_id: str, *, origem: str = CANAL_DO_ATALHO) -> Optional[str]:
     """A PERGUNTA em `messages`, com a MESMA forma do BFF (`app/api/chat/stream/route.ts` §4): `role='user'`,
     `type='text'`, `payload.client_request_id` no topo (o índice único do turno), `payload.turn.submitted_at` e as
-    fichas dos anexos (nunca o conteúdo). + `payload.origem` (de onde veio)."""
+    fichas dos anexos (nunca o conteúdo). + `payload.origem` (de onde veio: o atalho ou a linha do usuário)."""
     cid = _id(company_id, "company_id")
     if not _mesma(conversa.get("company_id"), cid):
         raise RuntimeError("a conversa não é desta corretora")
     conteudo = texto if texto else (f"[Anexo] {', '.join(a['nome'] for a in anexos)}" if anexos else "")
     payload: Dict[str, Any] = {"client_request_id": client_request_id,
                                "turn": {"submitted_at": _agora().isoformat()},
-                               "origem": CANAL_DO_ATALHO}
+                               "origem": ORIGEM_DA_LINHA if origem == ORIGEM_DA_LINHA else CANAL_DO_ATALHO}
     if anexos:
         payload["attachments"] = [{"nome": a["nome"], "mime": a["mime"], "bytes": a["bytes"], "path": a["path"],
                                    "bucket": a["bucket"]} for a in anexos]
@@ -430,11 +435,25 @@ async def _renovar_digitando(integracao: Dict[str, Any], telefone: str, parar: a
 
 
 async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict[str, Any],
-                normalizado: Dict[str, Any], *, texto: Optional[str] = None) -> ResultadoDoTurno:
+                normalizado: Dict[str, Any], *, texto: Optional[str] = None,
+                origem: str = CANAL_DO_ATALHO) -> ResultadoDoTurno:
     """Um turno do CORE para o membro (company_id, user_id DELE), da mídia à resposta enviada. Nunca levanta.
 
-    `texto` substitui o do evento (a pergunta guardada enquanto se escolhia a corretora)."""
+    `texto` substitui o do evento (a pergunta guardada enquanto se escolhia a corretora).
+    `origem` = `ORIGEM_DA_LINHA` (SPEC-131-0-B2): o MESMO turno, com a saída pela linha do usuário — toda mensagem
+    por `linha_do_usuario.entrada.enviar_pela_linha(db, membro["linha"], …)` (prefixo, anti-eco, a própria conta) e a
+    pergunta gravada com `payload.origem='linha_do_usuario'`. Qualquer outro valor = o atalho de sempre."""
     from app.services.atalho import envio
+
+    da_linha = origem == ORIGEM_DA_LINHA
+
+    async def _manda(markdown: Any) -> int:
+        """A ÚNICA saída do turno: o cinto do atalho, ou — para a linha do usuário — a saída da linha."""
+        if da_linha:
+            from app.services.linha_do_usuario.entrada import enviar_pela_linha
+
+            return int((await enviar_pela_linha(db, membro.get("linha") or {}, markdown)).get("enviadas") or 0)
+        return await envio.enviar_texto(integracao, telefone, markdown, db=db)
 
     cid = str(membro.get("company_id") or "").lower()
     uid = str(membro.get("user_id") or "").lower()
@@ -443,15 +462,14 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
         _id(cid, "company_id"), _id(uid, "user_id")
         agente = await asyncio.to_thread(agente_core, db, cid)
         if not agente:
-            await envio.enviar_texto(integracao, telefone, FRASE_SEM_AGENTE.format(
-                corretora=membro.get("nome_da_corretora") or "sua corretora"), db=db)
+            await _manda(FRASE_SEM_AGENTE.format(corretora=membro.get("nome_da_corretora") or "sua corretora"))
             res.status = "sem_agente"
             return res
         chave = _chave_interna()
         if not chave:
             # ⛔ sem a chave o handler cairia no modo WIDGET (sem `userId`): o turno não roda às cegas
             logger.error("[ATALHO] sem chave interna (ADMIN_API_KEY/BACKEND_INTERNAL_API_KEY) — o turno não roda")
-            await envio.enviar_texto(integracao, telefone, FRASE_SEM_RESPOSTA, db=db)
+            await _manda(FRASE_SEM_RESPOSTA)
             res.status = "sem_chave"
             return res
 
@@ -465,7 +483,7 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
             if subida.get("anexo"):
                 anexos.append(subida["anexo"])
             elif subida.get("aviso") and not fala:
-                await envio.enviar_texto(integracao, telefone, subida["aviso"], db=db)
+                await _manda(subida["aviso"])
                 res.status = "arquivo_falhou"
                 return res
         if not fala and not anexos:
@@ -475,7 +493,8 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
         conversa = await asyncio.to_thread(conversa_do_membro, db, cid, uid, agente, titulo=fala[:50])
         res.conversation_id = str(conversa["id"])
         client_request_id = str(uuid.uuid4())
-        user_message_id = await asyncio.to_thread(gravar_pergunta, db, conversa, cid, fala, anexos, client_request_id)
+        user_message_id = await asyncio.to_thread(gravar_pergunta, db, conversa, cid, fala, anexos, client_request_id,
+                                                  origem=origem)
         corpo: Dict[str, Any] = {
             "chatInput": fala or None,
             "sessionId": str(conversa["session_id"]),
@@ -512,7 +531,7 @@ async def rodar(db: Any, integracao: Dict[str, Any], telefone: str, membro: Dict
         else:
             res.status = "respondido"
         res.texto = final
-        res.enviadas = await envio.enviar_texto(integracao, telefone, final, db=db)
+        res.enviadas = await _manda(final)
         logger.info("[ATALHO] turno de %s: %s, %d mensagem(ns)", _mascarar(telefone), res.status, res.enviadas)
         return res
     except Exception as erro:  # noqa: BLE001 — o atalho nunca derruba o webhook
