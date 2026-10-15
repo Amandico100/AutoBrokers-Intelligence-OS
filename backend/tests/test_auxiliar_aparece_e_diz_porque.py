@@ -154,10 +154,19 @@ def _fonte_da_casca() -> str:
     return "\n".join(partes)
 
 
+def _pos_do_titulo(casca: str, secao: str) -> int:
+    """Onde a seção é RENDERIZADA: `titulo="X"` ou, desde a SPEC-139 (L4, b14c972 — o "Em breve" diz "O que ele vai
+    fazer"), `titulo={emBreve ? '…' : 'X'}`. Verdade vencida (§9.3): o guarda passou a ler as duas formas; -1 se nenhuma."""
+    m = re.search(r'titulo=(?:"' + re.escape(secao) + r'"|\{[^}]*\'' + re.escape(secao) + r'\'[^}]*\})', casca)
+    return m.start() if m else -1
+
+
 def checar_secoes_da_casca(casca: str, catalogo: str) -> None:
     """A régua, PURA (o controle a chama com um texto mutado — §9.3: o guarda precisa conseguir ficar vermelho)."""
     for secao in SECOES_DA_CASCA:
-        checar(f'titulo="{secao}"' in casca, f'a casca traz a seção "{secao}"')
+        checar(_pos_do_titulo(casca, secao) >= 0, f'a casca traz a seção "{secao}"')
+    # SPEC-139: o "Em breve" troca o título por um honesto — e ele TEM de existir (o que ele vai fazer, não o que faz)
+    checar("'O que ele vai fazer'" in casca, 'o "Em breve" diz "O que ele vai fazer" (SPEC-139 §4.4)')
     for secao in SECOES_QUE_SAIRAM:
         checar(secao not in casca and secao not in catalogo, f'a seção "{secao}" saiu (SPEC-131-B §4)')
     # SPEC-131-B conserto K2 (juiz de design, conserto 9; decisão do gerente na bateria de 13/10 — verdade vencida, §9.3):
@@ -167,12 +176,12 @@ def checar_secoes_da_casca(casca: str, catalogo: str) -> None:
     def _onde(secao: str) -> int:
         if secao == "Como começar":
             return casca.find("{!faltaPasso && comoComecar}")
-        return casca.find(f'titulo="{secao}"')
+        return _pos_do_titulo(casca, secao)
     pos = [_onde(x) for x in SECOES_DA_CASCA]
     checar(all(p >= 0 for p in pos) and pos == sorted(pos),
            "as seções vêm na ordem do laudo (o que é → o que faz → ganha → como começar → atividade), com tudo pronto")
     adiantado = casca.find("{faltaPasso && comoComecar}")
-    checar(casca.find('titulo="O que é"') < adiantado < casca.find('titulo="O que faz"'),
+    checar(_pos_do_titulo(casca, "O que é") < adiantado < _pos_do_titulo(casca, "O que faz"),
            "faltando passo, o 'Como começar' vem logo depois de 'O que é'")
     checar("item.headline" in casca, "mostra a headline, não só o nome")
     checar("falta_para_existir" in casca and "falta_para_existir" in catalogo,
