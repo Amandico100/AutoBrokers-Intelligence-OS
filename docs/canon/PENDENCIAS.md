@@ -380,6 +380,10 @@ lugar delas é sob `/dashboard/auxiliares/[slug]/`.
 - ↪ **13/10 · 🟡 CONTINUA (SPEC-131-B).** As duas seguem em `galeria/` (📊 0 commits da 131-B nessa pasta). O destino agora existe — a
   casca `/dashboard/auxiliares/[slug]?aba=` — e a tela de **Serviços**, que também morava fora do lugar, saiu de Personalização para a aba
   Configurar da Renovação (D-131-06, redirect). As duas vão com "A loja de aplicativos" (programa 8.1). Drenagem em P-131B.
+- ↪ **15/10 · ✅ FECHADA (SPEC-139, L3).** O conteúdo das duas (e o do Checklist das 6h) foi MOVIDO para `components/aplicativos/`
+  como abas da casca — `follow-up-whatsapp?aba=follow-ups`, `resumo-atendimentos?aba=resumos`, `checklist-6h?aba=hoje`; os três
+  `page.tsx` antigos são `redirect()` de 1 salto. 📊 `as-telas-no-lugar` 44 OK (mutações 5a/5b vermelhas) · red team: 0 de 26
+  páginas-redirect com destino sem rota ou 2 saltos · `next start` → 307. Drenagem em P-139.
 
 ## P-17 · A verdade sobre conexões mora em três tabelas
 
@@ -14412,3 +14416,119 @@ achar o commit que tirou as regras e repô-las. **De quem:** 🤖. **Custa esque
 | P-132C-04 | ✅ FECHADA para a linha (job diário) · 🟡 CONTINUA para as tabelas do central |
 | P-132D-01 | 🟡 CONTINUA — T-174 antes de Implantar o `smith-web` (T-180) |
 | P-E0012-02 | 🟡 CONTINUA, destravada — ver P-1310B2-11 |
+
+### 139 · a loja de aplicativos — 15/10/2026 · [relatório](reports/SPEC-139-EXECUTION-REPORT.md)
+
+> Fonte: o registro da execução + os laudos (juiz, red team, confirmação "C", design R1/R2/R3), conferidos contra o código de `dbd6da1`.
+> Já fechados no conserto (não entram aqui): juiz B1/B2, red team B1–B4, o harness `/embed/loja` (apagado `0447bd5` + guarda `6415078`)
+> e os defeitos de design da R1 e da R2 (R3 92).
+
+## P-139-01 · 🤖 O padrão da Cobrança no banco ainda assina "Even"
+`routine_templates.config_default` da Cobrança tem `attendant_name` = "Even" (banco). Toda agenda NOVA nasce preenchida pelo modelo.
+**Destrava:** UPDATE idempotente do padrão (vazio, para o formulário pedir o nome da corretora), com APPLY/VERIFY/ROLLBACK. **De quem:** 🤖.
+**Custa esquecer:** a primeira corretora que instalar a Cobrança manda boleto assinado por um nome que o produto não usa (CLAUDE.md §1).
+
+## P-139-02 · 🤖 A rota `/api/dashboard/rotinas` nunca devolve 409
+O aviso "Outra pessoa salvou antes" (`cobranca-feita/AbaConfigurar.tsx:138`) não tem como acontecer. **Destrava:** `updated_at` no corpo e
+409 na rota quando mudou. **De quem:** 🤖. **Custa esquecer:** duas pessoas editando a mesma agenda — a última grava por cima, calada.
+
+## P-139-03 · ✅ DECIDIDA (D-139-G-01) — "Precisa de você" mostra o nome inteiro
+A lista "O que saiu" mascara; a fila de quem precisa agir mostra o nome inteiro e a tela diz por quê. Reabre só se o Founder pedir máscara.
+
+## P-139-04 · 🧑🤖 Ligar o aplicativo não reativa a agenda pausada
+📊 B1: a Cobrança está instalada em 2 corretoras, as duas pausadas. **Destrava:** 🧑 decidir se Ligar reativa a agenda ou se a tela avisa
+"a agenda está pausada"; 🤖 fazer. **Custa esquecer:** o corretor liga a Cobrança e nada sai.
+
+## P-139-05 · 🧑🤖 Cobranças sem dado real — o isolamento com duas corretoras reais é vazio
+📊 `billing_sent_log` tem 0 linhas (15/10). A prova é o dublê com 2 corretoras + mutação 3 vermelha. **Destrava:** a primeira cobrança que
+sair (a cobrança estável é o fim da fila, D-1311-02) → rodar a leitura com 2 `company_id` reais. **De quem:** 🧑 ligar · 🤖 medir.
+**Custa esquecer:** o filtro da tela nova só foi provado com dublê.
+
+## P-139-06 · 🤖 Jargão restante em telas que a 139 tocou
+"Even" no "Por agente" de Custos (`lib/admin/tenant-usage-store.ts:21`) e "Auxiliar" em `components/auxiliares/PainelDeRotinas.tsx:149`
+(ainda montado para tarefas-agendadas e Radar). ⚠️ O registro da execução listava também "tokens"/"$custo" no Resumo e "id: … status: …" no
+Follow-up: FECHADOS pelos consertos (📊 design R2 `jargao: []` nas 40 páginas; grep 15/10 = 0). **Destrava:** "Atendimento" no lugar de
+"Even"; "aplicativo" no painel. **De quem:** 🤖. **Custa esquecer:** o nome antigo do agente na tela de custos.
+
+## P-139-07 · 🤖 O Follow-up aprovado não envia nada
+A aprovação cria o pedido e para aí; as Dúvidas já dizem isso (não promete). **Destrava:** o envio do aprovado pelo motor de envio único,
+na SPEC que fizer o envio a clientes (D-132F-05). **De quem:** 🤖. **Custa esquecer:** a tela de aprovar fica sem consequência.
+
+## P-139-08 · 🤖 Código morto: `cobranca-feita/AbaInicio.tsx` e `AbaDuvidas.tsx`
+📊 `git ls-files` 15/10: existem; não estão em `ABAS_DO_APLICATIVO` (a casca desenha Início e Dúvidas). **Destrava:** apagar. **De quem:** 🤖.
+**Custa esquecer:** limpeza (o `AbaInicio` tem um fetch que nunca roda).
+
+## P-139-09 · 🤖 Dois links quebrados PRÉ-EXISTENTES no admin
+`app/api/admin/control-plane/me/route.ts:26-27` (`/admin/connectors`, `/admin/finops`), em `QUEBRADOS_CONHECIDOS` do guarda de links.
+**Destrava:** apontar para rotas que existem. **De quem:** 🤖. **Custa esquecer:** o guarda carrega exceção — e exceção cresce.
+
+## P-139-10 · 🤖 = P-1310B2-14 (o CSS da proposta, `test_spec131b_conserto_k1`)
+Falha também na base da 139; registrada e acompanhada lá.
+
+## P-139-11 · 🤖 Checklist no celular: os 3 números desalinhados
+R3 (defeito NOVO do conserto 2): "Crítico" ocupa uma linha e os outros rótulos duas; o "1" fica ~16 px acima. **Destrava:**
+`checklist-6h/AbaHoje.tsx` com o número alinhado à base ou `min-h` de 2 linhas no rótulo. **De quem:** 🤖. **Custa esquecer:** a faixa nova
+parece torta no celular.
+
+## P-139-12 · 🤖 A pílula de estado encosta no anel da medalha (R3, anterior ao conserto 2)
+**Destrava:** afastar ~8 px. **De quem:** 🤖. **Custa esquecer:** detalhe visual (valor marginal).
+
+## P-139-13 · 🤖 A sombra do hover não aparece no escuro
+`rgba(0,0,0,.1)` sobre quase preto (R3). **Destrava:** sombra própria do escuro ou brilho na borda. **De quem:** 🤖. **Custa esquecer:** no
+escuro o card só sobe, sem profundidade.
+
+## P-139-14 · 🤖 "para …0002" quebra no celular (Cobranças)
+**Destrava:** `whitespace-nowrap` no número mascarado. **De quem:** 🤖. **Custa esquecer:** o telefone mascarado partido em duas linhas.
+
+## P-139-15 · 🤖 VALIOSA: 4 aplicativos com a mesma cena "cartão + documento"
+Caça-Comissão, Carteira, Proteção, Resgatar (R2/R3). **Destrava:** uma peça-assinatura por aplicativo (escudo, guarda-chuva, lupa) em
+`capas/composicoes.ts`. **De quem:** 🤖. **Custa esquecer:** a loja fica a um passo do "95+".
+
+## P-139-16 · 🤖 Pausar sumiu com o aplicativo desligado (confirmação C1)
+Antes dava para pausar a agenda antes de Ligar; agora só depois ("Vai rodar quando você ligar"). **Destrava:** reavaliar se alguém pedir
+"ligar sem esta agenda". **De quem:** 🤖. **Custa esquecer:** uma afordância removida sem pedido.
+
+## P-139-17 · 🤖 O passo "Instalar" do Como começar não passa pela confirmação (C2, latente)
+Hoje seguro (a Cobrança não está em `INSTALAR_JA_LIGA`). **Destrava:** um guarda que exija `INSTALAR_JA_LIGA ∩ CONFIGURAR_EXIGE_INSTALAR`
+vazio. **De quem:** 🤖. **Custa esquecer:** um app nos dois conjuntos instalaria-e-ligaria sem o "Ligar …?".
+
+## P-139-18 · 🤖 Checklist pausado: o backend recria o perfil padrão (C3, anterior à 139)
+`perfil()` filtra `is_active=true`; depois de pausar, a próxima leitura CRIA outro perfil e o passo volta a "falta". **Destrava:** ler o
+pausado sem recriar. **De quem:** 🤖. **Custa esquecer:** "pausei e ele voltou" e o "N de M" mente.
+
+## P-139-19 · 🤖 O dourado do número transcreve `parseInt` sobre o TEXTO (C4)
+No `type=number` do modal antigo o navegador podia entregar `''` para "2,5" (→ 10, não 2). Os dois valores estão na faixa do motor (1–50).
+**Destrava:** nada urgente; registrar se o campo voltar a mudar. **De quem:** 🤖. **Custa esquecer:** valor marginal.
+
+## P-139-20 · ✅ FECHADA 15/10 (C5) — o harness `/embed/loja` saiu (`0447bd5`) e o guarda fica vermelho se voltar (`6415078`)
+
+## P-139-21 · 🤖 Sem guarda de contraste do GLIFO sobre a placa dentro da capa (C6)
+Só o tile é medido (📊 pior 5,64:1). 💭 Estimativa por L³ ≈ 5,7:1 no `vidro` escuro, não medida no SVG renderizado. **Destrava:** medir no
+SVG e pôr no `capas.test.mjs`. **De quem:** 🤖. **Custa esquecer:** uma paleta futura apaga o ícone sem teste vermelho.
+
+## P-139-22 · 🤖 A máscara do segurado mantém o 1º token inteiro (red team P2)
+`mascararNome("123.456.789-00 FULANO DE TAL")` → "123.456.789-00 F. T." (sonda). 📊 O ledger está vazio: a forma real de `cliente_nome` não
+pôde ser medida. **Destrava:** 1º token com dígito vira omitido. **De quem:** 🤖. **Custa esquecer:** CPF na tela se o portal gravar o
+documento antes do nome.
+
+## P-139-23 · 🤖 Salvar duas vezes cria duas agendas (red team P6)
+Entre o POST ok e o fim do `carregar()`, `nova` segue true e o botão volta (`cobranca-feita/AbaConfigurar.tsx`, `enviar`). A reserva
+atômica do ledger impede cobrança dupla. **Destrava:** travar o botão até recarregar. **De quem:** 🤖. **Custa esquecer:** agenda duplicada.
+
+## P-139-24 · 🤖 "Qual agenda" descarta a edição não salva sem aviso (red team P7)
+`onChange={(v) => carregar(v)}`. **Destrava:** perguntar antes de trocar com alteração. **De quem:** 🤖. **Custa esquecer:** trabalho perdido.
+
+## P-139-25 · 🤖 Na agenda NOVA a barra "Alterações não salvas" não some com Descartar (juiz P7)
+`alterado = Boolean(base) && (nova || …)`. **Destrava:** comparar com o modelo de partida. **De quem:** 🤖. **Custa esquecer:** a barra
+parece defeito.
+
+## A drenagem das pendências que a SPEC-139 tocou
+| P | estado |
+|---|---|
+| P-16 | ✅ FECHADA — as duas telas (e o Checklist) são abas da casca; os antigos são `redirect()` de 1 salto (📊 `as-telas-no-lugar` 44 OK; red team 0 de 26 com destino sem rota ou 2 saltos; `next start` 307) |
+| P-131B-03 | 🟡 CONTINUA — a 139 não tocou a Fila nem `components/ui/sheet.tsx` (📊 `sr-only` "Close" no HEAD `dbd6da1`) |
+| P-131B-04 | 🟡 CONTINUA — `tailwind.config.ts` só estende `minHeight` (📊 HEAD) |
+| P-131B-05 | 🟡 CONTINUA — `configurar/pecas.tsx` mudou só o campo numérico (`numeroDoCampo`, conserto A); o seletor não |
+| P-131B-14 | 🟡 CONTINUA — o juiz de design da 139 também não avaliou a barra Salvar (item 18) nem rodou axe |
+| P-131B-15 | 🟡 PARCIAL — as telas antigas: o Checklist foi movido com 📊 0 `text-[10/11px]`/`emerald-`/`amber-` (grep 15/10) e `checklist-6h/hoje/page.tsx` virou redirect; os tokens globais seguem intocados (D-131-45) |
+| P-132D-01 | 🟡 CONTINUA — T-174 antes do Implantar do `smith-web` (T-183) |
