@@ -10,8 +10,13 @@
 // components/aplicativos/casca/*; as abas próprias (Renovações, o Configurar da Renovação/Cotação/QCM) são de G2/G3
 // e entram por import dinâmico (`ABAS_DO_APLICATIVO`).
 //
-// O Configurar dos aplicativos com rotina continua sendo o painel de hoje — `PainelDeRotinas`, a Cobrança intocada
-// (D-131-19). 🔴 SPEC-078 C.4: o painel mora DENTRO da tela do aplicativo; nunca um link para outra página.
+// O Configurar dos aplicativos com rotina continua sendo o painel de hoje — `PainelDeRotinas`. 🔴 SPEC-078 C.4: o
+// painel mora DENTRO da tela do aplicativo; nunca um link para outra página.
+//
+// SPEC-139 · L4: a Cobrança SAIU do modal — o Configurar dela é `cobranca/AbaConfigurar` (o formulário extraído, o
+// MESMO corpo gravado), registrado em ABAS_DO_APLICATIVO. Por isso o painel (e o modal dentro dele) só é montado
+// quando a aba Configurar DESTE aplicativo é da casca (`componente === null`): na Cobrança ele nunca monta, e o
+// caminho para configurar é sempre a aba (Instalar → `?aba=configurar`; o passo do "Como começar" → a mesma aba).
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -122,7 +127,9 @@ export default function AuxiliarDetalheClient({ item, podeLigar, atividade, font
   // era invisível pela interface).
   const instalado = ligado || item.estado === 'pausado';
 
-  const configurarPadrao = instalado ? (
+  // o painel de rotinas só quando o Configurar deste aplicativo é o da casca (nunca na Cobrança: lá é a aba própria)
+  const configurarDaCasca = abas.some((a) => a.id === 'configurar' && a.componente === null);
+  const configurarPadrao = instalado && configurarDaCasca ? (
     <section className="space-y-4 pt-8">
       <div>
         <h2 className="text-lg font-semibold text-foreground">Rotinas deste aplicativo</h2>
