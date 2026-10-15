@@ -79,7 +79,7 @@ check("nao remove a si mesmo", "auth.ctx.userId" in _team and "si mesmo" in _tea
 check("dono protegido (nao remove/rebaixa)", "is_owner" in _team and "403" in _team)
 check("GET expoe can_manage p/ esconder botoes de membro comum", "can_manage" in _team)
 
-_tc = _src("app/dashboard/personalizacao/equipe/TeamClient.tsx")
+_tc = _src("app/dashboard/personalizacao/corretora/equipe/TeamClient.tsx")
 check("clique no membro abre modal com dados", "openMember" in _tc and "modalOpen" in _tc)
 # §9.3 (SPEC-131-0 A · F1): esta linha exigia a string "mudar123" no TeamClient — verdade VENCIDA desde a 133-A.1,
 # quando a senha padrão saiu e a palavra só sobrevivia num comentário. A lição ("ninguém entra com a senha que todo
