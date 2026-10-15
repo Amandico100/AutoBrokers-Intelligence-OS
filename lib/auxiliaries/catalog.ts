@@ -434,7 +434,8 @@ export function provaDoCard(
   }
   if (item.sem_rotina) return 'Configure as regras';
   if (item.estado === 'ligado') return 'Ligado · ainda não rodou';
-  if (item.estado === 'pausado') return 'Desligado · a configuração fica guardada';
+  // curta de propósito (juiz de design 139 R2): a frase longa quebrava em 2 linhas e desalinhava o rodapé da fileira
+  if (item.estado === 'pausado') return 'Desligado · configuração guardada';
   return 'Pronto para ligar';
 }
 
