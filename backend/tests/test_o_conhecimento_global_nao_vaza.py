@@ -253,7 +253,7 @@ checar("Este conhecimento é de todas as corretoras e é mantido pela AutoBroker
        in fonte,
        "🔴 e a frase que explica a leitura sem botão está escrita no produto")
 
-TELA = os.path.join(REPO, "app", "dashboard", "personalizacao", "conhecimento",
+TELA = os.path.join(REPO, "app", "dashboard", "personalizacao", "corretora", "conhecimento",
                     "KnowledgeClient.tsx")
 tela = io.open(TELA, encoding="utf-8").read()
 checar("curadoria_permitida" in tela and "podeCurar ?" in tela,
