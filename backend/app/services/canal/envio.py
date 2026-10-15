@@ -36,14 +36,18 @@ def _linha_do_canal(db, company_id: str) -> Optional[Dict[str, Any]]:
     🔴 SPEC-132-C C3 — a empresa da plataforma tem DOIS números: o do QCM e o do ASSISTENTE dos corretores
     (`purpose='assistente'`, o atalho do chat). O QCM nunca responde pelo número do assistente (nem o "Quero fechar"
     da página aponta para ele): a linha `assistente` não é candidata aqui. O inverso mora em
-    `atalho.envio.integracao_do_assistente` (só `purpose='assistente'`)."""
-    from app.services.whatsapp.channel_identity import PURPOSE_DO_ASSISTENTE
+    `atalho.envio.integracao_do_assistente` (só `purpose='assistente'`).
 
+    🔴 SPEC-131-0-B2 (conserto B1) — nem a LINHA DO USUÁRIO (`purpose='linha_do_usuario'`): o WhatsApp PESSOAL de um
+    membro da plataforma. Conectada, ela venceria o QCM caído e o cliente do canal receberia a cotação do celular dele."""
+    from app.services.whatsapp.channel_identity import PURPOSE_DA_LINHA, PURPOSE_DO_ASSISTENTE
+
+    fora = (PURPOSE_DO_ASSISTENTE, PURPOSE_DA_LINHA)
     cid = repo._cid(company_id)
     linhas = repo._dados(db.table("integrations").select("*").eq("company_id", cid).eq("is_active", True).execute())
     linhas = [x for x in repo._da_empresa(linhas, cid)
               if str(x.get("provider") or "").strip().lower() in _PROVEDORES
-              and str(x.get("purpose") or "").strip().lower() != PURPOSE_DO_ASSISTENTE]
+              and str(x.get("purpose") or "").strip().lower() not in fora]
     if not linhas:
         return None
     linhas.sort(key=lambda x: 0 if str(x.get("channel_status") or "").lower() == "connected" else 1)
