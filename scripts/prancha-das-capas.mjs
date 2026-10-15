@@ -174,30 +174,35 @@ function paginaDaPrancha(c) {
   const trio = DIRECOES.map((dir) => `
       <a class="trio-item" href="#direcao-${dir.letra}">
         <span class="trio-capas"><span class="trio-capa">${capa('renovacao', dir.letra, 'claro')}</span><span class="trio-capa">${capa('renovacao', dir.letra, 'escuro')}</span></span>
-        <span class="trio-legenda"><span class="trio-letra">${dir.letra}</span><span>${dir.nome}</span></span>
+        <span class="trio-legenda"><span class="trio-letra">${dir.letra}</span><span>${dir.nome}${dir.letra === 'A' ? ' — a escolhida' : ''}</span></span>
       </a>`).join('');
 
+  // a escolhida (D-139-03: sem resposta do Founder, a de maior nota), grande: três aplicativos, claro e escuro
+  const destaque = ['renovacao', 'cobranca-feita', 'checklist-6h'].map((s) => `<li><span class="dest-capa">${capa(s, 'A', 'claro')}</span><span class="dest-capa">${capa(s, 'A', 'escuro')}</span><span class="dest-nome">${NOMES[s]}</span></li>`).join('');
+
   return `<title>Capas da loja</title>
-<meta name="description" content="As três direções de capa dos aplicativos, para escolher uma.">
+<meta name="description" content="A capa escolhida para os aplicativos (A · Placa) e as outras duas direções, para comparar.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&display=swap">
 <style>${ESTILO}</style>
 <main class="pagina">
   <header class="topo">
     <p class="marca">Loja de aplicativos do AutoBrokers</p>
-    <h1>Qual direção: A, B ou C?</h1>
-    <p class="lead">São três jeitos de desenhar a capa de cada aplicativo. Todas são feitas em código, sem foto e sem texto, cada aplicativo com a sua cor, e mudam sozinhas para o tema escuro. Cada direção aparece no card da loja, no topo da página do aplicativo e com os 18 aplicativos juntos — sempre no claro e no escuro.</p>
+    <h1>Escolhida: A · Placa</h1>
+    <p class="lead">Se preferir B ou C, me diga — trocar é uma linha. A capa de cada aplicativo é feita em código, sem foto e sem texto, com a cor dele, e muda sozinha para o tema escuro. Abaixo, as três direções aparecem no card da loja, no topo da página do aplicativo e com os 18 aplicativos juntos, sempre no claro e no escuro.</p>
     <div class="tema" role="group" aria-label="Tema desta página">
       <button type="button" data-tema="auto" aria-pressed="true">Automático</button>
       <button type="button" data-tema="light" aria-pressed="false">Claro</button>
       <button type="button" data-tema="dark" aria-pressed="false">Escuro</button>
     </div>
   </header>
+  <section class="destaque" aria-label="A direção escolhida, A · Placa"><ul>${destaque}</ul></section>
+  <h2 class="tres">As três direções</h2>
   <nav class="trio" aria-label="As três direções, com a capa da Renovação">${trio}
   </nav>
   ${DIRECOES.map(secao).join('\n')}
   <footer class="fim">
-    <p class="fim-pergunta">Responda no chat só com a letra.</p>
+    <p class="fim-pergunta">Prefere B ou C? Responda no chat com a letra.</p>
     <p>Se nenhuma servir, as capas podem ser imagens suas: 1600 × 900, sem texto. Elas entram no lugar da capa desenhada, aplicativo por aplicativo.</p>
   </footer>
 </main>
@@ -260,7 +265,13 @@ h1 { margin: 0; font-family: "Bricolage Grotesque", Geist, sans-serif; font-weig
 .tema button[aria-pressed="true"] { background: var(--botao-ativo); color: var(--botao-ativo-ink); }
 .tema button:focus-visible, .trio-item:focus-visible { outline: 2px solid var(--realce); outline-offset: 3px; }
 
-.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 56px 0 24px; }
+.destaque ul { list-style: none; margin: 48px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.destaque li { display: grid; gap: 10px; }
+.dest-capa { position: relative; display: block; overflow: hidden; border-radius: 18px; aspect-ratio: 16 / 9; box-shadow: 0 30px 60px -32px rgba(10, 20, 40, .5); }
+.dest-capa svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.dest-nome { font-size: 15px; color: var(--ink-2); }
+.tres { margin: 88px 0 0; font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 32px; letter-spacing: -0.02em; }
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 24px 0 24px; }
 .trio-item { display: block; color: inherit; text-decoration: none; border-radius: 22px; }
 .trio-capas { display: grid; border-radius: 20px; overflow: hidden; box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 30px 60px -30px rgba(10, 20, 40, .45); }
 .trio-capa svg { width: 100%; height: auto; aspect-ratio: 16 / 9; }
@@ -322,7 +333,7 @@ h3 { margin: 56px 0 16px; font-size: 20px; font-weight: 600; letter-spacing: -0.
 .fim-pergunta { margin: 0 0 8px; font-family: "Bricolage Grotesque", sans-serif; font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
 
 @media (max-width: 960px) {
-  .trio { grid-template-columns: 1fr; }
+  .trio, .destaque ul { grid-template-columns: 1fr; }
   .cabs { grid-template-columns: 1fr; }
   .grade18 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
