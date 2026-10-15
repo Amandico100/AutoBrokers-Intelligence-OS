@@ -337,6 +337,20 @@ export function alternarDia(form: FormDaRotina, valor: number): FormDaRotina {
   };
 }
 
+/**
+ * O número DIGITADO num campo da cobrança (máximo de boletos, dias entre cobranças) — o MESMO valor que o modal de
+ * `5f9bdac` gravava: `onChange={(e) => setBillingConfig({ max_boletos_por_execucao: parseInt(e.target.value || '10', 10) })}`
+ * (e `|| '7'` nos dias). Conserto A da 139 (red team B3): o campo novo fazia `Number(v.replace(/\D/g, ''))` e "2,5"
+ * virava 25 boletos por execução. Aqui é o `parseInt` do modal: "2,5" → 2, "1.5" → 1, "07" → 7, "0" → 0, "-5" → -5,
+ * vazio → o padrão. Nada de faixa: o modal não prendia, e quem prende é o MOTOR (`_int_clamped`, 1–50 e 1–30).
+ * Letras: o `<input type="number">` do modal entregava `''` ao handler (o navegador não aceita texto ali) → o padrão;
+ * aqui o mesmo, em vez de gravar `NaN` (que o JSON viraria `null`).
+ */
+export function numeroDigitadoNoModal(texto: string, padrao: string): number {
+  const n = parseInt(texto || padrao, 10);
+  return Number.isNaN(n) ? parseInt(padrao, 10) : n;
+}
+
 /** Os dias marcados (para a tela pintar o botão). */
 export function diasMarcados(form: FormDaRotina): string[] {
   return form.weekdays.split(',').map((x) => x.trim()).filter(Boolean);
@@ -396,8 +410,8 @@ export function motivoParaNaoSalvar(form: FormDaRotina, portais: PortalOpcao[] =
   const {
     billingConfig, billingSendMode, billingTestNumber, billingModoLegado, billingTeamDigitos, billingConfirmacaoCliente,
   } = derivarDaCobranca(form, portais);
-  if (form.name.trim().length < 3) return 'Falta o nome da rotina.';
-  if (!billingConfig && form.instructions.trim().length < 10) return 'Descreva o que a rotina faz (pelo menos 10 letras).';
+  if (form.name.trim().length < 3) return 'Falta o nome.';
+  if (!billingConfig && form.instructions.trim().length < 10) return 'Descreva o que ele faz (pelo menos 10 letras).';
   if (form.channel === 'whatsapp' && form.number.replace(/\D/g, '').length < 10) {
     return 'Falta o número de WhatsApp que recebe o relatório (DDI + DDD + número).';
   }
@@ -433,5 +447,5 @@ export function rotuloDaAgenda(s: Routine['schedule']): string {
 /** A mensagem de erro da gravação, em português, com a causa técnica do banco quando ela vem (`details[0]`). */
 export function erroDaGravacao(j: any): string {
   const tecnico = Array.isArray(j?.details) ? String(j.details[0] || '').trim() : '';
-  return (j?.error || 'Erro ao salvar rotina.') + (tecnico ? ` — ${tecnico}` : '');
+  return (j?.error || 'Não deu para salvar.') + (tecnico ? ` — ${tecnico}` : '');
 }
