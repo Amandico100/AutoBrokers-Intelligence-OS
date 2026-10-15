@@ -157,9 +157,9 @@ export function respostaDeExemplo(caminho: string, busca: URLSearchParams, metod
       return {
         ok: true, periodo: Number(busca.get('periodo') || 30), limite: 200,
         itens: [
-          { id: 'ex1', quando: iso(2), segurado: 'Segurado E. (exemplo)', seguradora: 'Allianz', parcela: '3/12', situacao: 'Entregue', tom: 'success', teste: false, para_final: '0000' },
-          { id: 'ex2', quando: iso(3), segurado: 'Segurada X. (exemplo)', seguradora: 'Allianz', parcela: '7/10', situacao: 'Enviado', tom: 'neutral', teste: true, para_final: '0001' },
-          { id: 'ex3', quando: iso(27), segurado: 'Segurado M. (exemplo)', seguradora: 'Mapfre', parcela: '1/4', situacao: 'Cliente respondeu', tom: 'warning', teste: false, para_final: '0002' },
+          { id: 'ex1', quando: iso(2), segurado: 'Segurado E. (exemplo)', seguradora: 'Allianz', recibo: '000101', situacao: 'Enviada', tom: 'success', teste: false, destino: 'segurado', para_final: '0000' },
+          { id: 'ex2', quando: iso(3), segurado: 'Segurada X. (exemplo)', seguradora: 'Allianz', recibo: '000102', situacao: 'Enviada', tom: 'success', teste: true, destino: 'teste', para_final: '0001' },
+          { id: 'ex3', quando: iso(27), segurado: 'Segurado M. (exemplo)', seguradora: 'Mapfre', recibo: '000103', situacao: 'Com a equipe, falta encaminhar', tom: 'warning', teste: false, destino: 'equipe', para_final: '0002' },
         ],
       };
     case '/api/dashboard/auxiliaries/cobranca/pendencias':
