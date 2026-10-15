@@ -7,10 +7,12 @@
 //   2. sem texto, sem emoji, sem imagem, sem endereço externo (a mutação 2 da SPEC §6);
 //   3. tamanho: ≤ 8 KB por capa (alvo 4 KB; decisão do gerente: até 8 se o efeito pedir) — mínimo e máximo impressos;
 //   4. a cor vem SÓ da paleta; o claro e o escuro são a MESMA arte (mesma geometria, outra tabela);
-//   5. a paleta cobre todo aplicativo da loja com o MESMO ícone do catálogo; vizinhos na galeria com matizes distintas;
+//   5. a paleta cobre todo aplicativo da loja com o MESMO ícone do catálogo; vizinhos na galeria com matizes distintas
+//      na horizontal E na vertical das grades de 2/3/4 colunas (conserto B, D-139-CB-01); 5b. a cena de cada um (a C);
 //   6. o ícone sobrevive ao recorte 4:1 do cabeçalho (y 250..650) e fica na área segura;
 //   7. vários na mesma página: nenhum id repetido entre capas;
-//   8. o PRODUTO: CapaGerada.tsx (renderizado) desenha a composição da direção A; cover_url vence; sem texto.
+//   8. o PRODUTO: CapaGerada.tsx (renderizado) desenha a composição da direção C (a do Founder) no enquadramento pedido;
+//      cover_url vence; sem texto.
 //
 // Numa árvore sem node_modules: NODE_PATH=<node_modules da árvore principal> (typescript, react, react-dom).
 //
@@ -177,6 +179,11 @@ console.log('\n3. tamanho');
     const max = Math.max(...bytes);
     checar(max <= LIMITE, `direção ${direcao}: ${Math.min(...bytes)}–${max} bytes por capa (teto ${LIMITE})`);
   }
+  // a C (a do produto) em cada enquadramento: o destaque leva as três peças maiores — o teto vale para todos
+  for (const enquadramento of ['cabecalho', 'destaque']) {
+    const bytes = SLUGS_DA_LOJA.flatMap((slug) => TEMAS.map((tema) => Buffer.byteLength(capaSvg({ slug, direcao: 'C', tema, enquadramento }))));
+    checar(Math.max(...bytes) <= LIMITE, `C · ${enquadramento}: ${Math.min(...bytes)}–${Math.max(...bytes)} bytes por capa (teto ${LIMITE})`);
+  }
 }
 
 console.log('\n4. a cor vem só da paleta; claro e escuro são a mesma arte');
@@ -202,6 +209,20 @@ console.log('\n4. a cor vem só da paleta; claro e escuro são a mesma arte');
   checar(chaves.size === 1, 'uma receita só de papéis para todos os aplicativos');
 }
 
+// os nomes que a tela mostra (o banco: migrations 20260802_02, 20260817_03, 20261014_01/02) — a ORDEM da galeria
+const NOMES = {
+  'caca-comissao': 'Caça-Comissão', 'carteira-blindada': 'Carteira Blindada', 'checklist-6h': 'Checklist das 6h',
+  'clientes-perdidos': 'Clientes Perdidos', 'cobranca-feita': 'Cobrança Feita', 'contabilidade-pronta': 'Contabilidade Pronta',
+  cotacao: 'Cotação Rápida', 'digitacao-zero': 'Digitação Zero', 'follow-up-whatsapp': 'Follow-up Certo',
+  'organizacao-completa': 'Organização Completa', 'protecao-completa': 'Proteção Completa', 'quem-cobra-menos': 'Quem Cobra Menos',
+  'radar-mercado-regulacao': 'Primeira Mão', renovacao: 'Renovação Automática', 'resgatar-cliente': 'Resgatar Cliente',
+  'resumo-atendimentos': 'Resumo do Dia', 'sinistralidade-avancada': 'Sinistralidade Avançada', 'tarefas-agendadas': 'Tarefas Agendadas',
+};
+// os 9 que EXISTEM hoje (catalog_state = 'available'; os outros 9 são "Em breve", linha sem capa — 20261016_01)
+const COM_CAPA = ['checklist-6h', 'cobranca-feita', 'cotacao', 'follow-up-whatsapp', 'quem-cobra-menos', 'radar-mercado-regulacao',
+  'renovacao', 'resumo-atendimentos', 'tarefas-agendadas'];
+const porNome = [...SLUGS_DA_LOJA].sort((a, b) => (NOMES[a] ?? a).localeCompare(NOMES[b] ?? b, 'pt-BR'));
+
 console.log('\n5. a paleta e o catálogo; vizinhos distintos');
 {
   const catalogo = fs.readFileSync(path.join(RAIZ, 'lib', 'auxiliaries', 'catalog.ts'), 'utf8');
@@ -216,23 +237,88 @@ console.log('\n5. a paleta e o catálogo; vizinhos distintos');
   for (const nome of new Set(Object.values(PALETA).map((v) => v.icone))) {
     checar(typeof capas.ICONES_SVG[nome] === 'string' && capas.ICONES_SVG[nome].length > 20, `o desenho de ${nome} está no mapa gerado`);
   }
-  // a ordem da galeria dentro de um estado é alfabética (catalog.ts) — a ordem dos slugs é a mesma dos nomes
+  // Conserto B (D-139-CB-01) — a vizinhança em DUAS dimensões, na ordem REAL da galeria. A galeria
+  // (lib/auxiliaries/catalog.ts, `listarCatalogo`) ordena por estado e, dentro dele, por NOME (pt-BR); o
+  // AuxiliaresClient não reordena. Numa grade de N colunas, o vizinho da direita está a 1 posição e o de baixo a N:
+  // nas grades de 2, 3 e 4 colunas (sm/lg/xl) as distâncias são 1, 2, 3 e 4 — todas medidas (contar a quebra de linha
+  // como vizinha só deixa a régua mais dura).
   const h = (s) => visualDaCapa(s).h;
-  const v = vizinhosDistintos(SLUGS_DA_LOJA, h, 18);
-  checar(v.ok, `vizinhos em ordem alfabética a ≥ 18° (o par mais próximo: ${v.par}, ${v.d}°)`);
+  /** O par mais próximo entre posições a distância 1..4 numa ordem (ou, com `todos`, entre quaisquer dois). */
+  function vizinhanca(ordem, hDe, todos = false) {
+    let pior = { d: 999, par: '' };
+    for (let i = 0; i < ordem.length; i += 1) {
+      for (let k = i + 1; k < ordem.length && (todos || k - i <= 4); k += 1) {
+        const d = distanciaDeMatiz(hDe(ordem[i]), hDe(ordem[k]));
+        if (d < pior.d) pior = { d, par: `${ordem[i]} ~ ${ordem[k]} (a ${k - i})` };
+      }
+    }
+    return pior;
+  }
+  /** As três regras do conserto B sobre uma tabela de matizes; devolve a lista do que reprova (vazia = passa). */
+  function reguaDaGrade(hDe) {
+    const ruins = [];
+    for (const [rotulo, ordem] of [['nome', porNome], ['slug', SLUGS_DA_LOJA]]) {
+      const v = vizinhanca(ordem, hDe);
+      if (v.d < 18) ruins.push(`18 por ${rotulo}: ${v.par} ${v.d}°`);
+    }
+    // ligados e disponíveis mudam de corretora para corretora (e a ordem com eles): os 9 com capa, DOIS A DOIS
+    const d9 = vizinhanca(COM_CAPA, hDe, true);
+    if (d9.d < 18) ruins.push(`os 9 com capa: ${d9.par} ${d9.d}°`);
+    const ciano = SLUGS_DA_LOJA.filter((s) => hDe(s) >= 148 && hDe(s) <= 224);
+    if (ciano.length > 5) ruins.push(`${ciano.length} no verde-água/ciano (148–224°)`);
+    return ruins;
+  }
+  checar(Object.keys(NOMES).length === SLUGS_DA_LOJA.length && SLUGS_DA_LOJA.every((s) => s in NOMES), 'a ordem por nome cobre os 18');
+  const ruins = reguaDaGrade(h);
+  const v18 = vizinhanca(porNome, h);
+  const v9 = vizinhanca(COM_CAPA, h, true);
+  checar(ruins.length === 0,
+    `vizinhos a ≥ 18° nas grades de 2/3/4 colunas (horizontal E vertical) — 18 por nome: ${v18.d}° · os 9 com capa dois a dois: ${v9.d}° · ≤ 5 no ciano`,
+    ruins.join(' · '));
   let minimo = 999;
   for (let i = 0; i < SLUGS_DA_LOJA.length; i += 1) for (let j = i + 1; j < SLUGS_DA_LOJA.length; j += 1) {
     minimo = Math.min(minimo, distanciaDeMatiz(h(SLUGS_DA_LOJA[i]), h(SLUGS_DA_LOJA[j])));
   }
   checar(minimo >= 8, `quaisquer dois aplicativos a ≥ 8° (o menor: ${minimo}°)`);
+  // LINHA DE CONTROLE: a paleta de ANTES do conserto (a do laudo de design, 83/100) fica VERMELHA na mesma régua — o
+  // juiz viu Caça-Comissão (148) sobre Cobrança (158) e Clientes Perdidos (272) sobre Digitação Zero (262), a 10°
+  const ANTES = {
+    'caca-comissao': 148, 'carteira-blindada': 234, 'checklist-6h': 58, 'clientes-perdidos': 272, 'cobranca-feita': 158,
+    'contabilidade-pronta': 177, cotacao: 205, 'digitacao-zero': 262, 'follow-up-whatsapp': 215, 'organizacao-completa': 186,
+    'protecao-completa': 243, 'quem-cobra-menos': 167, 'radar-mercado-regulacao': 300, renovacao: 224, 'resgatar-cliente': 291,
+    'resumo-atendimentos': 253, 'sinistralidade-avancada': 281, 'tarefas-agendadas': 196,
+  };
+  const ruinsAntes = reguaDaGrade((s) => ANTES[s]);
+  const parDoJuiz = distanciaDeMatiz(ANTES['caca-comissao'], ANTES['cobranca-feita']) === 10 && porNome.indexOf('cobranca-feita') - porNome.indexOf('caca-comissao') === 4;
+  checar(parDoJuiz && ruinsAntes.length >= 3 && ruinsAntes.some((x) => /no verde-água/.test(x)),
+    'CONTROLE: a paleta de antes do conserto fica VERMELHA (a vertical a 10° e o ciano demais)', ruinsAntes.join(' · '));
+  // e a régua antiga (só a ordem alfabética, distância 1) APROVAVA essa mesma paleta — era ela que não via
+  checar(vizinhosDistintos(SLUGS_DA_LOJA, (s) => ANTES[s], 18).ok, 'CONTROLE: a régua só-horizontal de antes aprovava a paleta de antes');
   // controle: em ordem de matiz (o pior caso) o guarda reprova
   const porMatiz = [...SLUGS_DA_LOJA].sort((a, b) => h(a) - h(b));
   checar(!vizinhosDistintos(porMatiz, h, 18).ok, 'controle: em ordem de matiz, vizinhos a < 18° são reprovados');
-  // a ordem do laudo é preservada (o verde segue verde, o violeta segue violeta)
-  const frios = SLUGS_DA_LOJA.filter((s) => PALETA[s].matiz > 120);
-  const ordemDoLaudo = [...frios].sort((a, b) => PALETA[a].matiz - PALETA[b].matiz || a.localeCompare(b));
-  const ordemDaCapa = [...frios].sort((a, b) => PALETA[a].h - PALETA[b].h || a.localeCompare(b));
-  checar(ordemDoLaudo.join() === ordemDaCapa.join(), 'a ordem das matizes do laudo é a mesma na capa');
+}
+
+console.log('\n5b. a CENA de cada aplicativo (a C): o que ele faz, determinística, e vizinhos com peças diferentes');
+{
+  const { CENA, CENA_PADRAO } = capas;
+  checar(SLUGS_DA_LOJA.every((s) => Array.isArray(CENA[s]) && CENA[s].length === 3 && new Set(CENA[s]).size === 3),
+    'os 18 têm a cena própria: três peças diferentes');
+  // o card (pequeno) desenha só as duas da FRENTE — o par que o corretor vê. Dois cards vizinhos não repetem o par.
+  const parDoCard = (s) => [...(CENA[s] ?? CENA_PADRAO).slice(1)].sort().join('+');
+  const repetidos = [];
+  for (const ordem of [SLUGS_DA_LOJA, porNome]) for (let i = 0; i < ordem.length; i += 1) for (let k = i + 1; k <= i + 4 && k < ordem.length; k += 1) {
+    if (parDoCard(ordem[i]) === parDoCard(ordem[k])) repetidos.push(`${ordem[i]} ~ ${ordem[k]}: ${parDoCard(ordem[i])}`);
+  }
+  checar(repetidos.length === 0, 'cards vizinhos (distância 1..4) não repetem as duas peças da frente', repetidos.join(' · '));
+  const pecasNoCard = (svg) => (svg.match(/matrix\(\.97 -\.16 \.1 \.96 0 0\)/g) ?? []).length;
+  const card = capaSvg({ slug: 'renovacao', direcao: 'C', tema: 'claro' });
+  const cab = capaSvg({ slug: 'renovacao', direcao: 'C', tema: 'claro', enquadramento: 'cabecalho' });
+  checar(pecasNoCard(card) === 2 && pecasNoCard(cab) === 3, `o card desenha 2 peças (grandes) e o cabeçalho as 3 (${pecasNoCard(card)} · ${pecasNoCard(cab)})`);
+  checar(capaSvg({ slug: 'cotacao', direcao: 'C', tema: 'escuro', enquadramento: 'destaque' }) === capaSvg({ slug: 'cotacao', direcao: 'C', tema: 'escuro', enquadramento: 'destaque' })
+    && card !== cab, 'cada enquadramento é determinístico, e o card e o cabeçalho são desenhos diferentes');
+  checar(/preserveAspectRatio="xMaxYMid slice"/.test(capaSvg({ slug: 'renovacao', direcao: 'C', tema: 'claro', enquadramento: 'destaque' }))
+    && /preserveAspectRatio="xMidYMid slice"/.test(card), 'o destaque ancora à direita (o corte do celular come a esquerda vazia, nunca a cena)');
 }
 
 console.log('\n6. o ícone sobrevive ao recorte 4:1 e fica na área segura');
@@ -249,15 +335,56 @@ console.log('\n6. o ícone sobrevive ao recorte 4:1 e fica na área segura');
   const a = capaSvg({ slug: 'renovacao', direcao: 'A', tema: 'claro' });
   const empurrada = a.replace(/(<g id="c[0-9a-z]+i" transform="translate\([\d.]+ )([\d.]+)/, (_, ini, y) => `${ini}${Number(y) - 160}`);
   checar(!iconeSobrevive(empurrada, 'A').ok, 'controle: o ícone 160 acima sai do 4:1 e fica VERMELHO');
+
+  // Conserto B: no CABEÇALHO a cena INTEIRA (cada peça com a sombra, na perspectiva) cabe no 4:1 — y 250..650 — e o
+  // selo também; nos três enquadramentos o ícone fica inteiro no que aparece
+  const TAM = { documento: [240, 300], cartao: [340, 212], bolha: [330, 150], calendario: [260, 250], grafico: [340, 224], recibo: [220, 296], lista: [290, 232] };
+  /** A caixa de cada peça da cena (o retângulo dela e o da sombra, x+14/y+36), com a perspectiva aplicada. */
+  function caixasDaCena(svg) {
+    const caixas = [];
+    for (const m of svg.matchAll(/<g transform="translate\((-?[\d.]+) (-?[\d.]+)\) matrix\(\.97 -\.16 \.1 \.96 0 0\) scale\(([\d.]+)\) translate\((-?[\d.]+) (-?[\d.]+)\)">/g)) {
+      const [X, Y, s, tx, ty] = m.slice(1).map(Number);
+      const w = -2 * tx; const hh = -2 * ty;
+      const cantos = [[0, 0], [w + 14, 0], [0, hh + 36], [w + 14, hh + 36]].map(([x, y]) => [x + tx, y + ty]);
+      const pts = cantos.map(([x, y]) => [X + s * (0.97 * x + 0.1 * y), Y + s * (-0.16 * x + 0.96 * y)]);
+      caixas.push({ y0: Math.min(...pts.map((p) => p[1])), y1: Math.max(...pts.map((p) => p[1])) });
+    }
+    return caixas;
+  }
+  const foraDoQuadro = [];
+  let piorTopo = 999;
+  let piorBase = -1;
+  for (const slug of SLUGS_DA_LOJA) {
+    const svg = capaSvg({ slug, direcao: 'C', tema: 'claro', enquadramento: 'cabecalho' });
+    const caixas = caixasDaCena(svg);
+    if (caixas.length !== 3) foraDoQuadro.push(`${slug}: ${caixas.length} peças`);
+    for (const c of caixas) {
+      piorTopo = Math.min(piorTopo, c.y0); piorBase = Math.max(piorBase, c.y1);
+      if (c.y0 < 250 || c.y1 > 650) foraDoQuadro.push(`${slug}: peça em y ${c.y0.toFixed(0)}..${c.y1.toFixed(0)}`);
+    }
+    const anel = /<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="#[0-9a-f]{6}" fill-opacity/.exec(svg);
+    if (!anel || Number(anel[2]) - Number(anel[3]) < 250 || Number(anel[2]) + Number(anel[3]) > 650) foraDoQuadro.push(`${slug}: o selo sai do 4:1`);
+    for (const enquadramento of ['cabecalho', 'destaque']) {
+      const r = iconeSobrevive(capaSvg({ slug, direcao: 'C', tema: 'claro', enquadramento }), 'C');
+      if (!r.ok) foraDoQuadro.push(`${slug} ${enquadramento}: ícone ${r.motivo}`);
+    }
+  }
+  checar(foraDoQuadro.length === 0, `C · cabeçalho: as 3 peças com a sombra e o selo DENTRO do 4:1 (y ${piorTopo.toFixed(0)}..${piorBase.toFixed(0)} ⊂ 250..650)`, foraDoQuadro.slice(0, 3).join(' · '));
+  // controle: o quadro do CARD (as peças maiores, mais altas) NÃO cabe no 4:1 — a régua vê o corte que o conserto tirou
+  const doCard = caixasDaCena(capaSvg({ slug: 'renovacao', direcao: 'C', tema: 'claro' }));
+  checar(doCard.some((c) => c.y0 < 250 || c.y1 > 650), 'CONTROLE: o quadro do card no 4:1 corta (o guarda consegue ficar vermelho)');
 }
 
 console.log('\n7. várias capas na mesma página: nenhum id repetido');
 {
   const vistos = new Map();
   let repetidos = 0;
-  for (const slug of SLUGS_DA_LOJA) for (const direcao of DIRECOES) for (const tema of TEMAS) {
-    for (const m of capaSvg({ slug, direcao, tema }).matchAll(/\sid="([^"]+)"/g)) {
-      const dono = `${direcao} ${slug} ${tema}`;
+  // as 3 direções e os 3 enquadramentos da C: a Renovação aparece no DESTAQUE e no CARD da mesma página
+  const pedidos = SLUGS_DA_LOJA.flatMap((slug) => TEMAS.flatMap((tema) => [...DIRECOES.map((direcao) => ({ slug, direcao, tema })),
+    ...['cabecalho', 'destaque'].map((enquadramento) => ({ slug, direcao: 'C', tema, enquadramento }))]));
+  for (const pedido of pedidos) {
+    for (const m of capaSvg(pedido).matchAll(/\sid="([^"]+)"/g)) {
+      const dono = `${pedido.direcao} ${pedido.slug} ${pedido.tema} ${pedido.enquadramento ?? 'card'}`;
       if (vistos.has(m[1]) && vistos.get(m[1]) !== dono) repetidos += 1;
       vistos.set(m[1], dono);
     }
@@ -295,8 +422,11 @@ console.log('\n8. o PRODUTO: CapaGerada desenha a composição (renderizado de v
   const esperado = svgsDaCapa({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203 });
   checar(gerada.includes(esperado.claro) && gerada.includes(esperado.escuro),
     'a capa sem cover_url é o SVG da composição — claro E escuro, os mesmos bytes do motor');
-  checar(esperado.claro === capaSvg({ slug: 'renovacao', direcao: capas.DIRECAO_DO_PRODUTO, tema: 'claro' }) && capas.DIRECAO_DO_PRODUTO === 'A',
-    'a direção do produto é a A · Placa (D-139-03), e é a mesma do motor');
+  checar(esperado.claro === capaSvg({ slug: 'renovacao', direcao: capas.DIRECAO_DO_PRODUTO, tema: 'claro' }) && capas.DIRECAO_DO_PRODUTO === 'C',
+    'a direção do produto é a C · Cena (a escolha do Founder, 15/10), e é a mesma do motor');
+  const noCabecalho = html({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203, enquadramento: 'cabecalho' });
+  checar(noCabecalho.includes(capaSvg({ slug: 'renovacao', direcao: 'C', tema: 'escuro', enquadramento: 'cabecalho' })) && !noCabecalho.includes(esperado.escuro),
+    'o enquadramento chega ao desenho: CapaGerada com enquadramento="cabecalho" desenha o quadro do cabeçalho, não o do card');
   checar(/dark:hidden/.test(gerada) && /hidden dark:block/.test(gerada), 'o tema escolhe qual aparece (dark:hidden / hidden dark:block)');
   checar(proibidos(gerada.replace(/<\/?div[^>]*>/g, '')).length === 0, 'a capa renderizada não tem texto, imagem nem endereço externo');
   checar(/motion-reduce:transform-none/.test(html({ slug: 'renovacao', icone: 'RefreshCcwDot', matiz: 203, crescerNoHover: true })),
