@@ -20,7 +20,7 @@ import path from 'node:path';
 import { createRequire, registerHooks } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const RAIZ = 'C:/Users/amand/Projetos/AUTOBROKERS RESULTA/AutoBrokers-FIX-139D';
 const PASTA_DAS_CAPAS = path.join(RAIZ, 'components', 'aplicativos', 'casca', 'capas');
 
 /** Os ícones que as capas desenham: os de APLICATIVO_VISUAL (catalog.ts) + o padrão. */
@@ -136,14 +136,14 @@ function paginaDaPrancha(c) {
   const card = (a, d, tema) => `
       <article class="card">
         <div class="card-capa">${capa(a.slug, d, tema)}<span class="esmaece"></span>${a.selo ? `<span class="selo-sobre">${selo(a.selo)}</span>` : ''}</div>
-        <span class="tile">${tileIcone(a.slug, tema, 24)}</span>
+        ${d === 'C' ? '' : `<span class="tile">${tileIcone(a.slug, tema, 24)}</span>`}
         <div class="card-texto"><h4>${NOMES[a.slug]}</h4><p>${a.frase}</p></div>
         <div class="card-rodape"><span>${a.prova}</span><span class="abrir">Abrir</span></div>
       </article>`;
 
   const cabecalho = (a, d, tema) => `
       <div class="cab produto-${tema}">
-        <div class="cab-capa">${capa(a.slug, d, tema)}</div>
+        <div class="cab-capa">${c.capaSvg({ slug: a.slug, direcao: d, tema, enquadramento: 'cabecalho' })}</div>
         <div class="cab-linha"><span class="tile tile-72">${tileIcone(a.slug, tema, 34)}</span><div><strong>${NOMES[a.slug]}</strong>${selo(a.selo)}</div></div>
       </div>`;
 
@@ -174,35 +174,35 @@ function paginaDaPrancha(c) {
   const trio = DIRECOES.map((dir) => `
       <a class="trio-item" href="#direcao-${dir.letra}">
         <span class="trio-capas"><span class="trio-capa">${capa('renovacao', dir.letra, 'claro')}</span><span class="trio-capa">${capa('renovacao', dir.letra, 'escuro')}</span></span>
-        <span class="trio-legenda"><span class="trio-letra">${dir.letra}</span><span>${dir.nome}${dir.letra === 'A' ? ' — a escolhida' : ''}</span></span>
+        <span class="trio-legenda"><span class="trio-letra">${dir.letra}</span><span>${dir.nome}${dir.letra === 'C' ? ' — a escolhida' : ''}</span></span>
       </a>`).join('');
 
   // a escolhida (D-139-03: sem resposta do Founder, a de maior nota), grande: três aplicativos, claro e escuro
-  const destaque = ['renovacao', 'cobranca-feita', 'checklist-6h'].map((s) => `<li><span class="dest-capa">${capa(s, 'A', 'claro')}</span><span class="dest-capa">${capa(s, 'A', 'escuro')}</span><span class="dest-nome">${NOMES[s]}</span></li>`).join('');
+  const destaque = ['renovacao', 'cobranca-feita', 'checklist-6h'].map((s) => `<li><span class="dest-capa">${capa(s, 'C', 'claro')}</span><span class="dest-capa">${capa(s, 'C', 'escuro')}</span><span class="dest-nome">${NOMES[s]}</span></li>`).join('');
 
   return `<title>Capas da loja</title>
-<meta name="description" content="A capa escolhida para os aplicativos (A · Placa) e as outras duas direções, para comparar.">
+<meta name="description" content="A capa escolhida pelo Founder (C · Cena) e as outras duas direções, para comparar.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&display=swap">
 <style>${ESTILO}</style>
 <main class="pagina">
   <header class="topo">
     <p class="marca">Loja de aplicativos do AutoBrokers</p>
-    <h1>Escolhida: A · Placa</h1>
-    <p class="lead">Se preferir B ou C, me diga — trocar é uma linha. A capa de cada aplicativo é feita em código, sem foto e sem texto, com a cor dele, e muda sozinha para o tema escuro. Abaixo, as três direções aparecem no card da loja, no topo da página do aplicativo e com os 18 aplicativos juntos, sempre no claro e no escuro.</p>
+    <h1>Escolhida pelo Founder: C · Cena</h1>
+    <p class="lead">Você escolheu a C em 15/10. Ela agora se monta para cada lugar: no card, duas peças grandes; no topo da página, a cena inteira na faixa; na vitrine, a cena à direita e o texto à esquerda. A capa de cada aplicativo é feita em código, sem foto e sem texto, com a cor dele, e muda sozinha para o tema escuro. Abaixo, as três direções aparecem no card da loja, no topo da página do aplicativo e com os 18 aplicativos juntos, sempre no claro e no escuro.</p>
     <div class="tema" role="group" aria-label="Tema desta página">
       <button type="button" data-tema="auto" aria-pressed="true">Automático</button>
       <button type="button" data-tema="light" aria-pressed="false">Claro</button>
       <button type="button" data-tema="dark" aria-pressed="false">Escuro</button>
     </div>
   </header>
-  <section class="destaque" aria-label="A direção escolhida, A · Placa"><ul>${destaque}</ul></section>
+  <section class="destaque" aria-label="A direção escolhida pelo Founder, C · Cena"><ul>${destaque}</ul></section>
   <h2 class="tres">As três direções</h2>
   <nav class="trio" aria-label="As três direções, com a capa da Renovação">${trio}
   </nav>
   ${DIRECOES.map(secao).join('\n')}
   <footer class="fim">
-    <p class="fim-pergunta">Prefere B ou C? Responda no chat com a letra.</p>
+    <p class="fim-pergunta">Escolhida: C · Cena.</p>
     <p>Se nenhuma servir, as capas podem ser imagens suas: 1600 × 900, sem texto. Elas entram no lugar da capa desenhada, aplicativo por aplicativo.</p>
   </footer>
 </main>
