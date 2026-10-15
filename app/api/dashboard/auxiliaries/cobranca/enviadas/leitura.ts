@@ -36,33 +36,39 @@ export function mascararNome(nome: string | null | undefined): string | null {
 }
 
 /**
- * O nome que a corretora lê no lugar da chave do portal — o mesmo fallback do motor (`NOME_DA_SEGURADORA` de
- * `billing_collection.py`): portal sem entrada vira o prefixo em maiúsculas, nunca a palavra genérica "seguradora".
+ * O nome que a corretora lê NA TELA no lugar da chave do portal — nome próprio, capitalizado, a mesma grafia que o
+ * Configurar mostra ("Allianz", nunca "ALLIANZ" numa lista e "Allianz" na outra: juiz de design 139, Cobranças §2).
+ * A lista "O que saiu" e a fila "Precisa de você" usam ESTA função. ⚠️ A MENSAGEM ao segurado é outra coisa: ela usa
+ * o `NOME_DA_SEGURADORA` do motor (`billing_collection.py`, em maiúsculas) e não muda aqui.
+ * Portal sem entrada: o prefixo da chave com a 1ª letra maiúscula (siglas de até 3 letras inteiras em maiúsculas) —
+ * nunca a palavra genérica "seguradora", que parece defeito para quem lê.
  */
 const NOME_DA_SEGURADORA: Record<string, string> = {
-  allianz_corretor: 'ALLIANZ',
-  hdi_corretor: 'HDI SEGUROS',
-  porto_corretor: 'PORTO SEGURO',
-  yelum_corretor: 'YELUM',
-  tokiomarine_corretor: 'TOKIO MARINE',
-  bradesco_corretor: 'BRADESCO SEGUROS',
-  mapfre_corretor: 'MAPFRE',
-  azul_corretor: 'AZUL SEGUROS',
-  alfa_corretor: 'ALFA SEGURADORA',
-  sulamerica_corretor: 'SULAMERICA',
-  sompo_corretor: 'SOMPO SEGUROS',
-  suhai_corretor: 'SUHAI',
-  sura_corretor: 'SURA',
-  zurich_corretor: 'ZURICH',
-  segurosunimed_corretor: 'SEGUROS UNIMED',
+  allianz_corretor: 'Allianz',
+  hdi_corretor: 'HDI Seguros',
+  porto_corretor: 'Porto Seguro',
+  yelum_corretor: 'Yelum',
+  tokiomarine_corretor: 'Tokio Marine',
+  bradesco_corretor: 'Bradesco Seguros',
+  mapfre_corretor: 'Mapfre',
+  azul_corretor: 'Azul Seguros',
+  alfa_corretor: 'Alfa Seguradora',
+  sulamerica_corretor: 'SulAmérica',
+  sompo_corretor: 'Sompo Seguros',
+  suhai_corretor: 'Suhai',
+  sura_corretor: 'Sura',
+  zurich_corretor: 'Zurich',
+  segurosunimed_corretor: 'Seguros Unimed',
 };
 
 export function nomeDaSeguradora(portalKey: string | null | undefined): string {
   const chave = String(portalKey || '').trim().toLowerCase();
   if (!chave) return 'Seguradora não identificada';
   if (NOME_DA_SEGURADORA[chave]) return NOME_DA_SEGURADORA[chave];
-  if (chave.endsWith('_corretor')) return chave.slice(0, -'_corretor'.length).replace(/_/g, ' ').toUpperCase();
-  return chave.toUpperCase();
+  const base = chave.endsWith('_corretor') ? chave.slice(0, -'_corretor'.length) : chave;
+  return base.split('_').filter(Boolean)
+    .map((p) => (p.length <= 3 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(' ');
 }
 
 export type TomDaSituacao = 'success' | 'warning' | 'neutral';
@@ -101,7 +107,10 @@ export function situacaoDaLinha(status: string | null | undefined, encaminhadoEm
   }
 }
 
-/** Uma linha do ledger como a rota lê (só as colunas que a tela pode ver: nada de `to_phone`). */
+/**
+ * Uma linha do ledger como a rota lê (só as colunas que a tela pode ver: nada de `to_phone`). `canario` é LIDO para
+ * decidir o destino e NUNCA devolvido à tela (o canário manda para um número da lista interna, não ao segurado).
+ */
 export interface LinhaDoLedger {
   id: string;
   status: string | null;
@@ -114,32 +123,75 @@ export interface LinhaDoLedger {
   sent_at: string | null;
   created_at: string | null;
   encaminhado_ao_cliente_em: string | null;
+  canario?: boolean | null;
 }
 
-/** O que a tela recebe por linha. */
+/**
+ * PARA QUEM a mensagem foi (conserto A da 139 — o juiz B2b e o red team B1): o ledger grava `send_mode='real'` também
+ * quando o pacote foi à ATENDENTE (`modalidade='equipe'`) e no canário (`canario=true`, número da lista interna).
+ * Só `cliente`, real e fora do canário chegou ao SEGURADO.
+ */
+export type DestinoDaCobranca = 'segurado' | 'equipe' | 'teste' | 'outro';
+
+export function destinoDaLinha(l: Pick<LinhaDoLedger, 'send_mode' | 'modalidade' | 'canario'>): DestinoDaCobranca {
+  if (l.send_mode === 'test' || l.canario === true) return 'teste';
+  if (l.modalidade === 'equipe') return 'equipe';
+  if (l.modalidade === 'cliente') return 'segurado';
+  return 'outro';
+}
+
+/**
+ * O que a tela recebe por linha. 🔴 CLAUDE.md §12.1: o campo se chama `recibo` porque guarda o RECIBO do portal — o
+ * nome antigo (`parcela`) mentia: o motor trata `{numero_parcela}` (ex.: 3/12) e `{recibo}` como coisas diferentes, e
+ * o ledger não tem número de parcela.
+ */
 export interface CobrancaQueSaiu {
   id: string;
   quando: string;
   segurado: string | null;
   seguradora: string;
-  parcela: string | null;
+  recibo: string | null;
   situacao: string;
   tom: TomDaSituacao;
   teste: boolean;
+  destino: DestinoDaCobranca;
   para_final: string | null;
 }
 
 export function paraATela(l: LinhaDoLedger): CobrancaQueSaiu {
   const s = situacaoDaLinha(l.status, l.encaminhado_ao_cliente_em);
+  const destino = destinoDaLinha(l);
   return {
     id: String(l.id),
     quando: String(l.sent_at || l.created_at || ''),
     segurado: mascararNome(l.cliente_nome),
     seguradora: nomeDaSeguradora(l.portal_key),
-    parcela: l.recibo ? String(l.recibo) : null,
+    recibo: l.recibo ? String(l.recibo) : null,
     situacao: s.texto,
     tom: s.tom,
-    teste: l.send_mode === 'test',
+    teste: destino === 'teste',
+    destino,
     para_final: l.to_last4 ? String(l.to_last4).slice(-4) : null,
   };
+}
+
+/**
+ * A frase da contagem de "O que saiu". "N a segurados" conta SÓ o que chegou ao segurado (`destino === 'segurado'`):
+ * o pacote da equipe, o canário e o teste são ditos pelo nome. Pura — o teste chama ESTA função, e a aba também.
+ */
+export function resumoDoQueSaiu(itens: Pick<CobrancaQueSaiu, 'destino'>[], periodo: number | string): string {
+  const total = itens.length;
+  if (total === 0) return `Nos últimos ${periodo} dias.`;
+  const conta = (d: DestinoDaCobranca) => itens.filter((c) => c.destino === d).length;
+  const segurados = conta('segurado');
+  const base = `${total === 1 ? '1 cobrança' : `${total} cobranças`} nos últimos ${periodo} dias`;
+  if (segurados === total) return `${base}, ${total === 1 ? 'ao segurado' : 'todas a segurados'}.`;
+  const partes = [segurados === 1 ? '1 a segurado' : `${segurados} a segurados`];
+  const equipe = conta('equipe');
+  const teste = conta('teste');
+  const outro = conta('outro');
+  if (equipe) partes.push(`${equipe} à equipe`);
+  if (teste) partes.push(`${teste} em teste`);
+  if (outro) partes.push(`${outro} sem destino identificado`);
+  return `${base} · ${partes.join(', ')}.`;
 }
