@@ -2670,3 +2670,29 @@ usa `SET` de sessão pelo pooler — só `SET TRANSACTION` ou `SET LOCAL`, dentr
 | D-1310B2-15 | **A linha pessoal NUNCA é canal de saída da corretora:** `PROPOSITOS_QUE_NUNCA_ENVIAM` += `linha_do_usuario`, SEM a exceção de autorização que o observer tem; o heartbeat a religa sem `HISTORY_SYNC` e sem alarme; o número dela não é "número do produto" no anti-laço. Notas (confirmadas pelo gerente, 15/10) **95** × a mesma porta de autorização do observer 30 (abriria a fase 2 sem o governador da 135) | ✅ TOMADA · **95** · G (conserto do juiz B1/B2/B3 e do red team) | a fase 2 (135) é quem abre a saída, com o governador |
 
 Também da execução: `LINHA_DO_USUARIO_MAX_LINHAS` com padrão 💭 **20** até a M3 (medir a RAM por instância no KVM2, T-178).
+
+## D-139-01…07 · D-139-L1/L2/L4/L6/CB/G · SPEC-139, a loja de aplicativos — 15/10/2026
+
+> Fonte: [SPEC-139 §7](specs/SPEC-139-a-loja-de-aplicativos.md) (01–06) e a execução de 15/10 ([relatório](reports/SPEC-139-EXECUTION-REPORT.md)).
+> G = gerente (autonomia com nota, CLAUDE.md §10). ⚠️ O registro da execução chamou a escolha do Founder de "D-139-04"; esse número é da
+> SPEC §7 (a Cobrança pelo formulário extraído) e o código o usa assim (`formulario.ts`, `PainelDeRotinas.tsx`) — a escolha vai como **D-139-07**.
+
+| # | Decisão | Estado (nota · de) | Substitui / revê |
+|---|---|---|---|
+| D-139-01 | **A capa vira composição SVG DENTRO do `CapaGerada` que existe.** Notas **90** × componente novo ao lado 30 (peça paralela) × IA de imagem 0 (D-132F-03) | ✅ TOMADA · **90** · G — SPEC §7 | executa a D-132F-03 |
+| D-139-02 | **Uma paleta única** (OKLCH, mesma luz e croma) a partir das matizes do laudo. Notas **88** × cor livre por aplicativo 50 | ✅ TOMADA · **88** · G — SPEC §7 | refinada pela D-139-L1-02 e pela D-139-CB-01 |
+| D-139-03 | **A direção vem da prancha, escolhida pelo Founder; sem resposta, a de maior nota (A).** Notas **85** × produzir as 19 numa direção só 55. Aplicada: o Founder não tinha respondido e a A entrou na L1 | ↪ **REVISTA pela D-139-07** (15/10) · **85** · G | — |
+| D-139-04 | **A Cobrança entra na casca pelo formulário EXTRAÍDO, com teste dourado do corpo.** Notas **90** × reescrever 40 (risco em envio real) × manter o modal 50 (D-131-28) | ✅ TOMADA · **90** · G — SPEC §7 · 📊 S1–S7 idênticos e 10/10 digitados = o modal de `5f9bdac` | executa a D-131-28 |
+| D-139-05 | **As telas da P-16 e o Checklist são MOVIDAS (não reescritas), com 307.** Notas **88** × reescrever 45 | ✅ TOMADA · **88** · G — SPEC §7 | fecha a P-16 |
+| D-139-06 | **A EXTRA-001.9 entra como a última fatia paralela, com o guarda de links.** Notas **80** × ficar de fora 55 | ✅ TOMADA · **80** · G — SPEC §7 | — |
+| D-139-07 | **A direção do produto é a C · Cena** — "Eu escolho a opção C" (e autorizou manter outra se já iniciada). Trocar = a linha `DIRECAO_DO_PRODUTO` em `capas/composicoes.ts`. O conserto B adaptou à C (destaque, cena simplificada no card, mais luz no escuro, reenquadramento no 4:1). Notas **85** × manter a A já pronta 70 (o gosto é do Founder) | ✅ TOMADA · **85** · **Founder** 15/10 | revê a D-139-03 · fecha a T-177 |
+| D-139-L1-01 | **Teto de 8 KB por capa** (alvo 4 KB). Notas **85** × 4 KB rígido 60 (o efeito pedia mais). 📊 HEAD: A 4.651–5.045 · B 3.798–4.407 · C 5.338–6.677 bytes | ✅ TOMADA · **85** · G (L1) | relaxa o "≤ 4 KB" da SPEC §3 |
+| D-139-L1-02 | **Matizes espalhadas, não a conversão literal do laudo** (17 frias em 112° → 8 quase iguais). Notas **86** × conversão literal 58. ⚠️ o comentário de `paleta.ts` a chama de "D-139-L1-01" | ✅ TOMADA · **86** · G (L1) | refinada pela D-139-CB-01 |
+| D-139-L2-01 | **Extrair também `PendenciasDaCobranca` e `LiberarReenvioDeTeste`** (sem isso a fila de pendências sumiria do Configurar). 💭 nota não registrada pela execução | ✅ TOMADA · G (L2) | — |
+| D-139-L4-01 | **Radar e tarefas-agendadas NÃO viram "Em breve"** — 📊 0 trabalho, mas têm motor (`radar.py`, `dono_da_rotina.py`); mudar `catalog_state` é decisão de produto. Notas **80** × virar "Em breve" 40 | ✅ TOMADA · **80** · G (L4) | — |
+| D-139-L4-02 | **Follow-up e Resumo sem aba Configurar** (são sob demanda; 📊 0 rotinas ligadas aos dois; o passo do Como começar é USAR). Notas **85** × painel vazio 45 | ✅ TOMADA · **85** · G (L4) | revê o contrato da SPEC §5 (`inicio|<trabalho>|configurar|duvidas`) |
+| D-139-L6-01 | **Com a capa GERADA, o cabeçalho não repete o ícone num tile** (a placa da capa É o ícone; o tile só com `cover_url`). Notas **86** × manter 55 × reposicionar 65 | ✅ TOMADA · **86** · G (L6) | estendida ao card pela D-139-CB-03 |
+| D-139-CB-01 | **Paleta com vizinhança 2D:** os 9 com capa a ≥ 18° dois a dois; as 18 a ≥ 18° nas distâncias 1–4 das grades de 2/3/4 colunas; ≤ 5 no ciano; Renovação 240°, Cobrança 140°. 📊 medido: 24° e 20°; a paleta de antes fica VERMELHA. 💭 nota não registrada | ✅ TOMADA · G (conserto B, juiz de design C1) | revê a ordem do laudo §2.4 |
+| D-139-CB-02 | **Os enquadramentos da C** (card, cabeçalho 4:1, destaque): a mesma cena montada para o lugar onde aparece. 💭 nota não registrada | ✅ TOMADA · G (conserto B) | — |
+| D-139-CB-03 | **O tile do card só existe com `cover_url`** (a regra da D-139-L6-01 levada ao card). 💭 nota não registrada | ✅ TOMADA · G (conserto B, juiz de design G2) | — |
+| D-139-G-01 | **O nome INTEIRO em "Precisa de você"**, com o porquê escrito na tela (quem age precisa saber quem é); a lista "O que saiu" segue mascarada. Notas **80** × mascarar 50 | ✅ TOMADA · **80** · G (conserto de design 2) | fecha a P-139-03 |
