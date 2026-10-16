@@ -13,6 +13,7 @@ import {
   estadoDaLinha,
   fraseDoErro,
   lerLeituraDoQr,
+  mascararNumero,
   qrSeguro,
   type LeituraDoQr,
   type LinhaDoWhatsApp,
@@ -24,12 +25,13 @@ import {
  *
  * SPEC-131-0-B3 (D-1310B3-01) — este bloco passou a ser o PRINCIPAL da aba "WhatsApp de trabalho": conectado, o
  * WhatsApp pareado É o número de trabalho da pessoa. A tela separa o que ele faz HOJE do que vem QUANDO A CORRETORA
- * LIGAR (o envio a clientes é da SPEC-135 — D-1310B3-02) e do que FICA DE FORA (o atendimento aos segurados).
+ * ATIVAR (o envio a clientes é da SPEC-135 — D-1310B3-02) e do que FICA DE FORA (o atendimento aos segurados).
  * O "Quero renovar" só é atribuído ao pareado quando o servidor confirma (`queroRenovarNoPareado`, do `efetivo`).
  *
  * Estados (do servidor): desligada → nada aparece (o número digitado é o principal) · nao_conectada → "Conectar meu
  * WhatsApp" · aguardando_qr → o código, renovado a cada 4 s (para ao conectar, ao sair da tela e com a aba do
- * navegador oculta) · conectada → "Este é o seu WhatsApp de trabalho" com o número MASCARADO que veio do servidor +
+ * navegador oculta) · conectada → "Este é o seu WhatsApp de trabalho" com o número MASCARADO que veio do servidor
+ * (redesenhado no padrão brasileiro por `mascararNumero`, sem revelar dígito novo) +
  * "Desconectar" (com a confirmação da casa) · desconectada → a frase da SPEC §4 + o que vale enquanto isso +
  * "Conectar de novo" · limite → "estamos no limite de conexões".
  */
@@ -145,12 +147,12 @@ export function VistaDaLinha({
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground">
               <CheckCircle2 size={16} strokeWidth={1.6} className="shrink-0 text-success" aria-hidden />
               <span className="font-medium">Este é o seu WhatsApp de trabalho</span>
-              {linha.numero_mascarado && <span className="tabular-nums">— {linha.numero_mascarado}</span>}
+              {linha.numero_mascarado && <span className="tabular-nums">· {mascararNumero(linha.numero_mascarado)}</span>}
               {linha.desde && <span className="text-muted-foreground">· desde {dataDaLinha(linha.desde)}</span>}
             </p>
             <div className="grid gap-2 md:grid-cols-3">
               <Parte titulo="Para que ele serve hoje" itens={hoje} />
-              <Parte titulo="Quando a sua corretora ligar"
+              <Parte titulo="Em breve, quando a sua corretora ativar"
                 itens={['Avisos do AutoBrokers para você.', 'Cobrança e renovação aos seus clientes, por este número.']} />
               <Parte titulo="Fica de fora" itens={['O atendimento aos segurados continua no número da corretora.']} />
             </div>
@@ -161,8 +163,7 @@ export function VistaDaLinha({
               </p>
             )}
             <p className="text-sm text-muted-foreground">
-              Hoje, o AutoBrokers lê só a conversa &quot;Mensagem para você&quot; e responde ali: as suas outras conversas
-              não são lidas nem guardadas, e nada sai para os seus clientes.
+              Só essa conversa é lida; nada sai para os seus clientes.
             </p>
             <Confirmar
               titulo="Desconectar o seu WhatsApp?"

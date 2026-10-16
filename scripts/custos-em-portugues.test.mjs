@@ -204,6 +204,44 @@ const comPessoa = buildUsoDaCorretora({
 });
 assert('com details.user_id → "Rafael Lima" com 2 respostas, e o u9 da B não aparece', comPessoa.por_pessoa.length === 1 && comPessoa.por_pessoa[0].rotulo === 'Rafael Lima' && comPessoa.por_pessoa[0].chamadas === 2);
 
+// ── 7. a promessa "por pessoa" (conserto K2, BLOCKER de design) ─────────────
+// 📊 15/10: 0 registros com details.user_id → a seção "Por pessoa" fica vazia. O subtítulo não pode prometer o que a
+// tela não mostra, e a tela diz que ainda não separa por pessoa em vez de sumir calada. Roda o COMPONENTE REAL
+// (TSX transpilado, React renderizando; só o `useState`/`useEffect` trocados na borda para entregar os dados).
+console.log('\n7. "por pessoa": nada prometido que a tela não mostra');
+const { createRequire } = await import('node:module');
+const requireReal = createRequire(import.meta.url);
+const ts = requireReal('typescript');
+const ReactReal = requireReal('react');
+const jsxRuntime = requireReal('react/jsx-runtime');
+const { renderToStaticMarkup } = requireReal('react-dom/server');
+function desenharUso(dados) {
+  const js = ts.transpileModule(ler('app/dashboard/personalizacao/corretora/custos/UsageClient.tsx'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  let n = 0;
+  const reactFalso = { ...ReactReal, useEffect: () => {}, useState: () => [n++ === 0 ? dados : false, () => {}] };
+  const mod = { exports: {} };
+  const req = (id) => (id === 'react' ? reactFalso : id === 'react/jsx-runtime' ? jsxRuntime : (() => { throw new Error(`import não previsto: ${id}`); })());
+  // eslint-disable-next-line no-new-func
+  new Function('require', 'module', 'exports', js)(req, mod, mod.exports);
+  return renderToStaticMarkup(ReactReal.createElement(mod.exports.UsageClient));
+}
+const FRASE_SEM_PESSOA = 'Ainda não separamos o uso por pessoa da equipe.';
+const htmlSemPessoa = desenharUso({ ...vA, ok: true });
+assert('sem atribuição: a tela diz que ainda não separa por pessoa', htmlSemPessoa.includes(FRASE_SEM_PESSOA));
+assert('sem atribuição: nenhum título "Por pessoa" vazio', !/>Por pessoa</.test(htmlSemPessoa));
+const htmlComPessoa = desenharUso({ ...comPessoa, ok: true });
+assert('controle: com atribuição, "Por pessoa" e "Rafael Lima" aparecem, sem a frase', />Por pessoa</.test(htmlComPessoa) && htmlComPessoa.includes('Rafael Lima') && !htmlComPessoa.includes(FRASE_SEM_PESSOA));
+const htmlSemUso = desenharUso({ ...buildUsoDaCorretora({ companyId: A, credits: null, ledger: [], logs: [], agents: [], people: [] }), ok: true });
+assert('sem uso nenhum: só "Nenhum uso…", sem a frase de pessoa', htmlSemUso.includes('Nenhum uso da IA registrado') && !htmlSemUso.includes(FRASE_SEM_PESSOA));
+const subtitulo = /subtitle="([^"]*)"/.exec(ler('app/dashboard/personalizacao/corretora/custos/page.tsx'))?.[1] ?? '';
+const prometePessoa = (s) => /por pessoa/i.test(s);
+assert('controle: o detector pega o subtítulo antigo', prometePessoa('nos últimos 30 dias — por assistente, por pessoa e por modelo — e'));
+assert(`o subtítulo não promete "por pessoa" (a seção pode estar vazia) → "${subtitulo}"`, subtitulo.length > 0 && !prometePessoa(subtitulo));
+// P9: rótulo dos cartões e rodapé com contraste (nada de `text-faint` em letra pequena)
+assert('nenhum texto da tela em text-faint (contraste < 4,5:1)', !/text-faint/.test(ler('app/dashboard/personalizacao/corretora/custos/UsageClient.tsx')));
+
 console.log(`\n== Resumo: ${pass} passaram, ${fail} falharam ==`);
 if (fail > 0) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
 process.exit(0);

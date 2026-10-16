@@ -21,8 +21,8 @@ const vezes = (n: number) => `${int(n)} ${n === 1 ? 'resposta ou leitura' : 'res
 function Cartao({ titulo, children, tom = 'normal' }: { titulo: string; children: React.ReactNode; tom?: 'normal' | 'aviso' | 'perigo' }) {
   const borda = tom === 'perigo' ? 'border-danger/30 bg-danger/5' : tom === 'aviso' ? 'border-warning/30 bg-warning/5' : 'border-border bg-card';
   return (
-    <div className={`min-w-0 rounded-lg border p-4 ${borda}`}>
-      <p className="text-[11px] uppercase tracking-wide text-faint">{titulo}</p>
+    <div className={`min-w-0 rounded-xl border p-4 ${borda}`}>
+      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{titulo}</p>
       {children}
     </div>
   );
@@ -31,7 +31,7 @@ function Cartao({ titulo, children, tom = 'normal' }: { titulo: string; children
 function Quebra({ titulo, grupos }: { titulo: string; grupos: Grupo[] }) {
   if (grupos.length === 0) return null;
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
+    <section className="rounded-xl border border-border bg-card p-4">
       <h2 className="mb-2 text-sm font-medium text-foreground">{titulo}</h2>
       <ul>
         {grupos.map((g) => (
@@ -63,7 +63,7 @@ export function UsageClient() {
     <div className="space-y-4">
       <div className={`grid grid-cols-1 gap-3 ${d.saldo ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {d.saldo && (
-          <Cartao titulo="Saldo" tom={tomSaldo}>
+          <Cartao titulo="Saldo de créditos" tom={tomSaldo}>
             <p className="mt-1 text-lg font-semibold text-foreground">{brl(d.saldo.balance_brl)}</p>
             {d.saldo.alert_100 ? <p className="text-[12px] text-danger">Saldo esgotado</p> : d.saldo.alert_80 ? <p className="text-[12px] text-warning">Saldo baixo</p> : null}
           </Cartao>
@@ -95,9 +95,13 @@ export function UsageClient() {
 
       <Quebra titulo="Por assistente" grupos={d.por_assistente} />
       <Quebra titulo="Por pessoa" grupos={d.por_pessoa} />
+      {/* conserto K2: sem atribuição por pessoa (📊 15/10: nenhuma), a tela diz isso em vez de sumir calada */}
+      {d.has_data && d.por_pessoa.length === 0 && (
+        <p className="text-sm text-muted-foreground">Ainda não separamos o uso por pessoa da equipe.</p>
+      )}
       <Quebra titulo="Por modelo de IA" grupos={d.por_modelo} />
 
-      <p className="text-[11px] text-faint">Mostramos o uso já registrado com a sua corretora.</p>
+      <p className="text-[11px] text-muted-foreground">Mostramos o uso já registrado com a sua corretora.</p>
     </div>
   );
 }

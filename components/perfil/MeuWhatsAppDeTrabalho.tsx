@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronDown, Info, MessageCircle } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Info, MessageCircle, Smartphone } from 'lucide-react';
 
 import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo';
 import { Confirmar } from '@/components/aplicativos/casca/Confirmar';
@@ -28,6 +28,11 @@ import {
  * conexão. Sem a conexão disponível para esta pessoa, o número digitado volta a ser o principal (como na 131-B).
  * O "Quero renovar" só é atribuído ao pareado quando o servidor diz (`whatsapp_trabalho.efetivo.origem === 'linha'`);
  * backend antigo, sem `efetivo`, a tela não afirma o que não sabe (CLAUDE.md §9.3).
+ * Conserto K2 (BLOCKER do juiz) — conversa PAUSADA (`desligada`: a chave não liga esta pessoa) com o WhatsApp dela
+ * ainda conectado no banco: o servidor manda o cliente para o PAREADO (`efetivo.origem === 'linha'`, D-1310B3-04 — a
+ * chave governa a conversa, não a posse). A aba diz isso: "Este é o seu WhatsApp de trabalho", a conversa pausada e o
+ * "Quero renovar" chegando NESTE número; o digitado (se diferente) fica como reserva recolhida. Antes, o formulário
+ * afirmava "chega aqui" e "não se conecta a ele" — as duas falsas.
  * ⛔ Nada é enviado daqui. O número de atendimento da corretora e o do Quem Cobra Menos são outros e não mudam.
  *
  * SPEC-132-C C1 (D-132C-02, D-1310B3-05) — "Usar pelo WhatsApp": a pessoa prova que o número DIGITADO é dela mandando,
@@ -93,17 +98,19 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
   const efetivo = lerEfetivo(atual?.efetivo);
   // só o SERVIDOR diz que o "Quero renovar" usa o pareado; sem `efetivo` (backend antigo), a tela não afirma
   const queroRenovarNoPareado = linhaConectada && efetivo?.origem === 'linha';
+  // a conversa está pausada para esta pessoa, mas o WhatsApp dela segue conectado e o cliente vai para ELE (K2)
+  const pareadoPausado = linha?.estado === 'desligada' && efetivo?.origem === 'linha';
   const mascarado = temDigitado ? mascararNumero(atual?.numero) : null;
   const reserva: Reserva | null = mascarado
     ? {
       mascarado,
       diferente: efetivo?.numero
         ? !mesmoNumero(atual?.numero, efetivo.numero)
-        : !(linha?.numero_mascarado && linha.numero_mascarado === mascarado),
+        : !(linha?.numero_mascarado && mascararNumero(linha.numero_mascarado) === mascarado),
     }
     : null;
-  const comoReserva = linhaConectada || (linha?.estado === 'desconectada' && temDigitado);
-  const reservaAbertaPorPadrao = !linhaConectada && temDigitado;
+  const comoReserva = linhaConectada || pareadoPausado || (linha?.estado === 'desconectada' && temDigitado);
+  const reservaAbertaPorPadrao = !linhaConectada && !pareadoPausado && temDigitado;
   const abrirReserva = reservaAberta ?? reservaAbertaPorPadrao;
 
   const gravar = async (corpo: Record<string, unknown>, ok: string) => {
@@ -136,7 +143,7 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
     }
   };
 
-  const aoTirar = queroRenovarNoPareado
+  const aoTirar = queroRenovarNoPareado || pareadoPausado
     ? 'O "Quero renovar" continua no seu WhatsApp conectado; você só fica sem número de reserva.'
     : 'O "Quero renovar" passa a ir para o número da corretora.';
 
@@ -199,30 +206,54 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
     </form>
   );
 
+  // o número digitado, recolhido: o `<details>` nativo anuncia aberto/fechado ao leitor de tela
+  const blocoRecolhido = (
+    <details open={abrirReserva} onToggle={(e) => setReservaAberta(e.currentTarget.open)}
+      className="group rounded-xl border border-border-soft">
+      <summary className={cn('flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2 [&::-webkit-details-marker]:hidden', FOCO)}>
+        {comoReserva ? 'Número de reserva' : 'Não quer conectar? Informe só o número'}
+        <ChevronDown size={18} strokeWidth={1.6} aria-hidden
+          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="space-y-3 border-t border-border-soft p-4">
+        <p className="text-sm text-muted-foreground">
+          {pareadoPausado
+            ? 'Se o seu WhatsApp desconectar, o "Quero renovar" do cliente passa a usar este número.'
+            : comoReserva
+              ? 'Se o seu WhatsApp desconectar, o "Quero renovar" do cliente usa este número até você conectar de novo.'
+              : 'Informe o número em que você atende. O "Quero renovar" do cliente chega nele, direto para você. É só o número: nada é enviado por ele.'}
+        </p>
+        {blocoDoNumero}
+      </div>
+    </details>
+  );
+  const numeroDoPareado = mascararNumero(efetivo?.numero);
+
   return (
     <div className="space-y-4">
-      {linhaOfertada ? (
+      {pareadoPausado ? (
+        <>
+          <section aria-labelledby="zap-pareado-titulo" className="space-y-3 rounded-xl border border-border bg-surface p-4">
+            <h3 id="zap-pareado-titulo" className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <Smartphone size={18} strokeWidth={1.6} aria-hidden />
+              Seu WhatsApp de trabalho
+            </h3>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground">
+              <CheckCircle2 size={16} strokeWidth={1.6} className="shrink-0 text-success" aria-hidden />
+              <span className="font-medium">Este é o seu WhatsApp de trabalho</span>
+              {numeroDoPareado && <span className="tabular-nums">· {numeroDoPareado}</span>}
+            </p>
+            <p className="text-sm text-foreground">O &quot;Quero renovar&quot; do cliente chega neste número.</p>
+            <p className="text-sm text-muted-foreground">A conversa com o AutoBrokers por este WhatsApp está pausada no momento.</p>
+          </section>
+          {/* o digitado só vira reserva quando é OUTRO número (sem digitado, o bloco fechado deixa informar um) */}
+          {!(reserva && !reserva.diferente) && blocoRecolhido}
+        </>
+      ) : linhaOfertada ? (
         <>
           <MinhaLinhaDoWhatsApp linha={linha} aoMudar={setLinha} recarregar={recarregarLinha}
             queroRenovarNoPareado={queroRenovarNoPareado} reserva={reserva} />
-
-          {/* o número digitado, recolhido: o `<details>` nativo anuncia aberto/fechado ao leitor de tela */}
-          <details open={abrirReserva} onToggle={(e) => setReservaAberta(e.currentTarget.open)}
-            className="group rounded-xl border border-border-soft">
-            <summary className={cn('flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2 [&::-webkit-details-marker]:hidden', FOCO)}>
-              {comoReserva ? 'Número de reserva' : 'Não quer conectar? Informe só o número'}
-              <ChevronDown size={18} strokeWidth={1.6} aria-hidden
-                className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="space-y-3 border-t border-border-soft p-4">
-              <p className="text-sm text-muted-foreground">
-                {comoReserva
-                  ? 'Se o seu WhatsApp desconectar, o "Quero renovar" do cliente usa este número até você conectar de novo.'
-                  : 'Informe o número em que você atende. O "Quero renovar" do cliente chega nele, direto para você. É só o número: nada é enviado por ele.'}
-              </p>
-              {blocoDoNumero}
-            </div>
-          </details>
+          {blocoRecolhido}
         </>
       ) : (
         <>
@@ -238,8 +269,8 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
 
       {atual?.disponivel !== false && (atalhoDisponivel || verificado || !linhaOfertada) && (
         <section aria-labelledby="atalho-whatsapp-titulo" className="space-y-3 rounded-xl border border-border bg-surface p-4">
-          <h4 id="atalho-whatsapp-titulo" className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <MessageCircle size={16} strokeWidth={1.6} aria-hidden />
+          <h4 id="atalho-whatsapp-titulo" className="flex items-start gap-2 text-sm font-semibold text-foreground">
+            <MessageCircle size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
             Falar com o AutoBrokers pelo número dele no WhatsApp
           </h4>
 
@@ -312,8 +343,8 @@ export function MeuWhatsAppDeTrabalho({ perfil, onMudou }: { perfil: MeuPerfil |
         </section>
       )}
 
-      {/* sem a conexão oferecida, o digitado é SÓ um número; com ela, o bloco de cima diz o que é lido (§9.3) */}
-      {!linhaOfertada && (
+      {/* sem a conexão oferecida, o digitado é SÓ um número; com ela (ou com o pareado pausado), não é (§9.3) */}
+      {!linhaOfertada && !pareadoPausado && (
         <p className="flex items-start gap-2 rounded-lg border border-border-soft p-3 text-sm text-muted-foreground">
           <Info size={16} strokeWidth={1.6} className="mt-0.5 shrink-0" aria-hidden />
           <span>

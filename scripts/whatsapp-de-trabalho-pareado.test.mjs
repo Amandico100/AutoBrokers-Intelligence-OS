@@ -9,13 +9,17 @@
 //      "Não quer conectar? Informe só o número" (aberto só se já houver número digitado); linha indisponível → o
 //      formulário volta a ser o principal.
 //   ② nada promete envio a cliente como LIGADO: cobrança e renovação aos clientes só aparecem DEPOIS de
-//      "Quando a sua corretora ligar"; o "Quero renovar" só é atribuído ao pareado quando o backend diz
+//      "Em breve, quando a sua corretora ativar"; o "Quero renovar" só é atribuído ao pareado quando o backend diz
 //      `efetivo.origem === 'linha'` (backend antigo, sem `efetivo` → a tela não afirma o que não sabe).
 //   ③ os dois BFF REPASSAM `whatsapp_trabalho.efetivo` e `pessoas[i].whatsapp_trabalho_origem` sem inventar; a
 //      Situação da equipe diz "WhatsApp conectado" / "informado" / "não informado" pela origem.
 //   ④ nenhum jargão nem nome interno na tela (Even, Jarvis, instância, linha, QR code, token…).
+//   ⑤ conversa PAUSADA (a chave não liga a pessoa → `desligada`) com o WhatsApp dela ainda conectado no banco
+//      (`efetivo.origem === 'linha'`, D-1310B3-04): o "Quero renovar" vai para o PAREADO — a aba diz isso, e nunca
+//      "chega aqui" sobre o digitado nem "não se conecta a ele" (conserto K2, BLOCKER do juiz).
 //
-// MUTAÇÃO (relatório): tirar o "Este é o seu WhatsApp de trabalho" do estado conectado → ① fica VERMELHO.
+// MUTAÇÃO (relatório): tirar o "Este é o seu WhatsApp de trabalho" do estado conectado → ① fica VERMELHO;
+// a forma de antes do conserto K2 (desligada + pareado → o formulário como principal) → ⑤ fica VERMELHO.
 //
 // Rodar: node --test scripts/whatsapp-de-trabalho-pareado.test.mjs
 
@@ -109,11 +113,12 @@ test('① conectado: "Este é o seu WhatsApp de trabalho", o número MASCARADO, 
   });
   const t = texto(html);
   assert.match(t, /Este é o seu WhatsApp de trabalho/);
-  assert.match(t, /5511\*{5}001/);
+  // P3 (conserto K2): o mascarado do servidor (`5511*****001`) no padrão brasileiro, sem revelar dígito novo
+  assert.match(t, /Este é o seu WhatsApp de trabalho · \(11\) \*{4}-\*001/);
   assert.match(t, /desde 15\/10\/2026/);
   assert.ok(!t.includes(PAREADO) && !/9\s?0000-0001/.test(t), 'o número pareado apareceu em claro');
   // o digitado diferente vira reserva, MASCARADO na frase
-  assert.match(t, /O número 5548\*{5}777 que você informou antes fica guardado como reserva\./);
+  assert.match(t, /O número \(48\) \*{4}-\*777 que você informou antes fica guardado como reserva\./);
   const d = detalhes(html);
   assert.ok(d, 'o formulário do número digitado devia estar num bloco recolhível');
   assert.ok(!abreDetalhes(html), 'conectado, o número digitado fica RECOLHIDO');
@@ -171,7 +176,7 @@ test('① desconectado (caiu): a frase de hoje e "enquanto isso" o número de re
   });
   const t = texto(html);
   assert.match(t, /Seu WhatsApp desconectou do AutoBrokers em 01\/10\/2026/);
-  assert.match(t, /Enquanto isso, o "Quero renovar" usa o número de reserva 5548\*{5}777\s?\./);
+  assert.match(t, /Enquanto isso, o "Quero renovar" usa o número de reserva \(48\) \*{4}-\*777\s?\./);
   const sem = texto(desenharAba({ linha: LINHA('desconectada'), perfil: PERFIL() }));
   assert.match(sem, /Enquanto isso, o "Quero renovar" vai para o número da corretora\./);
 });
@@ -179,10 +184,10 @@ test('① desconectado (caiu): a frase de hoje e "enquanto isso" o número de re
 // ─────────────────────────────────────────────────────────────────────────────
 // ② nenhuma promessa do que não está ligado
 // ─────────────────────────────────────────────────────────────────────────────
-test('② "Para que ele serve hoje" × "Quando a sua corretora ligar" × "Fica de fora": cobrança a cliente só no DEPOIS', () => {
+test('② "Para que ele serve hoje" × "Em breve, quando a sua corretora ativar" × "Fica de fora": cobrança a cliente só no DEPOIS', () => {
   const t = texto(desenharAba({ linha: CONECTADA, perfil: PERFIL({ efetivo: { numero: PAREADO, origem: 'linha' } }) }));
   const iHoje = t.indexOf('Para que ele serve hoje');
-  const iDepois = t.indexOf('Quando a sua corretora ligar');
+  const iDepois = t.indexOf('Em breve, quando a sua corretora ativar');
   const iFora = t.indexOf('Fica de fora');
   assert.ok(iHoje >= 0 && iDepois > iHoje && iFora > iDepois, `ordem das três partes: ${iHoje} ${iDepois} ${iFora}`);
   const hoje = t.slice(iHoje, iDepois);
@@ -198,12 +203,12 @@ test('② "Para que ele serve hoje" × "Quando a sua corretora ligar" × "Fica d
 test('② backend antigo (sem `efetivo`): a tela não atribui o "Quero renovar" ao pareado nem fala em reserva', () => {
   const t = texto(desenharAba({ linha: CONECTADA, perfil: PERFIL(COM_DIGITADO) }));
   assert.match(t, /Este é o seu WhatsApp de trabalho/);
-  const hoje = t.slice(t.indexOf('Para que ele serve hoje'), t.indexOf('Quando a sua corretora ligar'));
+  const hoje = t.slice(t.indexOf('Para que ele serve hoje'), t.indexOf('Em breve, quando a sua corretora ativar'));
   assert.ok(!/Quero renovar/.test(hoje), `sem o efetivo, "Quero renovar" no pareado é palpite: ${hoje}`);
   assert.ok(!/fica guardado como reserva/.test(t));
   // e com o efetivo dizendo "digitado" (ex.: conexão inativa no banco), também não
   const t2 = texto(desenharAba({ linha: CONECTADA, perfil: PERFIL({ ...COM_DIGITADO, efetivo: { numero: DIGITADO, origem: 'digitado' } }) }));
-  assert.ok(!/Quero renovar/.test(t2.slice(t2.indexOf('Para que ele serve hoje'), t2.indexOf('Quando a sua corretora ligar'))));
+  assert.ok(!/Quero renovar/.test(t2.slice(t2.indexOf('Para que ele serve hoje'), t2.indexOf('Em breve, quando a sua corretora ativar'))));
 });
 
 test('② sem conexão, a frase "o AutoBrokers não se conecta a ele" continua; conectado, ela NÃO aparece', () => {
@@ -211,6 +216,52 @@ test('② sem conexão, a frase "o AutoBrokers não se conecta a ele" continua; 
   assert.match(sem, /o AutoBrokers não se conecta a ele/);
   const com = texto(desenharAba({ linha: CONECTADA, perfil: PERFIL({ ...COM_DIGITADO, efetivo: { numero: PAREADO, origem: 'linha' } }) }));
   assert.ok(!/não se conecta a ele/.test(com), 'conectado, "não se conecta" é mentira');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑤ conversa pausada, WhatsApp conectado: a aba diz para onde o "Quero renovar" vai (conserto K2)
+// ─────────────────────────────────────────────────────────────────────────────
+test('⑤ desligada + efetivo do PAREADO: "Este é o seu WhatsApp de trabalho", pausada, e o "Quero renovar" chega NESTE número', () => {
+  const html = desenharAba({
+    linha: LINHA('desligada'),
+    perfil: PERFIL({ ...COM_DIGITADO, efetivo: { numero: PAREADO, origem: 'linha' } }),
+  });
+  const t = texto(html);
+  assert.match(t, /Este é o seu WhatsApp de trabalho · \(11\) \*{4}-\*001/);
+  assert.match(t, /A conversa com o AutoBrokers por este WhatsApp está pausada no momento\./);
+  assert.match(t, /O "Quero renovar" do cliente chega neste número\./);
+  // as duas frases que ficavam FALSAS (o cliente vai para o pareado, não para o digitado)
+  assert.ok(!/chega aqui|chega nele/.test(t), `"chega aqui" sobre o digitado é falso: ${t}`);
+  assert.ok(!/não se conecta a ele/.test(t), '"não se conecta a ele" é falso: o WhatsApp está conectado');
+  assert.ok(!t.includes(PAREADO) && !/9\s?0000-0001/.test(t), 'o número pareado apareceu em claro');
+  // o digitado diferente vira reserva RECOLHIDA, depois do pareado
+  const d = detalhes(html);
+  assert.ok(d, 'o número digitado devia estar recolhido como reserva');
+  assert.ok(!abreDetalhes(html), 'a reserva começa fechada');
+  assert.match(d, /<summary[^>]*>[\s\S]*Número de reserva[\s\S]*<\/summary>/);
+  assert.ok(html.indexOf('Este é o seu WhatsApp de trabalho') < html.indexOf('<details'), 'o pareado vem ANTES da reserva');
+  assert.ok(!/<form\b/.test(html.replace(d, '')), 'o formulário do digitado não pode ser o principal');
+  assert.ok(!/Conectar meu WhatsApp|Para que ele serve hoje/.test(t), 'pausada: nada de conectar nem de "serve hoje"');
+});
+
+test('⑤ desligada + PAREADO igual ao digitado: sem reserva de si mesmo', () => {
+  const html = desenharAba({
+    linha: LINHA('desligada'),
+    perfil: PERFIL({ ...COM_DIGITADO, numero: PAREADO, efetivo: { numero: PAREADO, origem: 'linha' } }),
+  });
+  assert.match(texto(html), /O "Quero renovar" do cliente chega neste número\./);
+  assert.equal(detalhes(html), null, 'o mesmo número não vira reserva de si mesmo');
+});
+
+test('⑤ CONTROLE: desligada + efetivo do DIGITADO (ou sem efetivo) — o formulário continua o principal, sem "pausada"', () => {
+  for (const wt of [{ ...COM_DIGITADO, efetivo: { numero: DIGITADO, origem: 'digitado' } }, COM_DIGITADO, {}]) {
+    const html = desenharAba({ linha: LINHA('desligada'), perfil: PERFIL(wt) });
+    const t = texto(html);
+    assert.equal(detalhes(html), null, 'o número digitado é o principal, nada recolhido');
+    assert.match(html, /<form\b|>Mudar</, 'o bloco do número digitado (formulário ou o número salvo) está na tela');
+    assert.match(t, /O "Quero renovar" do cliente chega aqui/);
+    assert.ok(!/pausada|Este é o seu WhatsApp de trabalho/.test(t), `o digitado não é o pareado: ${t}`);
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,6 +330,7 @@ test('④ nenhum estado da aba usa jargão ou nome interno (Even, Jarvis, Smith,
     { linha: CONECTADA, perfil: PERFIL({ ...COM_DIGITADO, efetivo: { numero: PAREADO, origem: 'linha' } }) },
     { linha: LINHA('desconectada'), perfil: PERFIL(COM_DIGITADO) },
     { linha: LINHA('limite'), perfil: PERFIL() },
+    { linha: LINHA('desligada'), perfil: PERFIL({ ...COM_DIGITADO, efetivo: { numero: PAREADO, origem: 'linha' } }) },
   ];
   const JARGAO = /\bEven\b|Jarv[iy]s|\bSmith\b|inst[aâ]ncia|\blinha\b|QR\s*code|\btoken\b|webhook|\bE\.?164\b|pareamento/i;
   assert.ok(JARGAO.test('a instância') && JARGAO.test('Even') && !JARGAO.test('o seu WhatsApp de trabalho'), 'CONTROLE do detector');

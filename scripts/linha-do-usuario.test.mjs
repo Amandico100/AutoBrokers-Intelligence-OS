@@ -463,9 +463,11 @@ test('④ o "WhatsApp de trabalho" monta o bloco no topo e não mente com a linh
   assert.match(fonte, /<MinhaLinhaDoWhatsApp\b/);
   // SPEC-131-0-B3 (§9.3, migrado): o bloco da conexão É o principal quando oferecido, e o número digitado vem DEPOIS,
   // recolhido (antes: o bloco vinha acima do título "Meu WhatsApp de trabalho"). A ordem é a mesma lição.
+  // Conserto K2 (§9.3, migrado): o `<details>` virou a constante `blocoRecolhido`, reaproveitada no estado pausado —
+  // o que vale é ONDE ela é USADA, não onde é definida (a ordem renderizada é provada em whatsapp-de-trabalho-pareado ①).
   const iBloco = fonte.indexOf('<MinhaLinhaDoWhatsApp');
-  const iReserva = fonte.indexOf('<details');
-  assert.ok(iBloco > 0 && iReserva > 0 && iBloco < iReserva, 'o bloco da conexão vai no TOPO da aba, antes do número digitado');
+  const iReserva = fonte.includes('{blocoRecolhido}') ? fonte.indexOf('{blocoRecolhido}', iBloco) : fonte.indexOf('<details');
+  assert.ok(iBloco > 0 && iReserva > iBloco, 'o bloco da conexão vai no TOPO da aba, antes do número digitado');
   // a frase "não se conecta" só pode existir condicionada à conexão NÃO oferecida (e, portanto, não conectada)
   const i = fonte.indexOf('o AutoBrokers não se conecta a ele');
   if (i >= 0) {

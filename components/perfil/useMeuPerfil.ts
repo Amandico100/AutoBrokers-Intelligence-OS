@@ -84,13 +84,23 @@ export function mesmoNumero(a: string | null | undefined, b: string | null | und
 }
 
 /**
- * O número MASCARADO no mesmo desenho do servidor (`5511*****001`: quatro primeiros, cinco estrelas sempre, três
- * últimos) — assim o número de reserva e o conectado se leem lado a lado.
+ * O número MASCARADO no padrão brasileiro — `(11) ****-*001`: o DDD, quatro estrelas, hífen, uma estrela e os três
+ * últimos. A MESMA forma nos três estados (conectado, reserva, pausado), para os números se lerem lado a lado.
+ * Aceita o número inteiro (o da própria pessoa) ou o que o servidor JÁ mascarou (`5511*****001`): este só é
+ * redesenhado com os dígitos que já vinham visíveis — nunca revela dígito novo; fora do padrão, volta como veio.
+ * As estrelas são sempre as mesmas: a máscara não conta quantos dígitos esconde (como o servidor).
  */
 export function mascararNumero(v: string | null | undefined): string | null {
-  const d = digitos(v);
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  if (/[*•]/.test(s)) {
+    const m = /^\+?(\d*)[*•]+(\d*)$/.exec(s.replace(/[\s().-]/g, ''));
+    return m && m[1].startsWith('55') && m[1].length >= 4 && m[2] ? `(${m[1].slice(2, 4)}) ****-*${m[2].slice(-3)}` : s;
+  }
+  const d = digitos(s);
   if (!d) return null;
   if (d.length <= 7) return `${d.slice(0, 2)}*****`;
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) return `(${d.slice(2, 4)}) ****-*${d.slice(-3)}`;
   return `${d.slice(0, 4)}*****${d.slice(-3)}`;
 }
 
