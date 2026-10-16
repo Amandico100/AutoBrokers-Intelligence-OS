@@ -202,7 +202,12 @@ Desligar: apagar `MULTICALCULO_VIDA_LIGADO` dos 3 serviços e Implantar. Código
 - **RECOMENDAÇÃO:** T-192 e T-195 antes da T-196; P-129D-01 (gravar uma resposta com preço) antes de mostrar o capital como da seguradora.
 
 ## Push
-<<PUSH: o gerente cola>>
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   a74f062..1edee57  HEAD -> main
+$ git rev-list --count origin/main..HEAD   →  0   (no ar; falta o Founder Implantar — os 3 serviços JUNTOS)
+```
 
 ## §11 A TELEMETRIA
 `PYTHONIOENCODING=utf-8 backend/.venv/Scripts/python.exe backend/scripts/medir_execucao_claude_code.py --sessao atual`, da raiz, 16/10 14:01 UTC (filtrado às linhas da 129-D)
