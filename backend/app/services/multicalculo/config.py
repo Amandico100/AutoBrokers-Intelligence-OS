@@ -106,7 +106,15 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
     # Agger devolve — casamento por começo de palavra, `casa_seguradora` — ou o código da seguradora no Agger, int).
     # Vazia = nenhuma preferida: todas as do ramo na conta são cotadas e comparadas igual. A comparação MARCA a
     # preferida no ranking (e desempata por ela no mesmo prêmio); NUNCA esconde as outras.
-    "preferencias_de_seguradoras": {"31": [], "16": [], "2": [], "18": []},
+    # SPEC-129-D — + a VIDA INDIVIDUAL (91): a mesma regra (marca, desempata no mesmo prêmio, nunca esconde)
+    "preferencias_de_seguradoras": {"31": [], "16": [], "2": [], "18": [], "91": []},
+    # SPEC-129-D D-129D-08 — a VIDA (91): comissão e AGENCIAMENTO explícitos no item, POR CORRETORA. 🔴 None = o que o
+    # Agger DA CORRETORA já tem por seguradora (`percComissaoVida`/`percAgenciamentoVida`, 📊 BLOCO 0 M3 — o robô o lê
+    # e escreve explícito; a V1): NUNCA a `comissao.entrada` do auto e nunca um número inventado. Por isso a vida NÃO
+    # mora em `comissao.por_ramo` (lá None = a entrada, e a tela de Serviços a mostraria como 15 %).
+    # `reajuste_capital_pct`: o capital da renovação = o da apólice + este %. 🧑 padrão 0 = repete (SPEC §4); a
+    # corretora troca o dela aqui.
+    "vida_por_ramo": {"91": {"comissao_pct": None, "agenciamento_pct": None, "reajuste_capital_pct": 0.0}},
     # SPEC-129-C — o que torna duas ofertas de RE COMPARÁVEIS além da MESMA básica: estas coberturas, quando a
     # maioria do quadro as devolve, têm de estar na oferta com o mesmo valor ou mais. Chaves do Agger
     # (`cotacao.configuracoes`, fixtures `formulario_*`). Critério da lista: presentes em ≥ 12 dos 15 negócios lidos
@@ -391,6 +399,23 @@ def _coerente(cfg: Dict[str, Any], pad: Optional[Mapping[str, Any]] = None) -> D
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
             logger.warning("[MC-CONFIG] renovacao.reajuste_basica_pct.%s inválido — fica o padrão", r)
             reaj[r] = (pad["renovacao"].get("reajuste_basica_pct") or {}).get(r)
+    # SPEC-129-D — a vida por ramo: comissão (0, teto] · agenciamento [0, 100] · reajuste do capital [0, 100]. Fora
+    # disso: None (a do Agger da corretora) na comissão/agenciamento e o padrão do ramo no reajuste — nunca um número
+    # quebrado. 0 de comissão não é comissão (o padrão do Agger que a D-129C-05 evita); 0 de agenciamento é uma escolha.
+    pad_vida = pad.get("vida_por_ramo") or PADRAO_DO_PRODUTO["vida_por_ramo"]
+    for r, regra in list((cfg.get("vida_por_ramo") or {}).items()):
+        if not isinstance(regra, dict):
+            cfg["vida_por_ramo"][r] = copy.deepcopy(pad_vida.get(r) or {})
+            continue
+        for campo, faixa, aberto_em_zero in (("comissao_pct", (0, teto), True), ("agenciamento_pct", (0, 100), False),
+                                             ("reajuste_capital_pct", (0, 100), False)):
+            v = regra.get(campo)
+            if v is None and campo != "reajuste_capital_pct":
+                continue
+            ok = _numero(v) and (faixa[0] < v if aberto_em_zero else faixa[0] <= v) and v <= faixa[1]
+            if not ok:
+                logger.warning("[MC-CONFIG] vida_por_ramo.%s.%s inválido — fica o padrão", r, campo)
+                regra[campo] = (pad_vida.get(r) or {}).get(campo)
     for tabela in ("preferencias_de_seguradoras", "coberturas_essenciais"):
         for r, lista in list((cfg.get(tabela) or {}).items()):
             cfg[tabela][r] = [i for i in lista if (isinstance(i, str) and i.strip())
@@ -465,6 +490,42 @@ def preferencias_do_ramo(config: Mapping[str, Any], ramo: Any) -> list:
 
 def coberturas_essenciais(config: Mapping[str, Any], ramo: Any) -> tuple:
     return tuple(_do_ramo(config.get("coberturas_essenciais"), ramo) or ())
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D — a VIDA (ramo 91): comissão, agenciamento e o reajuste do capital, por corretora
+# ---------------------------------------------------------------------------------------------------------------------
+def _regra_de_vida(config: Mapping[str, Any], ramo: Any, campo: str) -> Optional[float]:
+    regra = _do_ramo(config.get("vida_por_ramo"), ramo)
+    v = regra.get(campo) if isinstance(regra, Mapping) else None
+    return float(v) if _numero(v) else None
+
+
+def comissao_de_vida(config: Mapping[str, Any], ramo: Any) -> Optional[float]:
+    """D-129D-08: a comissão de vida que a CORRETORA configurou; None = a do Agger dela por seguradora (o robô lê)."""
+    return _regra_de_vida(config, ramo, "comissao_pct")
+
+
+def agenciamento_de_vida(config: Mapping[str, Any], ramo: Any) -> Optional[float]:
+    """D-129D-08: o agenciamento de vida que a CORRETORA configurou; None = o do Agger dela por seguradora."""
+    return _regra_de_vida(config, ramo, "agenciamento_pct")
+
+
+def reajuste_do_capital_pct(config: Mapping[str, Any], ramo: Any) -> Optional[float]:
+    """SPEC §4 🧑: o reajuste do capital na renovação de vida, em % (padrão 0 = repete). None = o ramo não é de vida."""
+    return _regra_de_vida(config, ramo, "reajuste_capital_pct")
+
+
+def capital_renovado(config: Mapping[str, Any], ramo: Any, capital_anterior: Any) -> Optional[float]:
+    """O capital do ano novo = o da apólice + o reajuste da corretora. None sem regra ou sem capital positivo."""
+    pct = reajuste_do_capital_pct(config, ramo)
+    try:
+        anterior = float(capital_anterior)
+    except (TypeError, ValueError):
+        return None
+    if pct is None or anterior <= 0:
+        return None
+    return round(anterior * (1 + pct / 100), 2)
 
 
 def _normalizar(linha: Mapping[str, Any]) -> Dict[str, Any]:

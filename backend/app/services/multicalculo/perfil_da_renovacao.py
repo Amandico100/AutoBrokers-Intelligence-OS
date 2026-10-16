@@ -242,6 +242,8 @@ def montar(company_id: str, item: Mapping[str, Any], apolice: Any, ficha: Any, f
 
     hoje = hoje or date.today()
     ramo = _ramo(apolice, item)
+    if ramo == P.RAMO_VIDA:
+        return _montar_vida(item, apolice, fonte, hoje=hoje)
     catalogo = {g: set(P._nomes(c)) for g, c in P.catalogo_do_ramo(ramo).items()}
     auto = ramo == P.RAMO_AUTO
     perfil: Perfil = {}
@@ -372,6 +374,75 @@ def montar(company_id: str, item: Mapping[str, Any], apolice: Any, ficha: Any, f
         por("renovacao", "sinistros_anterior", 1, POR_QUE_SINISTRO)
 
     return {g: v for g, v in perfil.items() if v}, nao
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D — o perfil da VIDA INDIVIDUAL (ramo 91): SÓ o que a InfoCap TEM. ⛔ Nenhuma regra declarada aqui.
+# ---------------------------------------------------------------------------------------------------------------------
+#: 🔴 Por que a vida NÃO herda as regras do auto (CLAUDE.md §9.5 · D-129D-05):
+#:   · o SEXO vazio não é deduzido do nome (a régua do canal serve ao auto): na vida o sexo muda a tábua de mortalidade —
+#:     um palpite errado é declaração inexata (Código Civil, art. 766). Vazio → falta.
+#:   · o ESTADO CIVIL sem rótulo do formulário de vida não vira padrão (o auto usa o "mais frequente"). → falta.
+#:   · fumante, renda e esporte radical: 📊 BLOCO 0 M2, NENHUMA rota da InfoCap os tem (0/22 VIND) → nunca aparecem aqui;
+#:     o pedido os aponta em `faltando()` e a madrugada pergunta ao comercial.
+#:   · a PROFISSÃO: o texto do cadastro (`/cliente.profissao`, 📊 7/22) — o casamento com a BUSCA do Agger é do robô
+#:     (V1, casamento inequívoco ou falta, D-129D-06); o código da InfoCap só acompanha (não é o código do Agger).
+#: 📊 o nascimento está no cadastro em 15/22 e no item de vida (`/itens.datnas`) em 7/8 — o item só completa quando o CPF
+#: do item É o do cadastro (o mesmo segurado).
+
+
+def _montar_vida(item: Mapping[str, Any], apolice: Any, fonte: Any, *, hoje: date) -> Tuple[Perfil, NaoConferidos]:
+    from app.services.multicalculo import pedido as P
+    from app.utils.documento_br import cpf_valido
+
+    seg: Dict[str, Any] = {}
+    nao: NaoConferidos = {}
+    codfil = item.get("codfil") or 1
+    nosnum = item.get("nosnum")
+    doc = fonte.documento_cru(codfil, nosnum) or {}
+    cliente: Mapping[str, Any] = {}
+    codcli = str(doc.get("codcli") or "").strip()
+    if codcli:
+        cliente = fonte.cliente_cru(doc.get("codfil") or codfil, codcli) or {}
+    documento = _digitos(cliente.get("cpf_cnpj"))
+    if cliente and documento and not _o_cliente_e_o_da_apolice(documento, item):
+        logger.warning("[RENOV] o cadastro do cliente diverge do documento da renovação — não usado")
+        nao["segurado.cpf"] = "o cadastro do cliente na InfoCap não é o do segurado da apólice — não usado"
+        cliente, documento = {}, ""
+    if documento and len(documento) == 11 and cpf_valido(documento):
+        seg["cpf"] = documento
+    elif documento:
+        nao["segurado.cpf"] = "o documento do cadastro não é um CPF válido — vida individual é de uma pessoa"
+    nome = str(cliente.get("nome") or "").strip()
+    if nome:
+        seg["nome"] = nome
+    vig = getattr(apolice, "vigencia", None)
+    inicio = getattr(vig, "inicio", None) or _data(doc.get("inivig"))
+    fim = getattr(vig, "fim", None) or _data(doc.get("fimvig"))
+    itens = list(fonte.itens_crus(codfil, nosnum, data_dos_itens(inicio, fim, hoje)) or [])
+    do_segurado = [i for i in itens if not _sim(i.get("cancelado")) and documento
+                   and _digitos(i.get("cpf")) == documento]
+    nasc = _data(cliente.get("datanas")) or next((_data(i.get("datnas")) for i in do_segurado if _data(i.get("datnas"))),
+                                                 None)
+    if nasc is not None and 0 <= _idade(nasc, hoje) <= 110:
+        seg["data_nascimento"] = nasc.isoformat()
+    sexo = P._rotulo_da_vida(P.SEXO_DA_VIDA, str(cliente.get("sexo") or "").strip())
+    if sexo in set(P.SEXO_DA_VIDA.values()):
+        seg["sexo"] = sexo
+    civil = P._rotulo_da_vida(P.ESTADO_CIVIL_DA_VIDA, str(cliente.get("estado_civil") or "").strip())
+    if civil in set(P.ESTADO_CIVIL_DA_VIDA.values()):
+        seg["estado_civil"] = civil
+    cep = _cep_residencial(cliente)
+    if cep:
+        seg["cep"] = cep
+    profissao = str(cliente.get("profissao") or "").strip()
+    if profissao and not profissao.isdigit():
+        seg["profissao_texto"] = profissao
+    codigo = _digitos(cliente.get("cod_profissao")) or next(
+        (_digitos(i.get("cod_profissao")) for i in do_segurado if _digitos(i.get("cod_profissao"))), "")
+    if codigo:
+        seg["profissao_codigo_infocap"] = codigo
+    return ({"segurado": seg} if seg else {}), nao
 
 
 def nomes_do_catalogo(ramo: int, nomes: Any) -> List[str]:

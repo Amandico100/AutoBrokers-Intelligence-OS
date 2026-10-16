@@ -17,6 +17,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
+from portal_worker.multicalculo import contrato as _contrato
 from portal_worker.multicalculo import presets as _presets
 from portal_worker.multicalculo.contrato import (
     CAMPOS_DE_CODIGO_INTEIRO, CAMPOS_DE_CODIGO_TEXTO, CAMPOS_DO_PEDIDO_AUTO, CAMPOS_DO_PEDIDO_RE, CAMPOS_SIM_NAO,
@@ -58,6 +59,10 @@ def catalogo_do_ramo(ramo: int) -> Dict[str, Tuple[Any, ...]]:
     """O catálogo {grupo: campos} do ramo (o auto: o de sempre + `CAMPOS_EXTRAS`; o RE: o do contrato)."""
     if ramo == RAMO_AUTO:
         return {**CAMPOS_DO_PEDIDO_AUTO, **CAMPOS_EXTRAS}
+    if ramo == RAMO_VIDA and vida_ligada():
+        # SPEC-129-D: a mesma FORMA de entrada dos outros catálogos (nome, caminho, obrigatório) — `_nomes` lê o nome
+        return {g: tuple((n, None, (g, n) in OBRIGATORIOS_DA_VIDA) for n in nomes)
+                for g, nomes in CAMPOS_DO_PEDIDO_VIDA.items()}
     if ramo not in CAMPOS_DO_PEDIDO_RE:
         raise RamoIndisponivel(f"ramo {ramo} não implementado (aceitos: {', '.join(map(str, RAMOS_ACEITOS))})")
     return dict(CAMPOS_DO_PEDIDO_RE[ramo])
@@ -336,6 +341,152 @@ def _extras(valor: Any) -> Dict[str, Any]:
     return saida
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D — a VIDA INDIVIDUAL (ramo 91), atrás de MULTICALCULO_VIDA_LIGADO
+# ---------------------------------------------------------------------------------------------------------------------
+#: 🔴 Por que 91 (CLAUDE.md §9.5): 📊 `tests/fixtures/agger_formularios/formularios_por_ramo.json` `ramos_codigo["91"] =
+#: "vida"` (o mapa da tela do Agger) e 📊 A-PROVA §10: 32 negócios com ramo 91 no Agger de uma corretora piloto. Quando o
+#: contrato do portal_worker expuser `RAMO_VIDA` (a V1), vale o dele — o guarda confere que é o mesmo número.
+RAMO_VIDA: int = int(getattr(_contrato, "RAMO_VIDA", 91))
+#: D-129D-09 — a chave. Ausente (ou qualquer valor fora da lista fechada de `env_ligada`) = a vida segue
+#: `ramo_nao_cotado` "renove manualmente", byte a byte. Ligar é do Founder.
+ENV_VIDA = "MULTICALCULO_VIDA_LIGADO"
+
+
+def vida_ligada() -> bool:
+    from app.core.feature_flags import env_ligada
+
+    return env_ligada(ENV_VIDA)
+
+
+#: O pedido de VIDA — o contrato V1 ↔ V2 (§3 da SPEC), NOMES e nada mais. 🔴 Um catálogo só (CLAUDE.md §5): quando o
+#: contrato do portal_worker expuser `CAMPOS_DO_PEDIDO_VIDA` (a V1), a costura (V3) troca esta tabela pela dele — o guarda
+#: `test_o_catalogo_de_vida_e_o_do_contrato_quando_a_v1_o_expuser` fica vermelho se os nomes divergirem. `comissao_desconto`
+#: é a extensão do §3 que a D-129D-08 pede (a comissão/agenciamento explícitos que a CORRETORA configurou; ausente = a do
+#: Agger dela, que o robô lê).
+CAMPOS_DO_PEDIDO_VIDA: Dict[str, Tuple[str, ...]] = {
+    "segurado": ("cpf", "nome", "data_nascimento", "sexo", "estado_civil", "cep", "profissao_texto",
+                 "profissao_codigo_infocap"),
+    "vida": ("capital_morte", "coberturas_extras", "fumante", "renda_mensal", "esporte_radical", "vigencia_inicio",
+             "origem"),
+    "comissao_desconto": ("comissao_percentual", "agenciamento_percentual"),
+}
+#: Os obrigatórios — 📊 os 12 do formulário de vida (`agger_formularios`, vida: 47 campos, 12 obrigatórios): cpf · nome ·
+#: dataNasc · sexo · estadoCivil · cep · profissao (a BUSCA do Agger, pelo texto) · isFumante · rendaMensal ·
+#: praticaEsporteRadical · vigenciaIni · assistMorte (o capital). ⛔ `None` em fumante/renda/esporte = FALTA (D-129D-05):
+#: nunca um padrão — declaração inexata pode fazer perder a garantia (Código Civil, art. 766).
+OBRIGATORIOS_DA_VIDA: Tuple[Tuple[str, str], ...] = (
+    ("segurado", "cpf"), ("segurado", "nome"), ("segurado", "data_nascimento"), ("segurado", "sexo"),
+    ("segurado", "estado_civil"), ("segurado", "cep"), ("segurado", "profissao_texto"),
+    ("vida", "capital_morte"), ("vida", "fumante"), ("vida", "renda_mensal"), ("vida", "esporte_radical"),
+    ("vida", "vigencia_inicio"),
+)
+ORIGENS_DA_VIDA: Tuple[str, ...] = ("renovacao", "cotacao")
+#: O SEXO e o ESTADO CIVIL no RÓTULO da tela de vida do Agger — 📊 as opções do formulário (`agger_formularios`, vida:
+#: Sexo "Feminino · Masculino"; Estado civil "Solteiro(a) · Casado(a) · Separado(a) · Divorciado(a) · Viúvo(a) · União
+#: Estável"). O CÓDIGO de cada rótulo só a gravação diz (M6) — o robô (V1) traduz. Cada linha casa a MESMA palavra (sem
+#: acento, sem "(a)"), nenhuma escolhe entre alternativas: o que não casa fica `sem_codigo` (a porta recusa).
+SEXO_DA_VIDA: Dict[str, str] = {"f": "Feminino", "feminino": "Feminino", "m": "Masculino", "masculino": "Masculino"}
+ESTADO_CIVIL_DA_VIDA: Dict[str, str] = {
+    "solteiro": "Solteiro(a)", "solteira": "Solteiro(a)", "casado": "Casado(a)", "casada": "Casado(a)",
+    "separado": "Separado(a)", "separada": "Separado(a)", "divorciado": "Divorciado(a)", "divorciada": "Divorciado(a)",
+    "viuvo": "Viúvo(a)", "viuva": "Viúvo(a)", "uniao estavel": "União Estável",
+}
+#: A pergunta ao COMERCIAL por campo que falta (o evento do item da renovação leva só estes textos — nunca valores).
+PERGUNTA_DE_VIDA: Dict[str, str] = {
+    "vida.fumante": "O segurado é fumante?",
+    "vida.renda_mensal": "Qual a renda mensal do segurado?",
+    "vida.esporte_radical": "O segurado pratica esporte radical?",
+    "vida.capital_morte": "renove manualmente — não achei o capital da apólice atual",
+    "segurado.profissao_texto": "Qual a profissão do segurado?",
+    "segurado.sexo": "Qual o sexo do segurado?",
+    "segurado.estado_civil": "Qual o estado civil do segurado?",
+    "segurado.data_nascimento": "Qual a data de nascimento do segurado?",
+}
+_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _rotulo_da_vida(tabela: Mapping[str, str], valor: Any) -> Any:
+    if not isinstance(valor, str):
+        return valor
+    k = re.sub(r"\((a|o)\)", "", _chave_de_texto(valor)).strip()
+    k = re.sub(r"\s+", " ", k)
+    return tabela.get(k, tabela.get(k.split(" ")[0] if k else "", valor))
+
+
+def _sim_nao_da_vida(valor: Any) -> Any:
+    """`True`/`False` como vieram; "sim"/"não" → bool; o resto volta como veio (`sem_codigo`). ⛔ `None` FICA `None`."""
+    if isinstance(valor, bool) or valor is None:
+        return valor
+    if isinstance(valor, str):
+        k = _chave_de_texto(valor)
+        return True if k in _SIM else False if k in _NAO else valor
+    return valor
+
+
+def _sanear_vida(grupo: str, nome: str, valor: Any) -> Any:
+    if valor is None:
+        return None
+    if isinstance(valor, Decimal):
+        valor = float(valor)
+    if (grupo, nome) == ("vida", "coberturas_extras"):
+        return _extras(valor)
+    if isinstance(valor, (list, dict, tuple)):
+        raise CampoDesconhecido(f"{grupo}.{nome}: tipo de valor não aceito ({type(valor).__name__})")
+    if nome in ("fumante", "esporte_radical"):
+        return _sim_nao_da_vida(valor)
+    if nome in ("capital_morte", "renda_mensal", "comissao_percentual", "agenciamento_percentual"):
+        return None if isinstance(valor, str) and not valor.strip() else _monetario(valor)
+    if nome in ("data_nascimento", "vigencia_inicio"):
+        return _sanear_bruto("renovacao", "vigencia_inicio", valor)      # dd/mm/aaaa ou date → AAAA-MM-DD
+    saneado = _sanear_bruto(grupo, nome, valor)
+    if saneado is None:
+        return None
+    if nome in ("cpf", "cep", "profissao_codigo_infocap"):
+        texto = str(int(saneado)) if isinstance(saneado, int) and not isinstance(saneado, bool) else str(saneado)
+        return re.sub(r"\D", "", texto) or None
+    if nome == "sexo":
+        return _rotulo_da_vida(SEXO_DA_VIDA, saneado)
+    if nome == "estado_civil":
+        return _rotulo_da_vida(ESTADO_CIVIL_DA_VIDA, saneado)
+    return saneado
+
+
+def _numero_positivo(v: Any, *, zero: bool = False) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and (v >= 0 if zero else v > 0)
+
+
+def _problemas_da_vida(campos: Mapping[str, Mapping[str, Any]]) -> List[str]:
+    """Os campos PRESENTES cujo valor o pedido de vida não aceita (tipo/rótulo) — nomes, nunca valores."""
+    from app.utils.documento_br import cpf_valido
+
+    def v(g: str, n: str) -> Any:
+        return (campos.get(g) or {}).get(n)
+
+    regras = {
+        ("segurado", "cpf"): lambda x: isinstance(x, str) and len(x) == 11 and cpf_valido(x),
+        ("segurado", "cep"): lambda x: isinstance(x, str) and len(x) == 8 and x != "00000000",
+        ("segurado", "data_nascimento"): lambda x: isinstance(x, str) and bool(_ISO.fullmatch(x)),
+        ("segurado", "sexo"): lambda x: x in set(SEXO_DA_VIDA.values()),
+        ("segurado", "estado_civil"): lambda x: x in set(ESTADO_CIVIL_DA_VIDA.values()),
+        ("segurado", "nome"): lambda x: isinstance(x, str),
+        ("segurado", "profissao_texto"): lambda x: isinstance(x, str),
+        ("segurado", "profissao_codigo_infocap"): lambda x: isinstance(x, str) and x.isdigit(),
+        ("vida", "capital_morte"): _numero_positivo,
+        ("vida", "renda_mensal"): lambda x: _numero_positivo(x, zero=True),
+        ("vida", "fumante"): lambda x: isinstance(x, bool),
+        ("vida", "esporte_radical"): lambda x: isinstance(x, bool),
+        ("vida", "vigencia_inicio"): lambda x: isinstance(x, str) and bool(_ISO.fullmatch(x)),
+        ("vida", "origem"): lambda x: x in ORIGENS_DA_VIDA,
+        ("comissao_desconto", "comissao_percentual"): _numero_positivo,
+        ("comissao_desconto", "agenciamento_percentual"): lambda x: _numero_positivo(x, zero=True),
+    }
+    sem = [f"{g}.{n}" for (g, n), ok in regras.items() if v(g, n) is not None and not ok(v(g, n))]
+    sem += [f"vida.coberturas_extras.{k}" for k, x in (v("vida", "coberturas_extras") or {}).items()
+            if not _numero_positivo(x)]
+    return sem
+
+
 @dataclass(frozen=True)
 class PedidoDeCalculo:
     """O pedido saneado. Construa com `PedidoDeCalculo.de_dict(...)` ou `de_apolice(...)`.
@@ -374,6 +525,8 @@ class PedidoDeCalculo:
     @classmethod
     def de_dict(cls, dados: Mapping[str, Any], *, ramo: int = RAMO_AUTO,
                 seguradoras: Iterable[int] = (), assumidos: Iterable[str] = ()) -> "PedidoDeCalculo":
+        if int(ramo) == RAMO_VIDA:
+            return cls._de_dict_vida(dados, seguradoras=seguradoras, assumidos=assumidos)
         if ramo != RAMO_AUTO:
             return cls._de_dict_re(dados, ramo=int(ramo), seguradoras=seguradoras, assumidos=assumidos)
         campos: Dict[str, Dict[str, Any]] = {}
@@ -434,9 +587,57 @@ class PedidoDeCalculo:
         segs = tuple(sorted({int(s) for s in seguradoras}))
         return cls(campos=campos, ramo=ramo, seguradoras=segs, assumidos=frozenset(str(a) for a in assumidos))
 
+    @classmethod
+    def _de_dict_vida(cls, dados: Mapping[str, Any], *, seguradoras: Iterable[int],
+                      assumidos: Iterable[str]) -> "PedidoDeCalculo":
+        """SPEC-129-D: o pedido de VIDA (§3: `segurado` + `vida` + `comissao_desconto`). Com a chave AUSENTE o catálogo
+        não existe (`catalogo_do_ramo` levanta `RamoIndisponivel`, como antes da 129-D). ⛔ `None` em fumante/renda/
+        esporte FICA ausente (vira `faltando`); `False` dito é resposta e fica."""
+        cat = catalogo_do_ramo(RAMO_VIDA)
+        nomes = {g: set(_nomes(c)) for g, c in cat.items()}
+        campos: Dict[str, Dict[str, Any]] = {}
+        for grupo, valores in (dados or {}).items():
+            if grupo in ("ramo", "seguradoras", "assumidos"):
+                continue
+            if grupo in GRUPOS_DO_CALCULO:
+                if valores:
+                    raise CampoDesconhecido(f"{grupo} é do CÁLCULO (coberturas por opção), não do pedido")
+                continue
+            if grupo not in cat:
+                raise CampoDesconhecido(f"grupo desconhecido no ramo {RAMO_VIDA}: {grupo}")
+            if not isinstance(valores, Mapping):
+                raise CampoDesconhecido(f"{grupo}: esperava um objeto de campos")
+            for nome, valor in valores.items():
+                if nome not in nomes[grupo]:
+                    raise CampoDesconhecido(f"campo desconhecido no ramo {RAMO_VIDA}: {grupo}.{nome}")
+                saneado = _sanear_vida(grupo, nome, valor)
+                if not _vazio(saneado) and saneado != {}:
+                    campos.setdefault(grupo, {})[nome] = saneado
+        for a in assumidos:
+            g, _, n = str(a).partition(".")
+            if g not in nomes or n not in nomes[g]:
+                raise CampoDesconhecido(f"assumido desconhecido: {a}")
+        segs = tuple(sorted({int(s) for s in seguradoras}))
+        return cls(campos=campos, ramo=RAMO_VIDA, seguradoras=segs, assumidos=frozenset(str(a) for a in assumidos))
+
     @property
     def e_re(self) -> bool:
-        return self.ramo != RAMO_AUTO
+        return self.ramo != RAMO_AUTO and self.ramo != RAMO_VIDA
+
+    @property
+    def e_vida(self) -> bool:
+        return self.ramo == RAMO_VIDA
+
+    def com_comissao_de_vida(self, comissao: Optional[float], agenciamento: Optional[float]) -> "PedidoDeCalculo":
+        """D-129D-08: a comissão e o agenciamento de vida que a CORRETORA configurou, quando quem pediu não os deu.
+        `None` = nada vai no item (o robô usa o do Agger da corretora por seguradora) — nunca um número inventado."""
+        if not self.e_vida:
+            return self
+        campos = {g: dict(v) for g, v in self.campos.items()}
+        for nome, v in (("comissao_percentual", comissao), ("agenciamento_percentual", agenciamento)):
+            if v is not None and _vazio(self.valor("comissao_desconto", nome)):
+                campos.setdefault("comissao_desconto", {})[nome] = float(v)
+        return replace(self, campos=campos)
 
     def com_comissao(self, percentual: float) -> "PedidoDeCalculo":
         """RE (D-129C-05): a comissão EXPLÍCITA do item — a da config do ramo (a porta a dá), quando quem pediu não a
@@ -482,7 +683,9 @@ class PedidoDeCalculo:
     def faltando(self, *, origem: Optional[str] = None, servico: Optional[str] = None) -> List[str]:
         """Os obrigatórios da E3 que faltam, como "grupo.campo" (nomes, nunca valores). `origem='canal'` ou
         `servico='renovacao'`: a placa supre FIPE/ano/combustível (D-133A-03 · SPEC-131-A F5). RE (SPEC-129-C): o que o
-        CONTRATO diz que falta."""
+        CONTRATO diz que falta. VIDA (SPEC-129-D): os 12 obrigatórios do formulário (`OBRIGATORIOS_DA_VIDA`)."""
+        if self.e_vida:
+            return [f"{g}.{n}" for (g, n) in OBRIGATORIOS_DA_VIDA if _vazio(self.valor(g, n))]
         if self.e_re:
             return self._problemas_re()[0]
         supridos = self.supridos_pela_placa(origem, servico)
@@ -495,24 +698,30 @@ class PedidoDeCalculo:
     def sem_codigo(self) -> List[str]:
         """F4: os campos PRESENTES cujo valor não tem código medido no Agger (`contrato.CODIGOS_MEDIDOS`) — o robô
         os recusaria só no disparo. A porta os devolve como `PedidoIncompleto` (nomes, nunca valores)."""
+        if self.e_vida:
+            return sorted(set(_problemas_da_vida(self.campos)))
         if self.e_re:
             return self._problemas_re()[1]
         return sorted(f"{g}.{n}" for g, campos in self.campos.items() for n, v in campos.items()
                       if not _vazio(v) and not _tem_codigo(g, n, v))
 
     def perfil_faltando(self) -> List[str]:
-        if self.e_re:
+        if self.e_re or self.e_vida:
             return []                     # o perfil do canal (garagem, uso, km, jovem) é do AUTO
         return [f"{g}.{n}" for (g, n) in CAMPOS_DE_PERFIL
                 if _vazio(self.valor(g, n)) and f"{g}.{n}" not in self.assumidos]
 
     def assumindo_perfil(self) -> "PedidoDeCalculo":
         """O perfil que falta vira `assumido` (fica para o PADRÃO da tela) — a origem auxiliar (D-128-07)."""
+        if self.e_vida:
+            return self                   # o perfil do canal é do AUTO; a vida não tem "padrão da tela" (D-129D-05)
         novos = {f"{g}.{n}" for (g, n) in CAMPOS_DE_PERFIL if _vazio(self.valor(g, n))}
         return replace(self, assumidos=frozenset(self.assumidos | novos))
 
     @property
     def documento(self) -> str:
+        if self.e_vida:
+            return str(self.valor("segurado", "cpf") or "")
         return str(self.valor("segurado", "cpf_cnpj") or "")
 
     @property
@@ -541,6 +750,15 @@ class PedidoDeCalculo:
         ausente NÃO aparece (o robô deixa a tela com o padrão dela). Todas as chaves de grupo aparecem sempre.
         """
         saida: Dict[str, Any] = {"ramo": self.ramo}
+        if self.e_vida:
+            # SPEC-129-D: os grupos do §3 (segurado · vida · comissao_desconto), sempre presentes; `coberturas_extras`
+            # como {código: R$}; números em float (JSON puro — o que a porta cifra). + "coberturas"/"pacotes" vazios
+            for grupo in CAMPOS_DO_PEDIDO_VIDA:
+                saida[grupo] = {k: (dict(v) if isinstance(v, Mapping) else v)
+                                for k, v in (self.campos.get(grupo) or {}).items()}
+            saida.update({"seguradoras": list(self.seguradoras), "assumidos": sorted(self.assumidos),
+                          "coberturas": {}, "pacotes": {}})
+            return saida
         if self.e_re:
             # SPEC-129-C: as chaves de grupo são as do catálogo DO RAMO (§3: segurado · risco · renovacao …);
             # `risco.extras` sai como {cobertura: R$}
@@ -767,6 +985,14 @@ def _renovacao_da_apolice(apolice: Any, renov: Dict[str, Any]) -> Dict[str, Any]
     return renov
 
 
+#: SPEC-129-D — a subfamília de vida que o Agger cota pelo pedido 91 (o formulário de Vida INDIVIDUAL, 📊 BLOCO 0 M3)
+SUBFAMILIA_DA_VIDA_COTADA = "vida_individual"
+FRASE_DA_VIDA_EM_GRUPO = ("vida em grupo: renove manualmente — o pedido de vida do Agger é o INDIVIDUAL (uma pessoa); "
+                          "vida em grupo é SPEC própria (D-129D-07)")
+FRASE_DA_VIDA_SEM_TIPO = ("vida sem dizer se é individual ou em grupo: renove manualmente — nunca se presume a "
+                          "individual (D-129D-07)")
+
+
 def _ramo_do_agger(apolice: Any) -> int:
     try:
         from app.providers.policy_data_provider import familia_de_ramo
@@ -786,6 +1012,16 @@ def _ramo_do_agger(apolice: Any) -> int:
     if familia == "auto" and sigla in SIGLAS_AUTO_NAO_COTADAS:
         raise RamoIndisponivel(f"{SIGLAS_AUTO_NAO_COTADAS[sigla]}: renove manualmente — o pedido de AUTO do Agger é o "
                                "de UM carro", motivo="ramo_nao_cotado")
+    if familia == "vida" and vida_ligada():
+        # SPEC-129-D (D-129D-07/09): com a chave, SÓ a vida INDIVIDUAL vira o pedido 91. Vida em grupo e "vida" sem dizer
+        # qual continuam "renove manualmente" — nunca a individual por dedução. Sem a chave: a frase de hoje (abaixo).
+        from app.providers.policy_data_provider import subfamilia_de_vida
+
+        sub = subfamilia_de_vida(getattr(apolice, "ramo", None))
+        if sub == SUBFAMILIA_DA_VIDA_COTADA:
+            return RAMO_VIDA
+        raise RamoIndisponivel(FRASE_DA_VIDA_EM_GRUPO if sub == "vida_grupo" else FRASE_DA_VIDA_SEM_TIPO,
+                               motivo="ramo_nao_cotado")
     if familia not in RAMO_DO_AGGER_POR_FAMILIA:
         raise RamoIndisponivel(f"renovação do ramo '{familia}' não implementada (há: auto, residencial, condomínio, "
                                "empresarial)", motivo="ramo_nao_cotado")
@@ -818,6 +1054,8 @@ def de_apolice(apolice: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] =
     marca = perfil.pop(MARCA_DO_VEICULO_NAO_COTADO, None) or {}
     if ramo == RAMO_AUTO and marca.get("tipo") == "moto":
         raise RamoIndisponivel(FRASE_DA_MOTO, motivo="ramo_nao_cotado")     # conserto C2 (juiz B2)
+    if ramo == RAMO_VIDA:
+        return _de_apolice_vida(apolice, perfil, ficha=ficha, config=config, exigir_completo=exigir_completo)
     perfil["renovacao"] = _renovacao_da_apolice(apolice, perfil.get("renovacao") or {})
     objeto = _objeto_do_risco(apolice, ficha)
     avisos = _avisos_da_leitura(apolice, ficha)
@@ -993,6 +1231,147 @@ def _de_apolice_re(apolice: Any, perfil: Dict[str, Dict[str, Any]], objeto: Mapp
                     avisos.add(AVISO_COBERTURAS_DO_CADASTRO)
     perfil["risco"] = risco
     return PedidoDeCalculo.de_dict(perfil, ramo=ramo, assumidos=assumidos)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D — a RENOVAÇÃO de VIDA: o capital e as coberturas da apólice (o PDF, pela ficha única) — nunca inventados
+# ---------------------------------------------------------------------------------------------------------------------
+#: duas linhas que são a Morte, com capitais diferentes — nenhuma é escolhida (o capital fica faltando)
+AVISO_CAPITAL_AMBIGUO = "capital_de_morte_ambiguo"
+#: o PDF tem coberturas além da Morte que o pedido ainda não sabe levar ao Agger (o mapa rótulo → campo é da V1,
+#: `presets.coberturas_de_vida_da_ficha`) — o corretor confere: o `anterior` sairia só com a Morte
+AVISO_COBERTURAS_DE_VIDA_NAO_MAPEADAS = "coberturas_de_vida_nao_mapeadas"
+#: A linha que É o capital da MORTE. 🔴 Por que cada palavra (CLAUDE.md §9.5), 📊 BLOCO 0 M2 (os rótulos das 15 garantias
+#: de VIND na InfoCap): "MORTE NATURAL" é a cobertura básica (o `assistMorte` do formulário); "MORTE ACIDENTAL" é OUTRA
+#: cobertura (o `isAppMorteAcidental` da tela) — só conta quando o rótulo diz também "natural"/"qualquer causa" (a básica
+#: "Morte natural ou acidental"); "CONJUGÊ-MORTE" é a morte de OUTRA pessoa; "ASSISTÊNCIA FUNERAL" e "INVALIDEZ…" não são
+#: morte. Rótulo que nomeia a morte de outro ou outra garantia nunca vira o capital do segurado.
+_PALAVRAS_DA_MORTE = frozenset({"morte", "obito"})
+_PALAVRAS_DE_OUTRA_PESSOA_OU_GARANTIA = frozenset({"conjuge", "conjuges", "filho", "filhos", "funeral", "invalidez",
+                                                   "assistencia", "doenca", "doencas", "diaria", "despesas"})
+_PALAVRAS_DO_ACIDENTE = frozenset({"acidental", "acidente", "acidentes"})
+_PALAVRAS_DA_BASICA_DE_VIDA = frozenset({"natural", "qualquer"})
+
+
+def e_a_morte_do_segurado(rotulo: Any) -> bool:
+    """A linha é o capital da MORTE do próprio segurado (a cobertura básica de vida)?"""
+    from app.providers.policy_data_provider import normalizar_rotulo
+
+    palavras = set(normalizar_rotulo(str(rotulo or "")).replace("-", " ").split())
+    if not palavras & _PALAVRAS_DA_MORTE or palavras & _PALAVRAS_DE_OUTRA_PESSOA_OU_GARANTIA:
+        return False
+    return not (palavras & _PALAVRAS_DO_ACIDENTE) or bool(palavras & _PALAVRAS_DA_BASICA_DE_VIDA)
+
+
+def _linhas_de_vida(apolice: Any, ficha: Any) -> List[Tuple[str, Optional[float], str]]:
+    """(rótulo, capital, origem) de cada linha: o cadastro reconciliado (`Apolice.coberturas`, com a origem de cada
+    limite) e o documento (`ApoliceDocumental.linhas`, origem `documento_oficial`). Leitura tolerante."""
+    saida = []
+    for c in getattr(apolice, "coberturas", None) or ():
+        limite = getattr(c, "limite", None)
+        saida.append((str(getattr(c, "rotulo", "") or ""), _numero_ou_none(_valor_de(limite)),
+                      str(getattr(limite, "origem", None) or "")))
+    for linha in (getattr(ficha, "linhas", None) or ()) if ficha is not None else ():
+        saida.append((str(getattr(linha, "rotulo", "") or ""), _numero_ou_none(getattr(linha, "limite", None)),
+                      "documento_oficial"))
+    return saida
+
+
+def capital_de_morte_da_ficha(apolice: Any, ficha: Any) -> Tuple[Optional[float], Optional[str], bool]:
+    """(capital da Morte, origem, ambíguo). O DOCUMENTO vence o cadastro (a regra de `reconciliar`, como a Básica do RE);
+    duas Mortes com capitais diferentes → (None, None, True): nunca escolhe. Sem linha da Morte → (None, None, False):
+    o capital FALTA (D-129D-04) — nenhum valor padrão."""
+    achadas = [(v, o) for (r, v, o) in _linhas_de_vida(apolice, ficha)
+               if v is not None and v > 0 and e_a_morte_do_segurado(r)]
+    do_documento = [x for x in achadas if x[1] == "documento_oficial"]
+    achadas = do_documento or achadas
+    valores = {v for v, _o in achadas}
+    if len(valores) > 1:
+        return None, None, True
+    if not valores:
+        return None, None, False
+    return valores.pop(), achadas[0][1] or None, False
+
+
+def coberturas_de_vida_da_opcao(opcao: str, capital: float, extras: Optional[Mapping[str, Any]] = None
+                                ) -> Dict[str, Any]:
+    """As coberturas de UM cálculo de vida (§4 da SPEC): `padrao`/`anterior` = o capital e as coberturas do pedido (a
+    apólice); `economica` ("mais em conta") = SÓ a morte com o MESMO capital — nunca capital menor sem o corretor pedir.
+    Chaves: `capital_morte` + os códigos das extras (o robô, V1, as põe no corpo; a assistência funeral obrigatória, se
+    a gravação mostrar que é, é dele)."""
+    base = {"capital_morte": float(capital)}
+    if opcao in ("padrao", _presets.ANTERIOR):
+        return {**base, **{str(k): float(v) for k, v in (extras or {}).items()}}
+    if opcao == "economica":
+        return base
+    raise ValueError(f"opção {opcao!r} não existe na vida (há: padrao, economica, {_presets.ANTERIOR})")
+
+
+def _extras_de_vida_da_ficha(apolice: Any, ficha: Any) -> Tuple[Dict[str, float], bool]:
+    """(as extras {código: capital}, há linha que não virou código). O mapa rótulo → campo do Agger é da V1
+    (`presets.coberturas_de_vida_da_ficha`, das constantes da gravação); sem ele, nada é deduzido aqui."""
+    linhas = [(r, v) for (r, v, _o) in _linhas_de_vida(apolice, ficha)
+              if v is not None and v > 0 and not e_a_morte_do_segurado(r)]
+    mapa = getattr(_presets, "coberturas_de_vida_da_ficha", None)
+    if not callable(mapa):
+        return {}, bool(linhas)
+    extras = {str(k): float(v) for k, v in (mapa(linhas) or {}).items() if _numero_ou_none(v)}
+    return extras, False
+
+
+def _de_apolice_vida(apolice: Any, perfil: Dict[str, Dict[str, Any]], *, ficha: Any,
+                     config: Optional[Mapping[str, Any]], exigir_completo: bool) -> PedidoDeCalculo:
+    """SPEC-129-D: o pedido 91 da RENOVAÇÃO. Do `perfil` (`perfil_da_renovacao.montar`: o cadastro da InfoCap) vem o
+    segurado; da FICHA ÚNICA, o capital da Morte (reajustado pela config da corretora — padrão 0 %, repete) e as
+    coberturas; a vigência nova começa no fim da anterior. ⛔ fumante/renda/esporte só se alguém DISSE (o `perfil`
+    não os tem: 📊 0/22, BLOCO 0 M2) — senão ficam em `faltando()`. A opção é SÓ o `anterior` (BLOCO 0 M4 #5)."""
+    if config is None:
+        raise TypeError("a renovação de vida precisa da config da corretora (vida_por_ramo.91.reajuste_capital_pct): "
+                        "nenhum reajuste é presumido")
+    from app.services.multicalculo.config import capital_renovado
+
+    dados = {g: dict(perfil.get(g) or {}) for g in CAMPOS_DO_PEDIDO_VIDA if perfil.get(g)}
+    vida = dados.setdefault("vida", {})
+    avisos = _avisos_da_leitura(apolice, ficha)
+    assumidos: set = set()
+    if _vazio(vida.get("capital_morte")):
+        anterior, origem, ambiguo = capital_de_morte_da_ficha(apolice, ficha)
+        if ambiguo:
+            avisos.add(AVISO_CAPITAL_AMBIGUO)
+        novo = capital_renovado(config, RAMO_VIDA, anterior) if anterior is not None else None
+        if novo is not None:
+            vida["capital_morte"] = novo
+            assumidos.add("vida.capital_morte")
+            if origem != "documento_oficial":
+                avisos.add(AVISO_COBERTURAS_DO_CADASTRO)
+    if vida.get("coberturas_extras") is None:
+        extras, nao_mapeadas = _extras_de_vida_da_ficha(apolice, ficha)
+        if extras:
+            vida["coberturas_extras"] = extras
+            assumidos.add("vida.coberturas_extras")
+        if nao_mapeadas:
+            avisos.add(AVISO_COBERTURAS_DE_VIDA_NAO_MAPEADAS)
+    fim = getattr(getattr(apolice, "vigencia", None), "fim", None)
+    if isinstance(fim, date) and _vazio(vida.get("vigencia_inicio")):
+        vida["vigencia_inicio"] = fim.isoformat()
+    vida.setdefault("origem", "renovacao")
+    pedido = PedidoDeCalculo.de_dict(dados, ramo=RAMO_VIDA, assumidos=assumidos)
+    capital = pedido.valor("vida", "capital_morte")
+    if _numero_positivo(capital):
+        cob = coberturas_de_vida_da_opcao(_presets.ANTERIOR, capital, pedido.valor("vida", "coberturas_extras"))
+        pedido = replace(pedido, opcoes=(_presets.ANTERIOR,), coberturas_por_opcao={_presets.ANTERIOR: cob})
+    pedido = replace(pedido, avisos=frozenset(avisos))
+    if exigir_completo:
+        faltam = pedido.faltando()
+        faltam += [c for c in pedido.sem_codigo() if c not in faltam]
+        if faltam:
+            raise FichaIncompleta(faltam, avisos=pedido.avisos)
+    return pedido
+
+
+def perguntas_de_vida(faltando: Iterable[str]) -> List[str]:
+    """As perguntas ao comercial, na ordem do que falta (só textos — nunca valores)."""
+    return [PERGUNTA_DE_VIDA[f] for f in faltando if f in PERGUNTA_DE_VIDA]
 
 
 # ---------------------------------------------------------------------------------------------------------------------

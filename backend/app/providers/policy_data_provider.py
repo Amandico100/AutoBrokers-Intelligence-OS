@@ -137,6 +137,8 @@ __all__ = [
     "FAMILIAS_DE_RAMO",
     "NOME_DA_FAMILIA",
     "familia_de_ramo",
+    "SUBFAMILIAS_DE_VIDA",
+    "subfamilia_de_vida",
     "StatusDaEscolha",
     "Escolha",
     "escolher_apolice",
@@ -1323,6 +1325,40 @@ def familia_de_ramo(ramo: Any) -> Optional[str]:
         chave = normalizar_rotulo(candidato)
         if chave and chave in _FAMILIA_POR_ABREVIATURA:
             return _FAMILIA_POR_ABREVIATURA[chave]
+    return None
+
+
+#: 🔴 SPEC-129-D D-129D-07 — DENTRO da família "vida", QUAL vida. A família continua UMA (a conversa "minha apólice de
+#: vida" acha VIND E VGRP — `infocap_tool` e `infocap_policy_provider` filtram por `familia_de_ramo`; separar lá faria a
+#: pergunta "vida em grupo" perder a apólice de grupo). Quem precisa da diferença é o MULTICÁLCULO: o pedido de vida do
+#: Agger (ramo 91) é o de UMA pessoa. Por que cada linha está certa (CLAUDE.md §9.5):
+#:   · "vida_individual": 📊 BLOCO 0 M2, `/documento.ramo` = "VIDA INDIVIDUAL" nas 5 VIND lidas (22 em 180 d);
+#:   · "vida_grupo": 📊 `/documento.ramo` = "VIDA GRUPO" nas VGRP — apólice de empresa com N vidas (só 1 de 23 com item
+#:     em `/itens`): não é o formulário de Vida Individual.
+#: ⛔ "vida" sozinho NÃO entra em nenhuma: não diz qual — `None` ("não sei"), nunca "é a individual".
+#: Cada sinônimo daqui é sinônimo da família "vida" (`FAMILIAS_DE_RAMO`) e de UMA subfamília só (o guarda confere).
+SUBFAMILIAS_DE_VIDA: Dict[str, Tuple[str, ...]] = {
+    "vida_individual": ("vind", "vida individual", "vidaind"),
+    "vida_grupo": ("vgrp", "vida em grupo"),
+}
+
+_SUBFAMILIA_DE_VIDA_POR_ABREVIATURA: Dict[str, str] = {
+    normalizar_rotulo(sinonimo): sub
+    for sub, sinonimos in SUBFAMILIAS_DE_VIDA.items()
+    for sinonimo in sinonimos
+}
+
+
+def subfamilia_de_vida(ramo: Any) -> Optional[str]:
+    """`"VIND"` → `"vida_individual"` · `"VGRP"` → `"vida_grupo"` · fora da família vida, ou "vida" sem dizer
+    qual → `None` (*"não sei"*). Mesma régua de `familia_de_ramo`: o rótulo INTEIRO, nunca prefixo."""
+    if ramo is None or familia_de_ramo(ramo) != "vida":
+        return None
+    candidatos = [ramo.abreviatura, ramo.nome_humano] if isinstance(ramo, RamoCanonico) else [ramo]
+    for candidato in candidatos:
+        chave = normalizar_rotulo(candidato)
+        if chave and chave in _SUBFAMILIA_DE_VIDA_POR_ABREVIATURA:
+            return _SUBFAMILIA_DE_VIDA_POR_ABREVIATURA[chave]
     return None
 
 

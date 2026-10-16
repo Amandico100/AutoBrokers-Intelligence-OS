@@ -206,6 +206,12 @@ def _com_os_nao_conferidos(pedido: Any, nao: Mapping[str, str]) -> Any:
     return replace(pedido, assumidos=frozenset(set(pedido.assumidos) | set(nomes)))
 
 
+def _ramo_vida() -> int:
+    from app.services.multicalculo.pedido import RAMO_VIDA
+
+    return RAMO_VIDA
+
+
 def comissao_anterior(fonte: Any, item: Mapping[str, Any]) -> Optional[float]:
     """D-131-16: o `per_c` do ano anterior (`FonteInfocap.comissao_da_corretora`, 📊 BLOCO 0 A5). Falhou → None (fica a
     comissão de hoje; nunca derruba o item)."""
@@ -480,6 +486,7 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
     → a MESMA conferência da porta. `pronta` = o pedido que a porta aceitaria; o que falta vira `pendente(falta_dado)`
     com os NOMES dos campos no evento (nunca valores). Nada é gravado aqui."""
     sigla = str(item.get("ramo_sigla") or "").strip()
+    ramo_da_lista = None
     if sigla:
         # 🔴 costura F4 (canário 13/10): o ramo da LISTA decide antes da ficha — o ramo que o Agger não cota (ou que
         # ninguém reconhece) não gasta a leitura da ficha (o PDF e o modelo) e não vira `sem_conexao` quando a InfoCap
@@ -487,7 +494,7 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
         from app.services.multicalculo import pedido as P
 
         try:
-            P._ramo_do_agger(SimpleNamespace(ramo=sigla))
+            ramo_da_lista = P._ramo_do_agger(SimpleNamespace(ramo=sigla))
         except P.RamoIndisponivel as exc:
             return (*motivo_da_excecao(exc), None, None)
     if fonte is None:
@@ -511,8 +518,12 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
         nao = dict(getattr(perfil, "nao_conferidos", None) or {})
         # sem o perfil (a InfoCap não respondeu o `/documento`) o pedido não fecha — e a comissão anterior leria o MESMO
         # `/documento` de novo (mais 3 tentativas, ~9 s por item): não se pede o que não muda o resultado
+        # SPEC-129-D: a VIDA não usa a comissão do ano anterior (D-129D-08: a da config ou a do Agger da corretora) —
+        # não se lê o `/documento` de novo para nada
+        de_vida = ramo_da_lista is not None and ramo_da_lista == _ramo_vida()
         pedido = de_apolice(apolice, ficha=ficha, config=cfg, perfil=perfil,
-                            comissao_anterior_pct=comissao_anterior(fonte, item) if perfil is not None else None)
+                            comissao_anterior_pct=(comissao_anterior(fonte, item)
+                                                   if perfil is not None and not de_vida else None))
         if nao:
             pedido = _com_os_nao_conferidos(pedido, nao)
     except Exception as exc:  # noqa: BLE001
@@ -528,7 +539,13 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
     if faltam and infocap_caiu:
         return "pendente", "sem_conexao", None, None     # o que falta é o que a InfoCap não respondeu
     if faltam:
-        return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos}
+        # SPEC-129-D: na VIDA, o que falta vira a PERGUNTA ao comercial (fumante, renda, esporte; "não achei o capital
+        # da apólice atual") — só os textos, nunca valores (LGPD art. 11). O auto e o RE não ganham a chave.
+        from app.services.multicalculo import pedido as P
+
+        perguntas = P.perguntas_de_vida(faltam) if getattr(pedido, "e_vida", False) else []
+        return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos,
+                                                 **({"perguntas": perguntas} if perguntas else {})}
     return "pronta", None, pedido, (supostos or None)
 
 

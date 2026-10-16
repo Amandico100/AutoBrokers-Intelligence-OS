@@ -34,7 +34,8 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 
 from portal_worker.multicalculo.contrato import RAMO_AUTO, TIPOS_DE_AJUSTE, TIPOS_DE_AJUSTE_RE, Ajuste
 
-from app.services.multicalculo.pedido import CHAVE_DA_BASICA, RAMOS_RE, SERVICOS_EM_QUE_A_PLACA_SUPRE, PedidoDeCalculo
+from app.services.multicalculo.pedido import (CHAVE_DA_BASICA, RAMO_VIDA, RAMOS_RE, SERVICOS_EM_QUE_A_PLACA_SUPRE,
+                                              PedidoDeCalculo, coberturas_de_vida_da_opcao, vida_ligada)
 from portal_worker.multicalculo.presets import ORDEM_RE as _ORDEM_RE
 from app.services.multicalculo.repositorio import RepositorioMulticalculo
 
@@ -68,6 +69,10 @@ ORIGENS: Tuple[str, ...] = ("auxiliar", "canal", "teste")
 OPCOES_POR_RAMO: Dict[int, Tuple[str, ...]] = {RAMO_AUTO: OPCOES, **{r: tuple(_ORDEM_RE) for r in RAMOS_RE}}
 #: o canal comparador (QCM) continua SÓ AUTO nesta SPEC: RE é carteira (auxiliar) e canário (teste)
 ORIGENS_DO_RE: Tuple[str, ...] = ("auxiliar", "teste")
+#: SPEC-129-D §4 — a VIDA (91), atrás de MULTICALCULO_VIDA_LIGADO: "padrão" (o capital e as coberturas do pedido) e "mais
+#: em conta" (só a morte com o MESMO capital), com os nomes que o CHECK do banco já aceita; a renovação é só o `anterior`.
+#: Sai pelas MESMAS origens do RE (a carteira e o canário) — o canal nunca pede vida.
+OPCOES_DA_VIDA: Tuple[str, ...] = ("padrao", "economica")
 #: SPEC-131-0 A · F3 (D-131-0-32): o SERVIÇO é coluna nova; a `origem` não muda (CHECK, prioridade, ~15 leitores) — ela
 #: SAI do serviço: o Quem Cobra Menos é o canal; a cotação e a renovação são trabalho da corretora (prioridade menor)
 SERVICOS: Tuple[str, ...] = ("qcm", "cotacao", "renovacao")
@@ -404,6 +409,10 @@ class MulticalculoProvider:
 
     # ------------------------------------------------------------------ capacidades
     def capacidades(self, ramo: int = RAMO_AUTO) -> Dict[str, Any]:
+        if int(ramo) == RAMO_VIDA and vida_ligada():
+            return {"ramo": RAMO_VIDA, "suportado": True, "portal": self.provider_key, "opcoes": OPCOES_DA_VIDA,
+                    "ajustes": (), "origens": ORIGENS_DO_RE, "canal": False, "renovacao": True,
+                    "entrega": "eventos (consultar com desde_evento)", "pdf": "pdf(company_id, oferta_id) → bytes"}
         if int(ramo) in RAMOS_RE:
             return {"ramo": int(ramo), "suportado": True, "portal": self.provider_key,
                     "opcoes": OPCOES_POR_RAMO[int(ramo)], "ajustes": TIPOS_DE_AJUSTE_RE, "origens": ORIGENS_DO_RE,
@@ -489,6 +498,7 @@ class MulticalculoProvider:
         if not alvo:
             raise ValueError("nenhuma corretora pedida")
         ramo = int(getattr(pedido, "ramo", RAMO_AUTO) or RAMO_AUTO)
+        vida = ramo == RAMO_VIDA and vida_ligada()      # SPEC-129-D: sem a chave, a vida segue o caminho de hoje
         pedidas = set(opcoes)
         if servico == "renovacao":
             # SPEC-131-A §4: ⛔ econômica e mínima NUNCA numa renovação (mutação 7) — recusa ANTES de qualquer leitura
@@ -501,7 +511,7 @@ class MulticalculoProvider:
             cedidas = self._cedidas(pedido, pedidas)
             pedidas -= cedidas
         else:
-            aceitas = OPCOES_POR_RAMO.get(ramo, OPCOES)
+            aceitas = OPCOES_DA_VIDA if vida else OPCOES_POR_RAMO.get(ramo, OPCOES)
         escolhidas = [o for o in aceitas if o in pedidas]    # a ordem é a de OPCOES (a do disparo), nunca a do chamador
         if (pedidas - set(aceitas)) or not escolhidas:
             raise ValueError("opções aceitas: " + ", ".join(aceitas))
@@ -510,7 +520,9 @@ class MulticalculoProvider:
             raise ValueError("quadro_s entre 5 e 600")
         if not isinstance(pedido, PedidoDeCalculo):
             raise TypeError("pedido precisa ser um PedidoDeCalculo")
-        if ramo != RAMO_AUTO and (ramo not in RAMOS_RE or origem not in ORIGENS_DO_RE):
+        if vida and origem not in ORIGENS_DO_RE:
+            raise RamoNaoSuportado(f"a vida ({RAMO_VIDA}) sai pela carteira da corretora, nunca pela origem {origem!r}")
+        if not vida and ramo != RAMO_AUTO and (ramo not in RAMOS_RE or origem not in ORIGENS_DO_RE):
             # SPEC-129-C: o canal comparador (QCM) é SÓ AUTO nesta SPEC — recusa clara ANTES de qualquer leitura
             raise RamoNaoSuportado(f"o ramo {ramo} não sai pela origem {origem!r}: o canal calcula só o AUTO "
                                    f"({RAMO_AUTO}); o RE sai pela carteira da corretora")
@@ -521,7 +533,17 @@ class MulticalculoProvider:
             # dela pode ser usado). Ninguém de fora — nem o canal com adesão — pede esses serviços: o filtro mora AQUI,
             # na porta, e não na confiança em quem chamou (CLAUDE.md §7). O canal calcula só o Quem Cobra Menos (`qcm`)
             raise NaoAutorizado(f"o serviço {servico} só é pedido pela própria corretora, para ela mesma")
-        if ramo != RAMO_AUTO:
+        if vida:
+            if kind == KIND_CANAL:
+                raise RamoNaoSuportado("o canal calcula só o AUTO nesta versão")
+            # D-129D-08: comissão e agenciamento de vida EXPLÍCITOS quando a corretora os configurou; sem config, nada vai
+            # (o robô usa o do Agger dela por seguradora) — nunca a entrada do auto. O que veio passa pela régua.
+            comissao, agenciamento, teto = await self._comissao_de_vida(company_id=company_id, servico=servico)
+            pedido = pedido.com_comissao_de_vida(comissao, agenciamento)
+            c = pedido.valor("comissao_desconto", "comissao_percentual")
+            if c is not None and not comissao_re_valida(c, teto):
+                raise PedidoIncompleto(["comissao_desconto.comissao_percentual"])
+        elif ramo != RAMO_AUTO:
             if kind == KIND_CANAL:
                 raise RamoNaoSuportado("o canal calcula só o AUTO nesta versão")
             # D-129C-05: a comissão EXPLÍCITA do ramo ANTES de validar — o contrato a exige. Red P4 (conserto 129-C):
@@ -554,6 +576,9 @@ class MulticalculoProvider:
                                             forcar_corretora_motivo=forcar_corretora_motivo)
         quem = {"servico": servico, "solicitante_user_id": solicitante_user_id, "contas": contas,
                 "prioridade": prioridade, "politica_de_sessao": politica_de_sessao, "renovacao_id": renovacao_id}
+        if vida:
+            return await self._calcular_vida(company_id=company_id, pedido=pedido, alvo=alvo, escolhidas=escolhidas,
+                                             coberturas=coberturas, origem=origem, quadro=quadro, quem=quem)
         if ramo != RAMO_AUTO:
             return await self._calcular_re(company_id=company_id, pedido=pedido, alvo=alvo, escolhidas=escolhidas,
                                            coberturas=coberturas, origem=origem, quadro=quadro, quem=quem)
@@ -688,6 +713,37 @@ class MulticalculoProvider:
 
         cfg = await self._carregar_cfg(company_id, servico)
         return comissao_do_ramo(cfg, ramo), teto_da_comissao(cfg)
+
+    async def _comissao_de_vida(self, *, company_id: str, servico: Optional[str] = None
+                                ) -> Tuple[Optional[float], Optional[float], float]:
+        """D-129D-08: (comissão, agenciamento, teto) de vida da config da CORRETORA — None = a do Agger dela."""
+        from app.services.multicalculo.config import agenciamento_de_vida, comissao_de_vida, teto_da_comissao
+
+        cfg = await self._carregar_cfg(company_id, servico)
+        return comissao_de_vida(cfg, RAMO_VIDA), agenciamento_de_vida(cfg, RAMO_VIDA), teto_da_comissao(cfg)
+
+    async def _calcular_vida(self, *, company_id: str, pedido: PedidoDeCalculo, alvo: List[str],
+                             escolhidas: List[str], coberturas: Optional[Mapping[str, Mapping[str, Any]]],
+                             origem: str, quadro: int, quem: Optional[Mapping[str, Any]] = None) -> PedidoAberto:
+        """SPEC-129-D: o pedido de vida (já validado e com a comissão da corretora, se ela configurou) — as coberturas de
+        cada opção pela regra do §4 (`pedido.coberturas_de_vida_da_opcao`) ou as explícitas de quem chamou (a renovação:
+        o `anterior` que o pedido montou da ficha). 🔴 O capital é SEMPRE o do pedido, nunca o de quem chamou."""
+        hmac_doc = cpf_hmac(pedido.documento, chave=self._env(ENV_HMAC))   # fail-closed ANTES de gravar
+        capital = pedido.valor("vida", "capital_morte")
+        extras = dict(pedido.valor("vida", "coberturas_extras") or {})
+        por_opcao: Dict[str, Dict[str, Any]] = {}
+        for o in escolhidas:
+            explicitas = (coberturas or {}).get(o)
+            if explicitas is not None:
+                cob = {**dict(explicitas), "capital_morte": float(capital)}
+            elif o in OPCOES_DA_VIDA:
+                cob = coberturas_de_vida_da_opcao(o, capital, extras)
+            else:
+                raise PresetIndisponivel(f"sem coberturas para a opção {o} da vida")
+            por_opcao[o] = cob
+        return await self._gravar(company_id=company_id, dados=pedido.para_dict(), ramo=pedido.ramo,
+                                  hmac_doc=hmac_doc, alvo=alvo, escolhidas=escolhidas, por_opcao=por_opcao,
+                                  origem=origem, quadro=quadro, quem=quem)
 
     async def _calcular_re(self, *, company_id: str, pedido: PedidoDeCalculo, alvo: List[str],
                            escolhidas: List[str], coberturas: Optional[Mapping[str, Mapping[str, Any]]],
@@ -852,6 +908,10 @@ class MulticalculoProvider:
         do_pedido = await asyncio.to_thread(self.repo.servico_e_conta, company_id=company_id,
                                             pedido_id=str(origem["pedido_id"]), calculo_id=calculo_id)
         ramo = int(ped.get("ramo") or RAMO_AUTO)
+        if ramo == RAMO_VIDA:
+            # SPEC-129-D: o ajuste de vida (comissão/agenciamento/capital) não existe nesta versão — nunca a régua do RE
+            # (que daria a comissão de ENTRADA do auto a um cálculo de vida)
+            raise RamoNaoSuportado(f"o recálculo da vida ({RAMO_VIDA}) não existe nesta versão")
         if ramo != RAMO_AUTO:
             ajuste = _ajuste_de_re(ajuste_bruto, ramo)      # nunca o código do CARRO num cálculo de RE
             if ajuste.tipo == "comissao":

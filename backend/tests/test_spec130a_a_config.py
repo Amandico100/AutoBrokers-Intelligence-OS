@@ -311,7 +311,7 @@ def test_g8_129c_as_chaves_por_ramo_estao_na_varredura_e_so_vem_da_config():
     ramo por `comissao_do_ramo(cfg, …)`. Mutação: o número da entrada no lugar da leitura → VERMELHO."""
     p = PADRAO_DO_PRODUTO
     assert set(p["comissao"]["por_ramo"]) == {"16", "2", "18"} and set(p["preferencias_de_seguradoras"]) == {
-        "31", "16", "2", "18"}
+        "31", "16", "2", "18", "91"}   # §9.3: a 129-D acrescentou a vida (91)
     assert set(p["renovacao"]["reajuste_basica_pct"]) == {"16", "2", "18"}
     assert {float(v) for v in p["renovacao"]["reajuste_basica_pct"].values()} <= proibidos()
     assert set(p["coberturas_essenciais"]) == {"16", "2", "18"}
