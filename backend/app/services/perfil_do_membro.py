@@ -7,6 +7,14 @@
     criar_ausencia(db, company_id, *, user_id, substituto_user_id, de, ate, por_user_id)
     apagar_ausencia(db, company_id, *, ausencia_id, por_user_id)
     situacao_da_equipe(db, company_id)                           a coluna SITUAÇÃO de Personalização → Equipe
+    numero_de_trabalho(db, company_id, user_id)                  o WhatsApp de trabalho EFETIVO (o ponto ÚNICO)
+
+SPEC-131-0-B3 (D-1310B3-01/04): o número de trabalho EFETIVO de uma pessoa numa corretora é o PAREADO (a linha
+`purpose='linha_do_usuario'` dela NAQUELA corretora, ativa e conectada — `linha_do_usuario.estado.linha_do_dono`) ou,
+sem ele, o DIGITADO confirmado (D-131-41); sem nada, nenhum. NÃO depende da chave `LINHA_DO_USUARIO_LIGADA` (a chave
+governa a conversa, não a posse do número). O "Quero renovar" (`proposta.membro_para_o_cliente`), o Meu perfil e a
+Situação da equipe leem ESTE ponto. ⛔ A identidade do atalho central (`atalho.verificacao`, `atalho.envio`) continua no
+número DIGITADO e verificado (D-1310B3-05) — outra porta, outra prova; ela não lê daqui.
 
 D-131-41: o "Meu WhatsApp de trabalho" é SÓ o número, confirmado pela própria pessoa, gravado no MEMBRO
 (`company_members.whatsapp_trabalho_e164` + `whatsapp_trabalho_confirmado_em`, por corretora). ⛔ Nada em
@@ -243,6 +251,79 @@ def _whatsapp_do_membro(db: Any, company_id: str, user_id: str) -> Dict[str, Any
             "verificado_em": verificado_em, "verificado": bool(numero and verificado_em), "disponivel": True}
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# o número de trabalho EFETIVO (SPEC-131-0-B3 · D-1310B3-01/04) — o ponto ÚNICO
+# ---------------------------------------------------------------------------------------------------------------------
+ORIGENS = ("linha", "digitado")
+
+
+def _pareado_conectado(db: Any, cid: str, uid: str) -> Optional[str]:
+    """O número PAREADO ("+DÍGITOS") da linha desta pessoa NESTA corretora — só se a linha está ATIVA e CONECTADA
+    (`channel_status='connected'`) e tem número. Desconectada, pareando, inativa, de OUTRA corretora, sem número → None.
+    A leitura é a do estado da linha (filtro company_id + purpose + dono no banco, e de novo lá em Python); aqui a
+    corretora e o dono são conferidos MAIS uma vez. Leitura que falha → None (vale o digitado), log sem dado pessoal."""
+    try:
+        from app.services.linha_do_usuario import estado as LINHA   # aqui dentro: evita import circular
+
+        linha = LINHA.linha_do_dono(db, cid, uid)
+    except Exception as exc:  # noqa: BLE001 — nunca derruba a página: cai no número informado
+        logger.warning("[PERFIL] linha do WhatsApp ilegível (%s) — vale o número informado", type(exc).__name__)
+        return None
+    if not linha or str(linha.get("company_id") or "").strip().lower() != cid \
+            or str(linha.get("owner_user_id") or "").strip().lower() != uid:
+        return None
+    if linha.get("ativa") is not True or str(linha.get("channel_status") or "") != "connected":
+        return None
+    digitos = re.sub(r"\D", "", str(linha.get("numero_e164") or ""))
+    # 📊 15/10: o pareado vem do JID do WhatsApp (13 caracteres na única linha de produção — sem o 9 do celular). D-1310B3-10:
+    # celular do Brasil no formato antigo (55 + DDD + 8 dígitos começando em 6–9) ganha o 9 — o número OFICIAL, o mesmo que a
+    # pessoa digitaria (o wa.me abre os dois; a página do cliente e a comparação com o digitado ficam certas). Fixo do Brasil
+    # (começa em 2–5) e outro país: como está — NÃO passa pela régua do digitado (`e164_do_brasil`).
+    if len(digitos) == 12 and digitos.startswith("55") and digitos[4] in "6789":
+        digitos = digitos[:4] + "9" + digitos[4:]
+    return f"+{digitos}" if 10 <= len(digitos) <= 15 else None
+
+
+def efetivo_de(pareado: Optional[str], digitado: Optional[str], confirmado_em: Any) -> Dict[str, Optional[str]]:
+    """A REGRA, pura: o pareado conectado → o digitado CONFIRMADO → nenhum."""
+    if pareado:
+        return {"e164": pareado, "origem": "linha"}
+    if digitado and confirmado_em:
+        return {"e164": str(digitado), "origem": "digitado"}
+    return {"e164": None, "origem": None}
+
+
+def _membro_ativo_e_digitado(db: Any, cid: str, uid: str) -> Optional[Dict[str, Any]]:
+    """O vínculo ATIVO desta pessoa NESTA corretora (filtro no banco e de novo aqui) com o digitado — ou None.
+    Antes da migration da G1 as colunas não existem: lê sem elas (só o pareado pode valer)."""
+    linhas: List[Dict[str, Any]] = []
+    for colunas in ("user_id, company_id, status, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em",
+                    "user_id, company_id, status"):
+        try:
+            linhas = _dados(_t(db, "company_members").select(colunas).eq("company_id", cid).eq("user_id", uid)
+                            .eq("status", "active").limit(1).execute())
+            break
+        except Exception as exc:  # noqa: BLE001
+            logger.info("[PERFIL] membro ilegível com as colunas do WhatsApp? (%s)", type(exc).__name__)
+    return next((x for x in linhas if str(x.get("company_id") or "").lower() == cid
+                 and str(x.get("user_id") or "").lower() == uid and x.get("status") == "active"), None)
+
+
+def numero_de_trabalho(db: Any, company_id: Any, user_id: Any) -> Dict[str, Optional[str]]:
+    """O WhatsApp de trabalho EFETIVO desta pessoa NESTA corretora: {"e164": "+…"|None, "origem": "linha"|"digitado"|None}.
+    🔴 Só para MEMBRO ATIVO desta corretora (quem saiu não tem número para o cliente — J-P2 da 131-B). Id inválido → nenhum."""
+    nada: Dict[str, Optional[str]] = {"e164": None, "origem": None}
+    try:
+        cid, uid = _uuid(company_id, "company_id"), _uuid(user_id, "user_id")
+    except Recusa:
+        return nada
+    membro = _membro_ativo_e_digitado(db, cid, uid)
+    if membro is None:
+        return nada
+    return efetivo_de(_pareado_conectado(db, cid, uid), membro.get("whatsapp_trabalho_e164"),
+                      membro.get("whatsapp_trabalho_confirmado_em"))
+
+
 def _atalho_whatsapp(db: Any) -> Dict[str, Any]:
     """SPEC-132-C: o atalho está LIGADO (`ATALHO_WHATSAPP_LIGADO`) E o número do AutoBrokers já foi ligado pela
     plataforma? Os dois, ou a tela diz "Em breve" e não oferece o código (P5 do juiz: desligado, o código era gerado e o
@@ -362,8 +443,11 @@ def ler_perfil(db: Any, company_id: Any, user_id: Any, *, hoje: Optional[date] =
         return {"id": a.get("id"), "de": de, "ate": ate, "user_id": outro,
                 "nome": nomes.get(outro, "Pessoa fora da equipe"), "ativa": de <= dia.isoformat() <= ate}
 
+    whatsapp = _whatsapp_do_membro(db, cid, uid)
+    efetivo = numero_de_trabalho(db, cid, uid)          # SPEC-131-0-B3: o número que VALE (o pareado ou o digitado)
+    whatsapp["efetivo"] = {"numero": efetivo["e164"], "origem": efetivo["origem"]}
     return {
-        "whatsapp_trabalho": _whatsapp_do_membro(db, cid, uid),
+        "whatsapp_trabalho": whatsapp,
         "atalho_whatsapp": _atalho_whatsapp(db),
         "ausencias": [_linha(a, "substituto_user_id") for a in minhas],
         "cubro": [_linha(a, "user_id") for a in cubro],
@@ -381,14 +465,13 @@ def situacao_da_equipe(db: Any, company_id: Any, *, hoje: Optional[date] = None)
     cid = _uuid(company_id, "company_id")
     dia = (hoje or _hoje()).isoformat()
     equipe = CR.aggers_da_equipe(db, cid).get("pessoas") or []
-    zap: Dict[str, Optional[bool]] = {}
+    zap: Dict[str, Dict[str, Any]] = {}
     try:
         for m in _dados(_t(db, "company_members")
                         .select("user_id, company_id, whatsapp_trabalho_e164, whatsapp_trabalho_confirmado_em")
                         .eq("company_id", cid).execute()):
             if str(m.get("company_id")).lower() == cid:
-                zap[str(m.get("user_id")).lower()] = bool(m.get("whatsapp_trabalho_e164")
-                                                          and m.get("whatsapp_trabalho_confirmado_em"))
+                zap[str(m.get("user_id")).lower()] = m
     except Exception as exc:  # noqa: BLE001 — antes da migration da G1
         logger.warning("[PERFIL] situação: WhatsApp de trabalho ilegível (%s)", type(exc).__name__)
         zap = {}
@@ -406,11 +489,22 @@ def situacao_da_equipe(db: Any, company_id: Any, *, hoje: Optional[date] = None)
         uid = str(p["user_id"]).lower()
         ag = p.get("agger") or {}
         aus = fora.get(uid)
+        # SPEC-131-0-B3: a MESMA regra do `numero_de_trabalho` (o pareado conectado → o digitado confirmado); o NÚMERO
+        # não sai daqui. Sem as colunas do digitado (zap vazio) só a linha responde — o resto continua None.
+        pareado = _pareado_conectado(db, cid, uid)
+        digitado = zap.get(uid)
+        if pareado or digitado is not None:
+            origem = efetivo_de(pareado, (digitado or {}).get("whatsapp_trabalho_e164"),
+                                (digitado or {}).get("whatsapp_trabalho_confirmado_em"))["origem"]
+            confirmado: Optional[bool] = origem is not None
+        else:
+            origem, confirmado = None, None
         pessoas.append({
             "user_id": uid, "nome": p.get("nome"), "primeiro_nome": _primeiro_nome(p.get("nome") or ""),
             "funcoes": list(p.get("funcoes") or []),
             "agger": {"situacao": ag.get("situacao"), "rotulo": ag.get("rotulo"), "conectado": bool(ag.get("conectado"))},
-            "whatsapp_trabalho_confirmado": zap.get(uid) if zap else None,
+            "whatsapp_trabalho_confirmado": confirmado,
+            "whatsapp_trabalho_origem": origem,
             "ausencia": ({"ate": str(aus.get("ate"))[:10],
                           "substituto": _primeiro_nome(nomes.get(str(aus.get("substituto_user_id")).lower(), ""))}
                          if aus else None),
@@ -418,5 +512,5 @@ def situacao_da_equipe(db: Any, company_id: Any, *, hoje: Optional[date] = None)
     return {"pessoas": pessoas}
 
 
-__all__ = ("Recusa", "e164_do_brasil", "normalizar_whatsapp", "quem_eu_cubro_hoje", "gravar_whatsapp_trabalho", "remover_whatsapp_trabalho", "criar_ausencia",
+__all__ = ("Recusa", "numero_de_trabalho", "efetivo_de", "ORIGENS", "e164_do_brasil", "normalizar_whatsapp", "quem_eu_cubro_hoje", "gravar_whatsapp_trabalho", "remover_whatsapp_trabalho", "criar_ausencia",
            "apagar_ausencia", "ler_perfil", "situacao_da_equipe", "DURACAO_MAXIMA_DIAS", "TABELA_AUSENCIAS")

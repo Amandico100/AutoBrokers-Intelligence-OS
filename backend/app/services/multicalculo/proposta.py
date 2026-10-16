@@ -1244,10 +1244,11 @@ async def _anos_provados(db: Any, company_id: str, item: Mapping[str, Any], hoje
 
 
 def membro_para_o_cliente(db: Any, company_id: str, user_id: Any) -> Dict[str, Any]:
-    """O comercial como o CLIENTE o vê: o primeiro nome e o "Meu WhatsApp de trabalho" — este SÓ quando a pessoa o
-    CONFIRMOU (`company_members.whatsapp_trabalho_e164` + `whatsapp_trabalho_confirmado_em`, colunas da G1; D-131-41).
+    """O comercial como o CLIENTE o vê: o primeiro nome e o WhatsApp de trabalho EFETIVO — SPEC-131-0-B3
+    (D-1310B3-01/04): o PAREADO (a linha conectada dele NESTA corretora) → senão o digitado CONFIRMADO (D-131-41) →
+    senão nenhum. O ponto ÚNICO é `perfil_do_membro.numero_de_trabalho`; aqui só se lê.
     🔴 Só se ele é MEMBRO ATIVO desta corretora (filtro `company_id` + `status='active'`, CLAUDE.md §7 · J-P2: quem saiu
-    não recebe o "Quero renovar" nem é nomeado). Colunas ainda não aplicadas → só o nome."""
+    não recebe o "Quero renovar" nem é nomeado). Colunas ainda não aplicadas → o nome (e o pareado, se houver)."""
     try:
         uid = _uuid(user_id, "user_id")
         cid = _uuid(company_id, "company_id")
@@ -1274,10 +1275,11 @@ def membro_para_o_cliente(db: Any, company_id: str, user_id: Any) -> Dict[str, A
             saida["primeiro_nome"] = nome
     except Exception as exc:  # noqa: BLE001
         logger.info("[RENOVACAO] nome do membro ilegível (%s)", type(exc).__name__)
-    if v.get("whatsapp_trabalho_confirmado_em"):
-        dig = _digitos_de_whatsapp(v.get("whatsapp_trabalho_e164"))
-        if dig:
-            saida["whatsapp"] = dig
+    from app.services.perfil_do_membro import numero_de_trabalho   # aqui dentro: evita import circular
+
+    dig = _digitos_de_whatsapp(numero_de_trabalho(db, cid, uid).get("e164"))
+    if dig:
+        saida["whatsapp"] = dig
     return saida
 
 
