@@ -45,6 +45,20 @@ _FORA_DO_TEXTO = (("moto", re.compile(r"\b(moto|motos|motocicleta|motoneta|scoot
                   ("frota", re.compile(r"\bfrota\b")),
                   ("rcfv", re.compile(r"\b(rcf-?v|rcfv|so terceiros|so responsabilidade civil)\b")))
 
+#: SPEC-129-D (conserto K3) — a VIDA INDIVIDUAL pelo chat, atrás de `MULTICALCULO_VIDA_LIGADO`. 🔴 Por que 91 (CLAUDE.md
+#: §9.5): é o `contrato.RAMO_VIDA` (📊 o `cotacao.ramo` do corpo gravado ao vivo, BLOCO 0 M6) — o teste confere a
+#: igualdade com `pedido.RAMO_VIDA`. Sem a chave nada disto é lido: "vida" segue `ForaDoEscopo("outro")`, byte a byte.
+RAMO_VIDA = 91
+_VIDA_DO_TEXTO = re.compile(r"\bvida\b")
+#: o que fala de vida e NÃO é a individual (D-129D-01/03/07): vida em grupo/coletiva/empresarial (a apólice de muitos),
+#: acidentes pessoais (outro produto), a Mobilidade da SURA (MOBI), prestamista, funeral, previdência (VGBL/PGBL). Todas
+#: seguem fora com a frase de hoje — nunca a individual por dedução. A lista só CORTA: palavra nova aqui nunca cota nada.
+_VIDA_QUE_NAO_E_A_INDIVIDUAL = re.compile(
+    r"\b(grupo|coletiv[oa]s?|vg|vgbl|pgbl|empresarial|empresa|funcionarios?|colaboradores|socios|prestamista|funeral|"
+    r"previdencia|viagem)\b")
+#: o que NÃO é vida mesmo sem a palavra "vida" (AP, Mobi) — reconhecido só para dar a MESMA frase de hoje
+_NAO_E_VIDA_INDIVIDUAL = re.compile(r"\b(acidentes? pessoa(?:l|is)|ap|mobi|mobilidade)\b")
+
 #: as opções de cada ramo quando a corretora não escolheu outras (`servicos.cotacao.opcoes`, a chave que a B2 põe no
 #: Configurar): no carro as três da página de venda (Recomendada · Mais em conta · Mais completa, SPEC §4), no RE as
 #: duas que os presets de RE têm (`presets.ORDEM_RE`)
@@ -108,13 +122,25 @@ class ForaDoEscopo(ValueError):
         super().__init__(chave)
 
 
+def _vida_ligada() -> bool:
+    from app.services.multicalculo.pedido import vida_ligada
+
+    return vida_ligada()
+
+
 def ramo_do_texto(ramo: Any, *, descricao: Any = None) -> int:
-    """"carro" → 31, "condomínio" → 16 … Moto, frota, RCF-V e o resto → `ForaDoEscopo` (com a frase)."""
+    """"carro" → 31, "condomínio" → 16 … Moto, frota, RCF-V e o resto → `ForaDoEscopo` (com a frase).
+    SPEC-129-D (K3): com `MULTICALCULO_VIDA_LIGADO`, "vida" → 91 (só a INDIVIDUAL; ver `_VIDA_QUE_NAO_E_A_INDIVIDUAL`)."""
     texto = _sem_acento(f"{ramo or ''} {descricao or ''}")
     for chave, padrao in _FORA_DO_TEXTO:
         if padrao.search(texto):
             raise ForaDoEscopo(chave)
     r = _sem_acento(ramo).strip()
+    if _vida_ligada() and (r == str(RAMO_VIDA) or _VIDA_DO_TEXTO.search(r) or _NAO_E_VIDA_INDIVIDUAL.search(r)):
+        # ⛔ antes do laço dos outros ramos: "vida empresarial" NUNCA é o empresarial (18) nem a individual
+        if r != str(RAMO_VIDA) and (_NAO_E_VIDA_INDIVIDUAL.search(texto) or _VIDA_QUE_NAO_E_A_INDIVIDUAL.search(texto)):
+            raise ForaDoEscopo("outro")
+        return RAMO_VIDA
     if not r:
         return RAMO_AUTO
     if r in RAMO_DO_TEXTO:
@@ -331,6 +357,10 @@ def montar(dados: Mapping[str, Any], *, ficha: Any = None, textos_crus: Sequence
         perfil = _perfil_auto(d, seg, textos_crus, problemas, inferidos, config=config,
                               estado_civil_padrao=ESTADO_CIVIL_PADRAO,
                               sexo_pelo_nome=sexo_pelo_nome, limiar=limiar_do_sexo_pelo_nome)
+    elif ramo == RAMO_VIDA:
+        perfil = _perfil_vida(d, seg, textos_crus, problemas)
+        ficha = None                    # o leitor do anexo não lê vida; a cotação nova de vida é só o que foi DITO
+        descricao = "Vida individual"   # o "risco" da aba Cotações (`workflow.resumo_do_cliente`) — nunca dado pessoal
     else:
         perfil = _perfil_re(d, seg, ramo, textos_crus, problemas)
 
@@ -485,6 +515,91 @@ def _perfil_auto(d: Mapping[str, Any], seg: Dict[str, Any], textos_crus: Sequenc
     return {"segurado": seg, "veiculo": veic, "pernoite": pern, "condutor": cond}
 
 
+_SIM_DA_VIDA = re.compile(r"(sim|s|fuma|fumante|pratica|true)")
+_NAO_DA_VIDA = re.compile(r"(nao|n|nao fuma|nao fumante|nunca fumou|nao pratica|false)")
+
+
+def _sim_nao_estrito(v: Any) -> Optional[bool]:
+    """fumante/esporte (D-129D-05): `True`/`False`, "sim"/"não" — e SÓ isso. "não sei", "acho que não", vazio → None
+    (FALTA: a pergunta volta ao corretor). ⛔ Nunca o `sim_nao` do canal aqui: ele lê "não sei…" como "não"."""
+    if isinstance(v, bool):
+        return v
+    t = _sem_acento(v).strip().strip(".!")
+    if not t:
+        return None
+    return True if _SIM_DA_VIDA.fullmatch(t) else False if _NAO_DA_VIDA.fullmatch(t) else None
+
+
+def _reais_falados(v: Any) -> Optional[float]:
+    """O dinheiro de vida como o corretor fala: "200 mil" → 200000 · "1,5 milhão" → 1500000 · "8.000" → 8000. Sem
+    número claro → None (o campo FALTA — nunca um padrão)."""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return valor_em_reais(v)
+    t = _sem_acento(v).replace("r$", "").strip()
+    m = re.fullmatch(r"([\d.,]+)\s*(mil|milhao|milhoes|mi)?", t)
+    if not m:
+        return valor_em_reais(v)
+    base = m.group(1)
+    if m.group(2):
+        base = base.replace(".", "").replace(",", ".")
+        try:
+            n = float(base) * (1000 if m.group(2) == "mil" else 1_000_000)
+        except ValueError:
+            return None
+        return round(n, 2) if n > 0 else None
+    return valor_em_reais(base)
+
+
+def _perfil_vida(d: Mapping[str, Any], seg: Dict[str, Any], textos_crus: Sequence[str],
+                 problemas: List[str]) -> Dict[str, Dict[str, Any]]:
+    """SPEC-129-D (K3): o pedido 91 pelos NOMES do contrato (`contrato.CAMPOS_DO_PEDIDO_VIDA`). Só entra o que o corretor
+    DISSE: ⛔ sexo nunca pelo nome, estado civil nunca o padrão, fumante/esporte nunca "não", capital/renda nunca um
+    número — o que não veio fica ausente e volta como PERGUNTA (`pedido.perguntas_de_vida`). ⛔ Nada aqui é logado."""
+    sv: Dict[str, Any] = {}
+    doc = seg.get("cpf_cnpj")
+    if doc and len(doc) == 14:
+        problemas.append("a vida individual é de uma pessoa — preciso do CPF do segurado, não de um CNPJ")
+    elif doc:
+        sv["cpf"] = doc
+    if seg.get("nome"):
+        sv["nome"] = seg["nome"]
+    if d.get("nascimento"):
+        nasc = _validar("data", d.get("nascimento")) or unico_no_texto_cru("data", textos_crus)
+        if nasc:
+            sv["data_nascimento"] = nasc
+        else:
+            problemas.append("a data de nascimento precisa vir como dia/mês/ano, de alguém entre 18 e 100 anos")
+    sexo = _validar("sexo", d.get("sexo")) if d.get("sexo") else None
+    if sexo:
+        sv["sexo"] = sexo
+    if d.get("estado_civil"):
+        sv["estado_civil"] = d["estado_civil"]          # o rótulo da tela de vida (`pedido._sanear_vida`) ou falta
+    cep = _validar("cep", d.get("cep")) if d.get("cep") else None
+    if d.get("cep") and not cep:
+        problemas.append("o CEP do segurado precisa ter 8 números")
+    if cep:
+        sv["cep"] = cep
+    if d.get("profissao"):
+        sv["profissao_texto"] = str(d["profissao"]).strip()[:120]
+    vida: Dict[str, Any] = {"origem": "cotacao"}
+    for de, para in (("capital", "capital_morte"), ("renda_mensal", "renda_mensal")):
+        if d.get(de) is not None:
+            n = _reais_falados(d.get(de))
+            if n is not None:
+                vida[para] = n
+    for campo in ("fumante", "esporte_radical"):
+        resposta = _sim_nao_estrito(d.get(campo))
+        if resposta is not None:
+            vida[campo] = resposta
+    if d.get("vigencia_inicio"):
+        ini = re.search(r"\b(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})\b", str(d["vigencia_inicio"]))
+        if ini:
+            vida["vigencia_inicio"] = f"{ini.group(3)}-{int(ini.group(2)):02d}-{int(ini.group(1)):02d}"
+        else:
+            problemas.append("o início da vigência precisa vir como dia/mês/ano")
+    return {"segurado": sv, "vida": vida}
+
+
 def _perfil_re(d: Mapping[str, Any], seg: Dict[str, Any], ramo: int, textos_crus: Sequence[str],
                problemas: List[str]) -> Dict[str, Dict[str, Any]]:
     """RE: o segurado (só os campos do catálogo DO RAMO) + o `risco` como o modelo o montou (nomes do contrato)."""
@@ -553,9 +668,25 @@ def rotulos_do_que_falta(faltam: Sequence[str], *, tem_placa: bool, condutor_e_o
     return vistos
 
 
+def perguntas_da_vida(faltam: Sequence[str]) -> List[str]:
+    """As perguntas da cotação nova de vida (`pedido.perguntas_de_vida`, serviço cotação), sem repetição; o campo sem
+    pergunta escrita (a comissão fora da régua, uma cobertura extra) vira "confira …" pelo rótulo — nunca o nome técnico."""
+    from app.services.multicalculo.pedido import perguntas_de_vida
+
+    saida: List[str] = []
+    for f in faltam:
+        p = (perguntas_de_vida([f], servico="cotacao") or [f"Confira {_rotulo(f)}."])[0]
+        if p not in saida:
+            saida.append(p)
+    return saida
+
+
 def frase_do_que_falta(m: Montagem) -> str:
     partes: List[str] = []
-    if m.faltam:
+    if m.faltam and m.ramo == RAMO_VIDA:
+        # SPEC-129-D (K3): as PERGUNTAS de vida, uma vez cada (D-129D-05: nunca um padrão no lugar da resposta)
+        partes.append("Para cotar a vida eu preciso saber: " + " ".join(perguntas_da_vida(m.faltam)))
+    elif m.faltam:
         tem_placa = bool(m.pedido is not None and m.pedido.valor("veiculo", "placa"))
         partes.append("Faltam: " + _juntar(rotulos_do_que_falta(
             m.faltam, tem_placa=tem_placa, condutor_e_o_cliente="condutor" in m.inferidos)) + ".")
@@ -567,10 +698,13 @@ def frase_do_que_falta(m: Montagem) -> str:
 def opcoes_da_cotacao(config: Optional[Mapping[str, Any]], ramo: int) -> Tuple[str, ...]:
     """As opções que a corretora pediu (`servicos.cotacao.opcoes`) — só as que a porta aceita no ramo, na ordem do
     disparo — ou as do produto. Lista vazia/ilegível → as do produto (nunca um cálculo sem opção)."""
-    from app.services.multicalculo.porta import OPCOES_POR_RAMO
+    from app.services.multicalculo.porta import OPCOES_DA_VIDA, OPCOES_POR_RAMO
 
-    aceitas = OPCOES_POR_RAMO.get(int(ramo)) or OPCOES_DO_AUTO
-    padrao = OPCOES_DO_AUTO if int(ramo) == RAMO_AUTO else OPCOES_DO_RE
+    if int(ramo) == RAMO_VIDA:                         # SPEC-129-D §4: padrão e mais em conta (a porta só aceita essas)
+        aceitas = padrao = OPCOES_DA_VIDA
+    else:
+        aceitas = OPCOES_POR_RAMO.get(int(ramo)) or OPCOES_DO_AUTO
+        padrao = OPCOES_DO_AUTO if int(ramo) == RAMO_AUTO else OPCOES_DO_RE
     serv = (config or {}).get("servicos") if isinstance(config, Mapping) else None
     pedidas = ((serv or {}).get("cotacao") or {}).get("opcoes") if isinstance(serv, Mapping) else None
     if isinstance(pedidas, (list, tuple)):
@@ -594,6 +728,8 @@ def resumo(m: Montagem, *, onde: str, opcoes: Sequence[str]) -> str:
     """O que o corretor CONFERE antes de calcular. ⛔ O CPF sai mascarado (só os 2 últimos)."""
     from app.services.multicalculo.renovacao import mascarar_documento
 
+    if m.ramo == RAMO_VIDA:
+        return _resumo_da_vida(m, onde=onde, opcoes=opcoes)
     p = m.pedido
     v = p.valor
     linhas = ["Confira antes de eu calcular:"]
@@ -666,6 +802,48 @@ def resumo(m: Montagem, *, onde: str, opcoes: Sequence[str]) -> str:
             linhas.append("- Atenção: a placa que você disse é diferente da que está na apólice — vale a que você disse.")
         if "documento_nao_e_a_apolice" in p.avisos:
             linhas.append("- Atenção: o arquivo anexado não parece ser a apólice (endosso, proposta ou documento do carro).")
+    return "\n".join(linhas)
+
+
+#: SPEC-129-D §4 — o nome de cada opção de VIDA no resumo (a "mais em conta" é só a morte com o MESMO capital)
+NOME_DA_OPCAO_DE_VIDA = {"padrao": "a padrão (o capital de morte com as coberturas do pedido)",
+                         "economica": "a mais em conta (só a morte, com o mesmo capital)"}
+
+
+def _resumo_da_vida(m: Montagem, *, onde: str, opcoes: Sequence[str]) -> str:
+    """O resumo de VIDA que o PRÓPRIO corretor confere (o único lugar onde fumante/renda/esporte aparecem — D-129D-05:
+    ele confirma o que vai ser declarado à seguradora). ⛔ CPF mascarado; nada disto vai a log nem ao run."""
+    from app.providers.policy_data_provider import reais
+    from app.services.multicalculo.renovacao import mascarar_documento
+
+    v = m.pedido.valor
+    sim_nao = lambda x: "sim" if x is True else "não" if x is False else "?"  # noqa: E731
+    cliente = f"- Segurado: {v('segurado', 'nome') or '(sem nome)'} — CPF {mascarar_documento(v('segurado', 'cpf'))}"
+    if v("segurado", "data_nascimento"):
+        cliente += f", nascimento {_data_br(v('segurado', 'data_nascimento'))}"
+    if v("segurado", "sexo"):
+        cliente += f", sexo {str(v('segurado', 'sexo')).lower()}"
+    if v("segurado", "estado_civil"):
+        cliente += f", {str(v('segurado', 'estado_civil')).lower()}"
+    linhas = ["Confira antes de eu calcular:", "- Ramo: Vida individual", cliente,
+              f"- CEP {_cep_br(v('segurado', 'cep'))} · profissão: {v('segurado', 'profissao_texto') or '?'} (a "
+              "seguradora acha a profissão pelo nome; se não achar, ela fica de fora)",
+              f"- Capital de morte: {reais(v('vida', 'capital_morte'))} · renda mensal: "
+              f"{reais(v('vida', 'renda_mensal'))}",
+              f"- Fumante: {sim_nao(v('vida', 'fumante'))} · pratica esporte radical: "
+              f"{sim_nao(v('vida', 'esporte_radical'))} (é o que vai declarado à seguradora — confira com o cliente)",
+              f"- Início da vigência: {_data_br(v('vida', 'vigencia_inicio'))}"
+              + (" (hoje — corrija se for outra data)" if "vida.vigencia_inicio" in m.pedido.assumidos else ""),
+              "- Comissão: a que a sua corretora configurou para vida; sem configuração, a do Agger em cada seguradora"]
+    if m.seguro_declarado:
+        dito = m.seguro_declarado
+        partes = [x for x in (dito.get("seguradora"),
+                              f"{reais(dito['premio_anual'])} por ano" if dito.get("premio_anual") else None) if x]
+        linhas.append("- O cliente disse que paga hoje: " + ", ".join(partes))
+    nomes = [NOME_DA_OPCAO_DE_VIDA.get(o, o) for o in opcoes]
+    linhas.append(f"- Vou calcular {len(nomes)} versões: {_juntar(nomes)}. A resposta volta aqui, para você — a "
+                  "apresentação de vida para o cliente ainda não existe.")
+    linhas.append(f"- Onde: {onde}")
     return "\n".join(linhas)
 
 

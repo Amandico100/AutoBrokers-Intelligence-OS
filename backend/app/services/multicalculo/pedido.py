@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
@@ -1351,9 +1351,43 @@ def _de_apolice_vida(apolice: Any, perfil: Dict[str, Dict[str, Any]], *, ficha: 
     return pedido
 
 
-def perguntas_de_vida(faltando: Iterable[str]) -> List[str]:
-    """As perguntas ao comercial, na ordem do que falta (só textos — nunca valores)."""
-    return [PERGUNTA_DE_VIDA[f] for f in faltando if f in PERGUNTA_DE_VIDA]
+#: SPEC-129-D (conserto K3, a COTAÇÃO NOVA pelo chat): as perguntas que a cotação faz ao corretor — as da renovação,
+#: menos a do capital (lá "não achei na apólice"; aqui é o corretor quem diz o capital — NUNCA um padrão) + os campos que
+#: a renovação lê do cadastro e a cotação nova só tem se o corretor disser.
+PERGUNTA_DE_VIDA_NA_COTACAO: Dict[str, str] = {
+    **PERGUNTA_DE_VIDA,
+    "vida.capital_morte": "Qual o capital segurado para morte (o valor que a família recebe)?",
+    "segurado.cpf": "Qual o CPF do segurado?",
+    "segurado.nome": "Qual o nome completo do segurado?",
+    "segurado.cep": "Qual o CEP do segurado?",
+    "vida.vigencia_inicio": "Quando começa a vigência do seguro?",
+}
+
+
+def perguntas_de_vida(faltando: Iterable[str], *, servico: Optional[str] = None) -> List[str]:
+    """As perguntas ao comercial, na ordem do que falta (só textos — nunca valores). `servico="cotacao"`: as da cotação
+    nova pelo chat (`PERGUNTA_DE_VIDA_NA_COTACAO`); sem ele, as da renovação, como antes."""
+    tabela = PERGUNTA_DE_VIDA_NA_COTACAO if servico == "cotacao" else PERGUNTA_DE_VIDA
+    return [tabela[f] for f in faltando if f in tabela]
+
+
+#: o fuso da vigência da cotação nova: o Brasil não tem horário de verão desde 2019 (o mesmo cinto de `proposta._FUSO`)
+_FUSO_DO_BRASIL = timezone(timedelta(hours=-3))
+
+
+def _de_ficha_vida(perfil: Dict[str, Dict[str, Any]], *, hoje: Optional[date]) -> PedidoDeCalculo:
+    """SPEC-129-D (conserto K3): o pedido 91 da COTAÇÃO NOVA — só o que o corretor DISSE (o `perfil`, nomes do contrato).
+    A ficha do anexo não entra: o leitor do anexo não lê vida (e a cotação nova não repete apólice). A vigência começa
+    HOJE quando ninguém disse outra data — declarada em `assumidos` (o resumo mostra "corrija se for outra"). ⛔ Nada
+    mais é presumido: fumante/renda/esporte/capital ausentes ficam em `faltando()` (D-129D-05)."""
+    dados = {g: dict(perfil.get(g) or {}) for g in perfil}
+    vida = dados.setdefault("vida", {})
+    vida.setdefault("origem", "cotacao")
+    assumidos: set = set()
+    if _vazio(vida.get("vigencia_inicio")):
+        vida["vigencia_inicio"] = (hoje or datetime.now(_FUSO_DO_BRASIL).date()).isoformat()
+        assumidos.add("vida.vigencia_inicio")
+    return PedidoDeCalculo.de_dict(dados, ramo=RAMO_VIDA, assumidos=assumidos)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1389,7 +1423,7 @@ def _ano_modelo_da_ficha(valor: Any) -> Optional[int]:
 
 
 def de_ficha(ficha: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] = None, *, ramo: int = RAMO_AUTO,
-             apolice: Any = None) -> PedidoDeCalculo:
+             apolice: Any = None, hoje: Optional[date] = None) -> PedidoDeCalculo:
     """A COTAÇÃO NOVA a partir da apólice que o corretor ANEXOU (SPEC-132-B, `situacao='novo_com_apolice'`) — a irmã de
     `de_apolice` (que é SEMPRE renovação, `renovacao=True`): o MESMO miolo (`_objeto_do_risco`, `_avisos_da_leitura`,
     `_de_apolice_auto` — condutor = segurado e CEP de pernoite = CEP, declarados `assumidos`), SEM o bloco da renovação
@@ -1398,10 +1432,14 @@ def de_ficha(ficha: Any, perfil: Optional[Mapping[str, Mapping[str, Any]]] = Non
     Da ficha vêm só os do OBJETO DO RISCO: AUTO placa, chassi, ano/modelo e o CEP (`segurado.cep`, assumido: lido do
     documento, não dito); RE o CEP e, no empresarial, a atividade. Quem VENCE: o `perfil` (o que o corretor disse) > a
     ficha. O resto (CPF, nome, nascimento…) vem do `perfil` — o leitor do anexo não extrai dado pessoal.
-    Moto (a marca `MARCA_DO_VEICULO_NAO_COTADO`) → `RamoIndisponivel`, como na renovação."""
+    Moto (a marca `MARCA_DO_VEICULO_NAO_COTADO`) → `RamoIndisponivel`, como na renovação.
+    SPEC-129-D (conserto K3): a VIDA (91) com a chave `MULTICALCULO_VIDA_LIGADO` → `_de_ficha_vida`; sem a chave, o 91
+    segue recusado como antes (`RAMOS_ACEITOS` não muda)."""
     perfil = {g: dict(v or {}) for g, v in (perfil or {}).items()}
     marca = perfil.pop(MARCA_DO_VEICULO_NAO_COTADO, None) or {}
     ramo = int(ramo)
+    if ramo == RAMO_VIDA and vida_ligada():
+        return _de_ficha_vida(perfil, hoje=hoje)
     if ramo not in RAMOS_ACEITOS:
         raise RamoIndisponivel(f"ramo {ramo} não é cotado aqui (aceitos: {', '.join(map(str, RAMOS_ACEITOS))})")
     if ramo == RAMO_AUTO and marca.get("tipo") == "moto":

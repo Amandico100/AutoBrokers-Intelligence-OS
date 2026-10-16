@@ -82,6 +82,27 @@ class _PrepararIn(BaseModel):
                           "ANEXADA, nunca deste número")
 
 
+class _PrepararVidaIn(_PrepararIn):
+    """SPEC-129-D (conserto K3): o esquema COM a vida individual — só quando `MULTICALCULO_VIDA_LIGADO` está ligada
+    (`ferramentas_de_cotacao`); sem a chave o modelo vê o `_PrepararIn` de hoje, byte a byte. ⛔ Nenhum padrão aqui:
+    o que o corretor não disse fica vazio e a ferramenta devolve a pergunta."""
+    ramo: Optional[str] = Field(None, description="carro (padrão), residencial, condomínio, empresarial ou vida "
+                                                  "(vida INDIVIDUAL, de uma pessoa — vida em grupo, acidentes pessoais "
+                                                  "e Mobi não saem por aqui)")
+    estado_civil: Optional[str] = Field(None, description="vida: solteiro(a), casado(a), separado(a), divorciado(a), "
+                                                          "viúvo(a) ou união estável — só se o corretor disse")
+    profissao: Optional[str] = Field(None, description="vida: a profissão do segurado como o corretor escreveu")
+    capital: Optional[str] = Field(None, description="vida: o capital segurado de morte (ex.: '200 mil', '200000') — "
+                                                     "NUNCA invente: sem ele a ferramenta pergunta")
+    fumante: Optional[str] = Field(None, description="vida: o segurado fuma? 'sim' ou 'não' — SÓ se o corretor disse; "
+                                                     "nunca presuma")
+    renda_mensal: Optional[str] = Field(None, description="vida: a renda mensal do segurado (ex.: '8 mil') — só se dita")
+    esporte_radical: Optional[str] = Field(None, description="vida: pratica esporte radical? 'sim' ou 'não' — SÓ se o "
+                                                             "corretor disse; nunca presuma")
+    vigencia_inicio: Optional[str] = Field(None, description="vida: o início da vigência dd/mm/aaaa, só se o corretor "
+                                                             "disse (sem ele, hoje — o resumo mostra)")
+
+
 class _DispararIn(BaseModel):
     confirmacao_id: str = Field(description="o confirmacao_id que a cotacao_preparar devolveu")
 
@@ -195,7 +216,7 @@ class CotacaoPrepararTool(_Cotacao):
             linhas.append("PARA O CORRETOR — " + PC.frase_do_que_falta(m))
             linhas.append("(Pergunte tudo isso numa mensagem só; não peça de novo o que ele já disse. Quando ele "
                           "responder, chame a cotacao_preparar de novo com TODOS os dados.)")
-            if m.ramo != PC.RAMO_AUTO and m.faltam:
+            if m.ramo not in (PC.RAMO_AUTO, PC.RAMO_VIDA) and m.faltam:
                 linhas.append("Campos do imóvel para a próxima chamada (em `risco`): "
                               + ", ".join(sorted({f.split(".", 1)[1] for f in m.faltam if f.startswith("risco.")})))
             return "\n".join(linhas)
@@ -239,13 +260,17 @@ def _porta(db: Any) -> Any:
     return MulticalculoProvider(RepositorioMulticalculo(db))
 
 
-def frase_da_recusa_da_porta(exc: BaseException) -> str:
+def frase_da_recusa_da_porta(exc: BaseException, *, ramo: Optional[int] = None) -> str:
     """O que a porta recusou, em português de gente (nunca o nome da exceção)."""
-    from app.services.cotacao.pedido_da_conversa import _juntar, rotulos_do_que_falta
+    from app.services.cotacao.pedido_da_conversa import RAMO_VIDA, _juntar, perguntas_da_vida, rotulos_do_que_falta
     from app.services.multicalculo import porta as P
 
     if isinstance(exc, P.ContaRecusada):
         return exc.frase
+    if isinstance(exc, P.PedidoIncompleto) and ramo == RAMO_VIDA:
+        # SPEC-129-D (K3): a recusa da porta na vida (ex.: a comissão de vida da config fora da régua) — as perguntas
+        return "Ainda preciso saber: " + " ".join(perguntas_da_vida(list(exc.campos))) + \
+            " Me diga isso e eu preparo de novo."
     if isinstance(exc, (P.PedidoIncompleto, P.PerfilIncompleto)):
         return "Ainda falta: " + _juntar(rotulos_do_que_falta(list(exc.campos), tem_placa=True)) + \
             ". Me diga isso e eu preparo de novo."
@@ -291,22 +316,29 @@ class CotacaoDispararTool(_Cotacao):
                                     confirmacao_id=confirmacao_id, falas_do_corretor=falas)
         except CONF.ConfirmacaoRecusada as r:
             return r.frase
-        pedido = PedidoDeCalculo.de_dict(c.get("campos") or {}, ramo=int(c.get("ramo") or 31),
-                                         assumidos=c.get("assumidos") or ())
+        ramo = int(c.get("ramo") or 31)
         try:
+            # dentro do try: a confirmação de VIDA guardada com a chave ligada e disparada depois de desligá-la vira a
+            # recusa de ramo (frase de gente), nunca o "problema do nosso lado"
+            pedido = PedidoDeCalculo.de_dict(c.get("campos") or {}, ramo=ramo, assumidos=c.get("assumidos") or ())
             aberto = await _porta(db).calcular(company_id=company_id, pedido=pedido,
                                                opcoes=tuple(c.get("opcoes") or ("padrao",)),
                                                servico="cotacao", solicitante_user_id=user_id)
         except Exception as exc:  # noqa: BLE001 — nomes de exceção e campos no log; valores nunca
             logger.warning("[COTACAO] a porta recusou (%s %s)", type(exc).__name__,
                            ",".join(getattr(exc, "campos", []) or []))
-            return frase_da_recusa_da_porta(exc)
+            if type(exc).__name__ == "RamoIndisponivel":
+                return "Esse ramo eu ainda não calculo por aqui — cote direto no Agger."
+            return frase_da_recusa_da_porta(exc, ramo=ramo)
         contas = await asyncio.to_thread(WF.contas_do_pedido, db, company_id, aberto.pedido_id)
+        # SPEC-129-D (K3): o run de VIDA leva o ramo (a entrega responde no chat SEM a página do cliente — D-129D-10);
+        # o run do auto/RE é chamado como antes, byte a byte
+        de_vida = {"ramo": ramo} if ramo == PC_RAMO_VIDA else {}
         run_id = await asyncio.to_thread(WF.abrir, db, company_id=company_id, user_id=user_id,
                                          conversation_id=conversa, pedido_id=aberto.pedido_id,
                                          situacao=str(c.get("situacao") or "novo_sem_apolice"),
                                          apolice_atual=c.get("apolice_atual"),
-                                         cliente=WF.resumo_do_cliente(c.get("campos"), c.get("descricao")))
+                                         cliente=WF.resumo_do_cliente(c.get("campos"), c.get("descricao")), **de_vida)
         if not run_id:
             return ("O cálculo começou, mas não consegui acompanhá-lo para responder aqui — o resultado fica em "
                     "Cotação Rápida → Cotações.")
@@ -401,6 +433,10 @@ class CotacaoAjustarTool(_Cotacao):
                                               ajuste={"tipo": t, "valor": v, "seguradora": seguradora})
         except P.ContaRecusada as exc:
             return exc.frase
+        except P.RamoNaoSuportado:
+            # SPEC-129-D: a porta não recalcula vida nesta versão (`porta.recalcular`) — frase de gente, nunca "erro"
+            return ("Recalcular uma cotação de vida eu ainda não sei por aqui. Peça uma cotação nova com o que mudou "
+                    "(o capital, por exemplo) e eu calculo de novo.")
         except ValueError as exc:
             return _frase_do_ajuste_recusado(t, exc)
         rotulo = _rotulo_do_ajuste(t, valor)
@@ -429,8 +465,28 @@ def _frase_do_ajuste_recusado(tipo: str, exc: BaseException) -> str:
     return "Não consegui aplicar esse ajuste — me diga o valor de outro jeito (ex.: 'franquia reduzida', 'comissão 15')."
 
 
+#: SPEC-129-D (K3): a descrição da `cotacao_preparar` COM a vida (só com a chave ligada — sem ela, a de hoje)
+DESCRICAO_PREPARAR_COM_VIDA: str = (
+    "PREPARA uma cotação de seguro (carro, residencial, condomínio, empresarial ou vida individual) com o que o "
+    "corretor já disse — use quando ele pedir para cotar, calcular ou fazer o preço de um seguro. Passe só o que veio "
+    "na conversa (nunca invente; na vida, fumante, esporte radical, renda e capital só se ele disse); com a placa o "
+    "Agger acha o carro; se ele anexou a apólice, use usar_apolice_anexada=true. A ferramenta devolve o que FALTA "
+    "(pergunte tudo numa mensagem só, sem pedir o que já veio) ou um RESUMO com um confirmacao_id. Mostre o resumo e "
+    "peça um 'sim' explícito; só depois chame cotacao_disparar. Moto, frota, RCF-V, vida em grupo, acidentes pessoais "
+    "e Mobi não saem por aqui.")
+PC_RAMO_VIDA = 91          # = pedido_da_conversa.RAMO_VIDA = contrato.RAMO_VIDA (o teste confere a igualdade)
+
+
 def ferramentas_de_cotacao(*, company_id: str, supabase: Any) -> List[BaseTool]:
-    """As três ferramentas da Cotação Rápida para o agente CORE desta corretora (a costura B4 as anexa no grafo)."""
-    return [CotacaoPrepararTool(company_id=str(company_id), supabase=supabase),
+    """As três ferramentas da Cotação Rápida para o agente CORE desta corretora (a costura B4 as anexa no grafo).
+    SPEC-129-D (K3): com `MULTICALCULO_VIDA_LIGADO`, a `cotacao_preparar` leva o esquema e a descrição COM a vida."""
+    from app.services.multicalculo.pedido import vida_ligada
+
+    if vida_ligada():
+        preparar = CotacaoPrepararTool(company_id=str(company_id), supabase=supabase, args_schema=_PrepararVidaIn,
+                                       description=DESCRICAO_PREPARAR_COM_VIDA)
+    else:
+        preparar = CotacaoPrepararTool(company_id=str(company_id), supabase=supabase)
+    return [preparar,
             CotacaoDispararTool(company_id=str(company_id), supabase=supabase),
             CotacaoAjustarTool(company_id=str(company_id), supabase=supabase)]
