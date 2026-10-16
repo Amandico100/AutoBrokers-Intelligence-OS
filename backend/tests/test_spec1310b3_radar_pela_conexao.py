@@ -326,3 +326,56 @@ def test_a_semana_e_de_segunda_a_domingo():
     # CONTROLE: sem período no texto, o padrão de 90 dias continua (o guarda consegue diferir)
     p = C.entender_periodo("quais renovações eu tenho?", hoje=quinta, padrao_dias_futuro=90)
     assert p.e_padrao and p.fim == _d(2027, 1, 13), p
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# J-P2 (juiz) — só a FALTA de conexão (e a conta compartilhada) manda "conectar em Conectores"; uma falha passageira do
+# resolver (timeout) é "não completou agora, tente de novo" — mandar reconectar uma conexão que existe é mentira.
+# ---------------------------------------------------------------------------------------------------------------------
+def _resolver_que_cai(monkeypatch):
+    from app.api import infocap_connector as IC
+
+    async def _cai(*_a, **_k):
+        raise TimeoutError("o banco demorou")
+
+    monkeypatch.setattr(IC, "_resolve_infocap_connection", _cai)
+
+
+@pytest.mark.parametrize("ferramenta", ["radar", "raio_x"])
+def test_falha_passageira_do_resolver_nao_manda_conectar(arreio, monkeypatch, ferramenta):
+    _resolver_que_cai(monkeypatch)
+    if ferramenta == "radar":
+        resposta = _radar(arreio, EMPRESA_A)
+    else:
+        tool = arreio.rel.RaioXComercialTool(company_id=EMPRESA_A, supabase=arreio.banco)
+        resposta = asyncio.run(tool._arun("2025"))
+    assert resposta.startswith("RELATORIO_FALHOU"), resposta[:300]
+    assert "Conectores" not in resposta and "RELATORIO_SEM_CONEXAO" not in resposta
+    assert "tentar de novo" in resposta
+    assert arreio.publicadas == []
+
+
+def test_controle_a_conta_compartilhada_ainda_manda_conectar_com_motivo_fixo(arreio):
+    """CONTROLE do guarda acima: a recusa de conta compartilhada continua sendo "Conectores", sem nada da outra."""
+    cifra_a = next(c for c in arreio.banco.tabelas["tenant_connections"] if c["id"] == CONEXAO_A)["encrypted_secret_ref"]
+    arreio.banco.tabelas["tenant_connections"].append(
+        _conexao("22222222-0000-4000-8000-0000000000b2", EMPRESA_B, cifra_a))   # B na MESMA conta da A
+    assert _radar(arreio, EMPRESA_A).startswith("RELATORIO_PRONTO")
+    resposta = _radar(arreio, EMPRESA_B)
+    assert resposta.startswith("RELATORIO_SEM_CONEXAO"), resposta[:300]
+    assert "Personalização → Conectores" in resposta and "compartilhada" in resposta
+    assert EMPRESA_A not in resposta and LOGIN_A not in resposta
+
+
+def test_credencial_que_nao_serve_manda_refazer_a_conexao_e_falha_generica_nao():
+    """A conexão existe mas a credencial não decifra/está incompleta → "conecte/refaça" (tentar de novo falharia igual);
+    CONTROLE: uma falha qualquer do provider continua sendo "não completou agora"."""
+    from app.agents.tools import relatorios_comerciais as R
+
+    class FalhaDoProvider(Exception):
+        pass
+
+    for texto in ("a conexão não guarda credencial", "não foi possível decifrar a credencial (InvalidToken)",
+                  "a credencial da conexão está incompleta"):
+        assert R._erro_de_conexao(FalhaDoProvider(texto)).startswith("RELATORIO_SEM_CONEXAO"), texto
+    assert not R._erro_de_conexao(FalhaDoProvider("a InfoCap respondeu 502")).startswith("RELATORIO_SEM_CONEXAO")

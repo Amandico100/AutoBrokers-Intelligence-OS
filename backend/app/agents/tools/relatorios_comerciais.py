@@ -586,6 +586,14 @@ async def _fonte_da_conexao(supabase: Any, company_id: str) -> Any:
     return fonte
 
 
+#: o texto da recusa "a corretora não tem uma conexão InfoCap utilizável" do
+#: `_resolver` da SPEC-094 (`infocap_analytics_provider.py`) — a FALTA de conexão
+_SEM_CONEXAO_UTILIZAVEL = "conexão InfoCap utilizável"
+#: a conexão EXISTE mas a credencial não serve (`_credencial` do mesmo provider): "tente de novo" também mentiria —
+#: o que destrava é REFAZER a conexão (gerente, conserto da B3)
+_CREDENCIAL_QUE_NAO_SERVE = ("não guarda credencial", "decifrar a credencial", "credencial da conexão está incompleta")
+
+
 def _erro_de_conexao(exc: Exception) -> str:
     """O que o modelo deve DIZER quando a corretora não tem a fonte conectada.
 
@@ -600,14 +608,22 @@ def _erro_de_conexao(exc: Exception) -> str:
     ⛔ A recusa de conta compartilhada carrega o `company_id` da OUTRA
     corretora no texto. Ela vira um motivo FIXO aqui: nada de outro tenant
     chega ao modelo, nem identificador.
+
+    🔴 J-P2 (juiz, SPEC-131-0-B3): SÓ as duas recusas acima viram "conecte".
+    Qualquer outra exceção do resolver (um timeout do banco, a fonte fora do
+    ar) é passageira: mandar o corretor reconectar uma conexão que existe é
+    mentira — essa vira o `_erro_legivel` de sempre ("tente de novo").
+    Comparação pelo NOME da classe, sem import (a mesma regra do
+    `_erro_legivel`: caminho de erro não depende do que falhou).
     """
     nome = type(exc).__name__
-    if nome.startswith("Recusa"):
+    if nome == "RecusaDeContaCompartilhada":
         motivo = "conexão compartilhada com outra corretora (F-094-07)"
-    elif nome.startswith("Falha"):
+    elif nome == "FalhaDoProvider" and (_SEM_CONEXAO_UTILIZAVEL in str(exc)
+                                        or any(t in str(exc) for t in _CREDENCIAL_QUE_NAO_SERVE)):
         motivo = str(exc)[:200]
     else:
-        motivo = nome
+        return _erro_legivel(exc)
     return (
         "RELATORIO_SEM_CONEXAO · o relatório NÃO foi gerado e NÃO existe link. "
         "É PROIBIDO afirmar que ele está pronto ou mandar qualquer endereço. "

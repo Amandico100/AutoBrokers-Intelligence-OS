@@ -207,3 +207,46 @@ def test_o_pareado_sem_o_nove_ganha_o_nove_e_o_fixo_nao():
     # CONTROLE: um FIXO (começa em 3) não ganha 9 — o guarda consegue diferir
     banco = mundo(numero="+551133334444")
     assert PM.numero_de_trabalho(banco, A, A1) == {"e164": "+551133334444", "origem": "linha"}
+
+
+# =====================================================================================================================
+# RT-BLOCKER (red team) — o pareado só vale se for um número do BRASIL válido pela régua única (`e164_do_brasil`).
+# 📊 antes do conserto, com o motor real: +12025550123 → wa.me/5512025550123 · +4532123456 → wa.me/554532123456 (um FIXO
+# brasileiro de um estranho, DDD 45) · +55119876500 → wa.me/5555119876500 — e o digitado confirmado NÃO era usado.
+# =====================================================================================================================
+PAREADOS_INVALIDOS = [
+    ("outro_pais_eua", "+12025550123"),      # 💭 11 dígitos de outro país
+    ("outro_pais_10", "+4532123456"),        # 💭 10 dígitos que o "55" do wa.me viraria um fixo do DDD 45
+    ("brasil_curto", "+55119876500"),        # 💭 +55 com 9 dígitos nacionais — não é número nenhum
+]
+
+
+@pytest.mark.parametrize("caso,pareado", PAREADOS_INVALIDOS)
+def test_pareado_que_nao_e_numero_do_brasil_valido_cai_no_digitado(caso, pareado):
+    banco = mundo(numero=pareado)
+    assert PM.numero_de_trabalho(banco, A, A1) == {"e164": X, "origem": "digitado"}, caso
+    assert PROP.membro_para_o_cliente(banco, A, A1)["whatsapp"] == _dig(X)
+    assert _situacao(banco, A)[A1]["whatsapp_trabalho_origem"] == "digitado"
+    # sem digitado confirmado → NENHUM número (nunca o pareado inválido)
+    sem_digitado = mundo(numero=pareado, digitado=None, confirmado=False)
+    assert PM.numero_de_trabalho(sem_digitado, A, A1) == {"e164": None, "origem": None}, caso
+    assert "whatsapp" not in PROP.membro_para_o_cliente(sem_digitado, A, A1)
+    assert _situacao(sem_digitado, A)[A1]["whatsapp_trabalho_confirmado"] is False
+
+
+def test_controle_o_pareado_celular_do_brasil_valido_continua_valendo():
+    """A LINHA DE CONTROLE do guarda acima: um celular BR válido (com e sem o '+') continua sendo o número (§9.3)."""
+    for numero in (Y, Y.lstrip("+")):
+        banco = mundo(numero=numero)
+        assert PM.numero_de_trabalho(banco, A, A1) == {"e164": Y, "origem": "linha"}, numero
+        assert PROP.membro_para_o_cliente(banco, A, A1)["whatsapp"] == _dig(Y)
+
+
+@pytest.mark.parametrize("caso,pareado", PAREADOS_INVALIDOS)
+def test_o_quero_renovar_servido_nunca_abre_o_pareado_invalido(monkeypatch, caso, pareado):
+    m = REN.mundo(monkeypatch)
+    m.banco.semear("integrations", _linha(m.beta, REN.DONO, numero=pareado))
+    r = REN._publicar(m)
+    dock = REN._dock(REN._servido(m, r["token"]))
+    assert f"https://wa.me/{REN.WHATS_DONO}?text=" in dock, caso
+    assert _dig(pareado)[-8:] not in dock, caso

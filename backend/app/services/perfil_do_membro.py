@@ -16,10 +16,11 @@ governa a conversa, não a posse do número). O "Quero renovar" (`proposta.membr
 Situação da equipe leem ESTE ponto. ⛔ A identidade do atalho central (`atalho.verificacao`, `atalho.envio`) continua no
 número DIGITADO e verificado (D-1310B3-05) — outra porta, outra prova; ela não lê daqui.
 
-D-131-41: o "Meu WhatsApp de trabalho" é SÓ o número, confirmado pela própria pessoa, gravado no MEMBRO
-(`company_members.whatsapp_trabalho_e164` + `whatsapp_trabalho_confirmado_em`, por corretora). ⛔ Nada em
-`integrations`, nenhum pareamento: o número de ATENDIMENTO da corretora e o do QUEM COBRA MENOS são outros e não mudam.
-Só a própria pessoa grava o dela (nem o admin grava o número de outra pessoa).
+D-131-41: o número DIGITADO é confirmado pela própria pessoa e gravado no MEMBRO (`company_members.whatsapp_trabalho_e164`
++ `whatsapp_trabalho_confirmado_em`, por corretora); desde a SPEC-131-0-B3 ele é a RESERVA — o WhatsApp de trabalho
+efetivo é o PAREADO conectado (lido de `integrations`, só leitura aqui) e, sem ele, o digitado confirmado. Os dois passam
+pela mesma régua (`e164_do_brasil`). O número de ATENDIMENTO da corretora e o do QUEM COBRA MENOS são outros e não mudam.
+Só a própria pessoa grava o digitado dela (nem o admin grava o número de outra pessoa).
 SPEC-132-C (D-132C-02): a VERIFICAÇÃO por posse (`whatsapp_trabalho_verificado_em`) é escrita só por
 `atalho.verificacao.consumir_codigo`; aqui ela é LIDA e APAGADA quando o número muda ou sai.
 D-131-08: a ausência aponta OUTRA pessoa ATIVA da MESMA corretora (`membro_ausencias`, CHECKs no banco também). O cálculo
@@ -278,10 +279,13 @@ def _pareado_conectado(db: Any, cid: str, uid: str) -> Optional[str]:
     # 📊 15/10: o pareado vem do JID do WhatsApp (13 caracteres na única linha de produção — sem o 9 do celular). D-1310B3-10:
     # celular do Brasil no formato antigo (55 + DDD + 8 dígitos começando em 6–9) ganha o 9 — o número OFICIAL, o mesmo que a
     # pessoa digitaria (o wa.me abre os dois; a página do cliente e a comparação com o digitado ficam certas). Fixo do Brasil
-    # (começa em 2–5) e outro país: como está — NÃO passa pela régua do digitado (`e164_do_brasil`).
+    # (começa em 2–5): como está.
     if len(digitos) == 12 and digitos.startswith("55") and digitos[4] in "6789":
         digitos = digitos[:4] + "9" + digitos[4:]
-    return f"+{digitos}" if 10 <= len(digitos) <= 15 else None
+    # 🔴 RT-BLOCKER: depois da regra do 9, o pareado passa pela MESMA régua do digitado (`e164_do_brasil`). 📊 Sem ela, um
+    # pareado de outro país ou curto saía como estava e o `proposta._digitos_de_whatsapp` punha "55" na frente de 10–11
+    # dígitos: +4532123456 virava wa.me/554532123456 — o fixo de um estranho (DDD 45). Inválido → None: vale o digitado.
+    return e164_do_brasil(f"+{digitos}") if digitos else None
 
 
 def efetivo_de(pareado: Optional[str], digitado: Optional[str], confirmado_em: Any) -> Dict[str, Optional[str]]:
@@ -459,7 +463,8 @@ def ler_perfil(db: Any, company_id: Any, user_id: Any, *, hoje: Optional[date] =
 
 def situacao_da_equipe(db: Any, company_id: Any, *, hoje: Optional[date] = None) -> Dict[str, Any]:
     """A coluna SITUAÇÃO de cada pessoa ativa: o Agger dela (o retrato do serviço único das contas, sem login nem
-    senha), o WhatsApp de trabalho confirmado (sim/não — o NÚMERO não sai daqui) e a ausência ativa hoje."""
+    senha), se há WhatsApp de trabalho efetivo (sim/não e a origem: o pareado conectado, senão o digitado confirmado —
+    o NÚMERO não sai daqui) e a ausência ativa hoje."""
     from portal_worker.multicalculo import conta_do_robo as CR
 
     cid = _uuid(company_id, "company_id")
