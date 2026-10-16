@@ -27,9 +27,14 @@ RAMO_CONDOMINIO = 16
 RAMO_RESIDENCIAL = 2
 RAMO_EMPRESARIAL = 18
 RAMOS_RE: Tuple[int, ...] = (RAMO_CONDOMINIO, RAMO_RESIDENCIAL, RAMO_EMPRESARIAL)
-RAMOS: Tuple[int, ...] = (RAMO_AUTO,) + RAMOS_RE
+# SPEC-129-D — a VIDA INDIVIDUAL. 🔴 Por que 91 (§9.5): 📊 o `cotacao.ramo` do corpo GRAVADO ao vivo
+# (tests/fixtures/agger_ramos/vida_calcularV2_corpo.json, BLOCO 0 M6 16/10) e a rota do formulário gravado
+# (vida_formulario.json: /cotacao/vida/formulario). FORA de RAMOS_RE: a vida não tem risco/endereço do risco, as coberturas
+# são CAPITAIS de pessoa e a profissão é por seguradora — nenhum caminho do RE serve a ela.
+RAMO_VIDA = 91
+RAMOS: Tuple[int, ...] = (RAMO_AUTO,) + RAMOS_RE + (RAMO_VIDA,)
 NOME_DO_RAMO = {RAMO_AUTO: "auto", RAMO_CONDOMINIO: "condominio", RAMO_RESIDENCIAL: "residencial",
-                RAMO_EMPRESARIAL: "empresarial"}
+                RAMO_EMPRESARIAL: "empresarial", RAMO_VIDA: "vida"}
 
 # --------------------------------------------------------------------------
 # As famílias de resposta de uma seguradora (E10)
@@ -83,6 +88,9 @@ class Ajuste:
             raise ValueError(f"tipo de ajuste desconhecido: {self.tipo!r}")
         if self.ramo in RAMOS_RE and self.tipo not in TIPOS_DE_AJUSTE_RE:
             raise ValueError(f"ajuste {self.tipo!r} não existe no ramo {self.ramo}")
+        if self.ramo == RAMO_VIDA:
+            # SPEC-129-D: o recálculo de vida não existe nesta versão (a porta recusa antes; aqui, a 2ª trava)
+            raise ValueError(f"ajuste {self.tipo!r} não existe no ramo {self.ramo} nesta versão")
 
 
 # --------------------------------------------------------------------------
@@ -497,6 +505,12 @@ SEGURADORAS_DO_RAMO: dict = {
     RAMO_CONDOMINIO: (1, 4, 5, 8, 11, 19, 32, 35),
     RAMO_RESIDENCIAL: (1, 3, 4, 5, 7, 8, 11, 12, 19, 24, 27, 31, 33, 43, 49),
     RAMO_EMPRESARIAL: (1, 3, 4, 5, 7, 8, 11, 12, 13, 19, 24, 32, 35, 43),
+    # SPEC-129-D — 📊 `GET pdocs/app/seguradoraStatus/` ao vivo (BLOCO 0 M6, 16/10): `vidaStatus == 1` em 13 — Bradesco 1 ·
+    # Mapfre 3 · HDI 4 · Allianz 5 · Zurich 7 · Porto 8 · Tokio 11 · Liberty Site 12 · SulAmérica 17 · Icatu 25 · Unimed 33
+    # · MetLife 34 · Centauro 40 (vida_formulario.json `seguradoras.global_vida_ou_ap`). É o filtro GLOBAL (o mesmo para
+    # toda corretora); ∩ as ativas da conta. CONTROLE: as 8 da tela de vida da conta gravada (Allianz, Bradesco, HDI,
+    # Mapfre, Porto, Tokio, Yelum, Zurich) são exatamente as 13 ∩ as ativas daquela conta.
+    RAMO_VIDA: (1, 3, 4, 5, 7, 8, 11, 12, 17, 25, 33, 34, 40),
 }
 SEGURADORAS_FORA_DO_RE: Tuple[int, ...] = (10, 22)   # Azul · Aliro (getSeguradorasStatus)
 # Os campos de `seguradorasRenovacao` que dizem se a seguradora anterior serve no ramo (📊 lista branca
@@ -511,6 +525,8 @@ def campos_do_pedido(ramo: int) -> dict:
         return CAMPOS_DO_PEDIDO_AUTO
     if ramo in CAMPOS_DO_PEDIDO_RE:
         return CAMPOS_DO_PEDIDO_RE[ramo]
+    if ramo == RAMO_VIDA:
+        return CAMPOS_DO_PEDIDO_VIDA
     raise ValueError(f"ramo {ramo} não implementado (há: {', '.join(str(r) for r in RAMOS)})")
 
 
@@ -607,6 +623,160 @@ class PedidoDeCalculoRE:
         return {"ramo": self.ramo, "segurado": dict(self.segurado), "risco": dict(self.risco),
                 "renovacao": dict(self.renovacao or {}), "comissao_desconto": dict(self.comissao_desconto or {}),
                 "seguradoras": list(self.seguradoras), "assumidos": [], "coberturas": {}, "pacotes": {}}
+
+
+# ======================================================================================================================
+# 🔴 O CONTRATO V1 ↔ V2 DA SPEC-129-D — o pedido de VIDA INDIVIDUAL (91)
+# ======================================================================================================================
+# O dict que a porta (V2, `app/services/multicalculo/pedido.PedidoDeCalculo.para_dict`) entrega ao robô:
+#     {"ramo": 91,
+#      "segurado": {cpf, nome, data_nascimento (AAAA-MM-DD), sexo ("Feminino"/"Masculino"), estado_civil (rótulo da tela),
+#                   cep, profissao_texto, profissao_codigo_infocap?},
+#      "vida":     {capital_morte, coberturas_extras {código: R$}?, fumante (bool), renda_mensal, esporte_radical (bool),
+#                   vigencia_inicio (AAAA-MM-DD), origem},
+#      "comissao_desconto": {comissao_percentual?, agenciamento_percentual?},   # ausentes = os da conta, por seguradora
+#      "seguradoras": [códigos], "assumidos": [...], "coberturas": {}, "pacotes": {}}
+# As COBERTURAS de cada opção NÃO moram no pedido: a porta as resolve (`presets.coberturas_vida`) e o robô as põe em
+# `cotacao.configuracoes` (`presets.configuracoes_de_vida`) — 📊 0 chaves de cobertura nos itens do corpo gravado.
+# 🔴 Os NOMES abaixo são os do app (o guarda `test_o_catalogo_de_vida_e_o_do_contrato…` da V2 confere). Os caminhos são
+# os do corpo GRAVADO (vida_calcularV2_corpo.json) e do formulário (vida_formulario.json `codigos_do_js.caminhos`).
+# `obrigatorio` = os 12 da TELA (📊 11 com `*` no DOM + a profissão, "Busca por profissão*", que é por seguradora).
+# ⛔ `None` em fumante/renda/esporte = FALTA (D-129D-05): nunca um padrão — declaração inexata pode fazer perder a
+# garantia (Código Civil, art. 766).
+CAMPOS_DO_PEDIDO_VIDA: dict = {
+    "segurado": (
+        ("cpf", "cotacao.segurado.cpfCnpj", True),
+        ("nome", "cotacao.segurado.nome", True),
+        ("data_nascimento", "cotacao.segurado.dataNasc", True),
+        ("sexo", "cotacao.segurado.sexo", True),
+        ("estado_civil", "cotacao.segurado.estadoCivil", True),
+        ("cep", "cotacao.segurado.cep", True),
+        # 📊 POR SEGURADORA: a busca `getOptionsBySegFull?executionType=9` com este TEXTO; o código de cada seguradora
+        # vai em `calculos[].valoresAjusteSeguradora.profissao` (6 de 7 itens gravados; o segurado NÃO leva profissão)
+        ("profissao_texto", "cotacao.calculos[].valoresAjusteSeguradora.profissao", True),
+        # o código de CBO da InfoCap não é o do Agger (cada seguradora tem o seu, 📊 HDI 10183 × Porto 3023): fica fora
+        ("profissao_codigo_infocap", "(não vai ao corpo)", False),
+    ),
+    "vida": (
+        ("capital_morte", "cotacao.configuracoes.isAppMorte", True),              # 📊 assistMorte → isAppMorte
+        ("coberturas_extras", "cotacao.configuracoes.<chave de presets.CHAVES_DE_COBERTURA_VIDA>", False),
+        ("fumante", "cotacao.configuracoes.fumante", True),                       # 📊 isFumante → configuracoes.fumante
+        ("renda_mensal", "cotacao.segurado.rendaMensal", True),                   # 📊 número (8000)
+        ("esporte_radical", "cotacao.configuracoes.praticaEsporteRadical", True), # 📊 0 = "Não contratado"
+        ("vigencia_inicio", "cotacao.vigenciaIni", True),
+        ("origem", "(não vai ao corpo)", False),
+    ),
+    "comissao_desconto": (
+        # 📊 a tela EXIGE comissão > 0 em toda seguradora marcada ("O campo Comissão é obrigatório" com 0); ausente no
+        # pedido = a `percComissaoVida` da seguradora NA CONTA — e se ela for 0, a seguradora sai (nunca um número
+        # inventado; 📊 a conta gravada tem 0 nas 8)
+        ("comissao_percentual", "cotacao.calculos[].percComissao", False),
+        # 📊 "Agenciamento %" da tela vai em `calculos[].percAgenciamento` (padrão da tela 0); ausente = a
+        # `percAgenciamentoVida` da conta, ou 0 (o padrão da tela) quando a conta não tem a chave (📊 HDI)
+        ("agenciamento_percentual", "cotacao.calculos[].percAgenciamento", False),
+    ),
+}
+
+# Os CÓDIGOS de vida — texto (normalizado: minúscula, sem acento, sem "(a)", espaços colapsados) → código. 🔴 SÓ os do JS
+# da tela, rótulo a rótulo (📊 vida_formulario.json `codigos_do_js`, lido do bundle do app em 16/10), e o corpo gravado
+# confirma a FORMA: `estadoCivil` 2 (NÚMERO) para "Casado(a)" e `sexo` "M" (TEXTO) na entrada 3.
+# ⚠️ NÃO são ordinais "por acaso": Separado(a) 3 e Divorciado(a) 4 são opções DISTINTAS da tela — não junte.
+CODIGOS_MEDIDOS_VIDA: dict = {
+    "sexo": {"f": "F", "feminino": "F", "m": "M", "masculino": "M"},
+    "estado_civil": {"solteiro": 1, "solteira": 1, "casado": 2, "casada": 2, "separado": 3, "separada": 3,
+                     "divorciado": 4, "divorciada": 4, "viuvo": 5, "viuva": 5, "uniao estavel": 6},
+}
+CODIGOS_VALIDOS_VIDA: dict = {k: frozenset(v.values()) for k, v in CODIGOS_MEDIDOS_VIDA.items()}
+#: as famílias de "quem saiu" da vida antes de sair o cálculo (o robô narra, nunca some calada)
+FORA_POR_PROFISSAO = "profissao"
+FORA_POR_COMISSAO = "comissao"
+MOTIVO_SEM_PROFISSAO = "nenhuma profissão da lista desta seguradora é igual à do pedido (busca do Agger)"
+MOTIVO_SEM_COMISSAO_DE_VIDA = "a comissão de vida desta seguradora na conta do Agger é 0 e o pedido não trouxe outra"
+MOTIVO_DE_FORA_DA_VIDA = {FORA_POR_PROFISSAO: MOTIVO_SEM_PROFISSAO, FORA_POR_COMISSAO: MOTIVO_SEM_COMISSAO_DE_VIDA}
+
+
+def _chave_de_vida(texto: Any) -> str:
+    import re as _re
+    import unicodedata as _u
+
+    s = "".join(c for c in _u.normalize("NFKD", str(texto)) if not _u.combining(c)).lower()
+    s = _re.sub(r"\((a|o)\)", "", s)
+    return _re.sub(r"\s+", " ", s).strip()
+
+
+def codigo_de_vida(campo: str, valor: Any) -> Any:
+    """O código do Agger de um campo de lista de vida (`sexo`, `estado_civil`), ou None. Aceita o rótulo da tela, a
+    palavra, ou o PRÓPRIO código medido; o resto é None (o robô recusa — nunca um código por aproximação)."""
+    validos = CODIGOS_VALIDOS_VIDA[campo]
+    if isinstance(valor, bool) or valor is None:
+        return None
+    if valor in validos:
+        return valor
+    if isinstance(valor, str) and valor.strip().isdigit() and int(valor.strip()) in validos:
+        return int(valor.strip())
+    return CODIGOS_MEDIDOS_VIDA[campo].get(_chave_de_vida(valor)) if isinstance(valor, str) else None
+
+
+def _numero_vida(v: Any, *, zero: bool = False) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and (v >= 0 if zero else v > 0)
+
+
+def problemas_do_pedido_vida(pedido: Any) -> Tuple[str, ...]:
+    """O que falta ou não tem código num pedido de vida (o dict do robô), como "grupo.campo[:motivo]" — NOMES, nunca
+    valores. Vazio = o robô pode montar o corpo."""
+    import re as _re
+
+    from .presets import CHAVES_DE_COBERTURA_VIDA
+
+    if not isinstance(pedido, dict):
+        return ("pedido",)
+    if pedido.get("ramo") != RAMO_VIDA:
+        return ("ramo",)
+    saida = []
+    for grupo, campos in CAMPOS_DO_PEDIDO_VIDA.items():
+        dados = pedido.get(grupo) if isinstance(pedido.get(grupo), dict) else {}
+        conhecidos = {n for n, _c, _o in campos}
+        saida += [f"{grupo}.{k}:desconhecido" for k in dados if k not in conhecidos]
+        for nome, _caminho, obrigatorio in campos:
+            v = dados.get(nome)
+            if _vazio_re(v):
+                if obrigatorio:
+                    saida.append(f"{grupo}.{nome}")
+                continue
+            ok = True
+            if nome in ("cpf", "cep"):
+                ok = isinstance(v, str) and v.isdigit() and len(v) == (11 if nome == "cpf" else 8)
+            elif nome in ("data_nascimento", "vigencia_inicio"):
+                ok = isinstance(v, str) and bool(_re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))
+            elif nome in ("sexo", "estado_civil"):
+                if codigo_de_vida(nome, v) is None:
+                    saida.append(f"{grupo}.{nome}:codigo")
+                continue
+            elif nome in ("fumante", "esporte_radical"):
+                if not isinstance(v, bool):
+                    saida.append(f"{grupo}.{nome}:sim_nao")
+                continue
+            elif nome in ("capital_morte", "comissao_percentual"):
+                ok = _numero_vida(v)
+            elif nome in ("renda_mensal", "agenciamento_percentual"):
+                ok = _numero_vida(v, zero=True)
+            elif nome == "coberturas_extras":
+                if not isinstance(v, dict):
+                    saida.append(f"{grupo}.{nome}:valor")
+                    continue
+                for k, x in v.items():
+                    if k not in CHAVES_DE_COBERTURA_VIDA:
+                        saida.append(f"{grupo}.{nome}.{k}:desconhecido")
+                    elif not _numero_vida(x, zero=True):
+                        saida.append(f"{grupo}.{nome}.{k}:valor")
+                continue
+            elif nome == "origem":
+                ok = v in ("renovacao", "cotacao")
+            elif nome in ("nome", "profissao_texto", "profissao_codigo_infocap"):
+                ok = isinstance(v, str)
+            if not ok:
+                saida.append(f"{grupo}.{nome}:valor")
+    return tuple(saida)
 
 
 # --------------------------------------------------------------------------

@@ -35,12 +35,14 @@ from .contrato import (
     CAMPO_DO_RAMO_NA_RENOVACAO, CAMPOS_DO_PEDIDO_RE, CHAVES_PROIBIDAS_NA_OFERTA, DADO, RAMO_AUTO, RAMO_CONDOMINIO,
     RAMO_EMPRESARIAL, RAMO_RESIDENCIAL, RAMOS_RE, SEGURADORAS_DO_RAMO, SEGURADORAS_FORA_DO_RE, SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento,
     MOTIVO_SEM_ATIVIDADE, SEM_ATIVIDADE, RodadaDoCalculo, chave_no_corpo, problemas_do_pedido_re, tipo_do_campo_re,
+    FORA_POR_COMISSAO, FORA_POR_PROFISSAO, MOTIVO_DE_FORA_DA_VIDA, RAMO_VIDA, codigo_de_vida, problemas_do_pedido_vida,
 )
 from .leitor_agger import (
     LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, endpoint_de_calculos, eventos_entre, ler_resposta,
     ler_rodada,
 )
-from .presets import CHAVE_DA_BASICA, CHAVES_DE_COBERTURA, CHAVES_DE_COBERTURA_RE, CHAVES_DO_AJUSTE_RE
+from .presets import (CAPITAL_DA_VIDA, CHAVE_DA_BASICA, CHAVES_DE_COBERTURA, CHAVES_DE_COBERTURA_RE,
+                      CHAVES_DO_AJUSTE_RE, configuracoes_de_vida)
 
 logger = logging.getLogger("portal_worker.multicalculo")
 
@@ -55,9 +57,13 @@ LISTA_CALCULOS = list(LISTA_BRANCA_POR_ENDPOINT["cotacao_calculos"])
 LISTA_CALCULOS_RE = list(LISTA_BRANCA_POR_ENDPOINT["cotacao_calculos_re"])
 LISTA_RESPOSTA = list(LISTA_BRANCA_POR_ENDPOINT["calcularV2_resposta"])
 LISTA_ATIVIDADES = list(LISTA_BRANCA_POR_ENDPOINT["atividades_por_seguradora"])
+LISTA_CALCULOS_VIDA = list(LISTA_BRANCA_POR_ENDPOINT["cotacao_calculos_vida"])
+LISTA_PROFISSOES = list(LISTA_BRANCA_POR_ENDPOINT["profissoes_por_seguradora"])
 
 
 def lista_de_calculos(ramo: int) -> List[str]:
+    if ramo == RAMO_VIDA:
+        return LISTA_CALCULOS_VIDA
     return LISTA_CALCULOS if ramo == RAMO_AUTO else LISTA_CALCULOS_RE
 # O que a página troca por MARCA. As de PDF são conferidas à letra (a URL do PDF é segredo: leva assinatura/caminho
 # do arquivo). O nº de cálculo da seguradora não é segredo — o JS o marca por economia; aqui só se exige que não
@@ -88,6 +94,13 @@ MOTIVOS_LEGIVEIS = {
     # o código vai NA FRENTE de propósito: a madrugada lê a cabeça "veiculo_…" como recusa DEFINITIVA (não recalcula
     # toda noite) — moto é SPEC própria (D-131-28)
     "veiculo_moto": "veiculo_moto — a placa é de uma moto e o formulário de carro do Agger não cota moto",
+    # SPEC-129-D — o CÓDIGO vai NA FRENTE (como o da moto): a madrugada (V2) lê a cabeça e pergunta ao comercial
+    # (`profissao_sem_casamento` → falta_dado `segurado.profissao_texto`); nenhum dos dois se resolve recalculando
+    "profissao_sem_casamento": "profissao_sem_casamento — nenhuma seguradora de vida tem uma profissão igual à do pedido",
+    "comissao_de_vida_nao_configurada": "comissao_de_vida_nao_configurada — a comissão de vida é 0 na conta do Agger "
+                                        "e o pedido não trouxe outra",
+    "profissao_busca_falhou": "profissao_busca_falhou — a busca de profissão do Agger não respondeu",
+    "recalculo_de_vida": "o recálculo de vida não existe nesta versão",
 }
 
 
@@ -108,6 +121,8 @@ class DisparoRecusado(Exception):
     # costura 129-C: no empresarial em que NENHUMA seguradora casou a atividade, quem saiu: ((código, nome), ...) — o
     # motor as grava como `SEM_ATIVIDADE_COMPATIVEL` antes de encerrar (nunca somem caladas)
     sem_atividade: Tuple[Tuple[int, str], ...] = ()
+    # SPEC-129-D: na vida em que NENHUMA seguradora ficou, quem saiu e por quê: ((código, nome, "profissao"|"comissao"), …)
+    fora_da_vida: Tuple[Tuple[int, str, str], ...] = ()
 
     def __init__(self, motivo: Any = "") -> None:
         self.motivo = motivo_curto(motivo)
@@ -149,6 +164,10 @@ class Disparo:
     # `multicalculo_pedidos.ramo` (costura 129-C, motor._trabalho); `sem_atividade` o motor já gravou no checkpoint.
     ramo: int = RAMO_AUTO
     sem_atividade: Tuple[Tuple[int, str], ...] = ()
+    # SPEC-129-D: na vida, as seguradoras que SAÍRAM antes do POST — sem profissão igual, ou sem comissão de vida:
+    # ((código, nome, "profissao"|"comissao"), …) — `acompanhar` as narra uma vez, com o motivo de cada uma.
+    # ⚠️ Fora de `sem_atividade` de propósito: o motor grava aquela lista com o motivo da ATIVIDADE (motor._gravar_sem_atividade)
+    fora_da_vida: Tuple[Tuple[int, str, str], ...] = ()
 
 
 # ======================================================================================================================
@@ -299,6 +318,8 @@ def cotacao_do_pedido(pedido: Dict[str, Any], *, agora: Optional[datetime] = Non
     ramo = pedido.get("ramo", RAMO_AUTO) if isinstance(pedido, dict) else RAMO_AUTO
     if ramo in (None, RAMO_AUTO):
         return _cotacao_do_pedido_auto(pedido, agora=agora)
+    if ramo == RAMO_VIDA:
+        return _cotacao_do_pedido_vida(pedido, coberturas or {}, agora=agora)
     if ramo not in RAMOS_RE:
         raise DisparoRecusado(f"ramo {ramo} não implementado")
     return _cotacao_do_pedido_re(pedido, int(ramo), coberturas or {}, agora=agora)
@@ -469,6 +490,71 @@ def _cotacao_do_pedido_re(pedido: Dict[str, Any], ramo: int, coberturas: Dict[st
             "pavimento": risco.get("pavimento")}
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D — a montagem da VIDA (91). 🔴 A FORMA é a do corpo GRAVADO ao vivo (📊 vida_calcularV2_corpo.json, BLOCO 0
+# M6 16/10): a `cotacao` tem EXATAMENTE configuracoes · segurado · calculos · tipo · integracaoInfo · ramo · vigenciaIni ·
+# correlationId (sem vigenciaFim, sem results/loaded); o `segurado` não leva profissão; fumante e esporte moram em
+# `configuracoes`; a renda é NÚMERO no segurado.
+# ----------------------------------------------------------------------------------------------------------------------
+#: 📊 os restos de RE que a tela de vida manda NULOS em `configuracoes` (o corpo gravado tem os 4): vão iguais
+_RESTOS_DE_RE_NA_VIDA = ("imovelCep", "imovelAlarme", "rouboCondomino", "sisProtecaoIncendRoubo")
+#: 📊 "Pratica esportes radicais": 0 = "Não contratado" (o padrão da tela; o corpo gravado leva 0). 🔴 Os outros 49 são
+#: ESPORTES (o `value` de cada um) — o pedido diz só sim/não: "sim" não tem código (o robô recusa; nunca um esporte por palpite)
+ESPORTE_RADICAL_NAO = 0
+
+
+def _numero_do_corpo(v: Any) -> Any:
+    """R$ como o corpo gravado leva (📊 `rendaMensal 8000`: inteiro quando é inteiro)."""
+    f = float(v)
+    return int(f) if f.is_integer() else round(f, 2)
+
+
+def _cotacao_do_pedido_vida(pedido: Dict[str, Any], coberturas: Dict[str, Any], *,
+                            agora: Optional[datetime] = None) -> Dict[str, Any]:
+    """PURA. A cotação de vida SEM credencial: a página completa o endereço (pelo CEP) e o `calculos[]` (config da conta
+    + comissão + profissão por seguradora). Levanta `DisparoRecusado` antes de qualquer rede — com NOMES, nunca valores."""
+    problemas = problemas_do_pedido_vida(pedido)
+    if problemas:
+        raise DisparoRecusado("pedido sem: " + ", ".join(problemas))
+    seg = dict(pedido.get("segurado") or {})
+    vida = dict(pedido.get("vida") or {})
+    com = dict(pedido.get("comissao_desconto") or {})
+    if vida["esporte_radical"] is not False:
+        raise DisparoRecusado("pedido sem: vida.esporte_radical:qual_esporte — o Agger pede QUAL esporte radical")
+    capital = vida["capital_morte"]
+    cob = dict(coberturas or {})
+    # 🔴 o capital é SEMPRE o do pedido (a porta já o força): uma opção com outro capital é recusada, nunca "corrigida"
+    if cob.get(CAPITAL_DA_VIDA, capital) != capital:
+        raise DisparoRecusado("coberturas: o capital da opção difere do capital do pedido")
+    cob[CAPITAL_DA_VIDA] = capital
+    try:
+        coberturas_cfg = configuracoes_de_vida(cob)
+    except ValueError as e:
+        raise DisparoRecusado(f"coberturas: {e}") from None
+    configuracoes: Dict[str, Any] = {k: None for k in _RESTOS_DE_RE_NA_VIDA}
+    configuracoes["fumante"] = vida["fumante"]                       # 📊 bool (False no corpo gravado)
+    configuracoes["praticaEsporteRadical"] = ESPORTE_RADICAL_NAO
+    configuracoes.update(coberturas_cfg)
+    segurado: Dict[str, Any] = {
+        "nome": seg["nome"], "cpfCnpj": re.sub(r"\D", "", str(seg["cpf"])),
+        "estadoCivil": codigo_de_vida("estado_civil", seg["estado_civil"]),   # 📊 NÚMERO (2 = Casado(a))
+        "dataNasc": _iso(seg["data_nascimento"]),
+        "sexo": codigo_de_vida("sexo", seg["sexo"]),                        # 📊 "M"/"F"
+        "fone1": "", "cep": re.sub(r"\D", "", str(seg["cep"])), "email": "",
+        # a página completa pelo CEP (`calculo/cep`), como a tela (📊 uf/cidade/bairro/logradouro "do CEP" no gravado)
+        "uf": None, "cidade": None, "bairro": None, "logradouro": None,
+        "fone": "", "altura": None, "peso": None,
+        "rendaMensal": _numero_do_corpo(vida["renda_mensal"]),
+    }
+    cot: Dict[str, Any] = {
+        "configuracoes": configuracoes, "segurado": segurado, "tipo": 5, "integracaoInfo": 1, "ramo": RAMO_VIDA,
+        "vigenciaIni": _iso(vida["vigencia_inicio"]), "correlationId": correlation_id(),
+    }
+    return {"cotacao": cot, "seguradoras": [int(s) for s in (pedido.get("seguradoras") or [])],
+            "comissao": com.get("comissao_percentual"), "agenciamento": com.get("agenciamento_percentual"),
+            "ramo": RAMO_VIDA, "profissao": str(seg["profissao_texto"])}
+
+
 # ======================================================================================================================
 # O JavaScript (roda em `Sessao.avaliar`; `window.__abM` = montador.js)
 # ======================================================================================================================
@@ -495,6 +581,7 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
     if (a.versao_base != null) v = vs.find(x => x && x.versao === a.versao_base);
     else v = vs.reduce((m, x) => (x && (!m || x.versao > m.versao)) ? x : m, null);
     if (!v) return {erro: 'versao_base_inexistente'};
+    if (a.da_versao && v.ramo === 91) return {erro: 'recalculo_de_vida'};   // SPEC-129-D: não existe nesta versão
     if (a.da_versao) {           // RECÁLCULO: a cotação da versão-base (sem os campos do servidor)
       const FORA = new Set(['aplicacaoId', 'corretoraId', 'customerId', 'customerIp', 'customerName', 'dataCriacao',
         'createdAt', 'updatedAt', 'usuario', 'usuarioId', 'status', 'textoBusca', 'ofertasCruzadas', 'versaoAtual',
@@ -510,7 +597,27 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
            negocio: v.negocioId == null ? null : String(v.negocioId), versao: v.id == null ? null : String(v.id)};
   }
   let semAtividade = [];
-  if (!a.da_versao && a.ramo && a.ramo !== 31) {
+  let foraVida = [];
+  if (!a.da_versao && a.ramo === 91) {
+    // SPEC-129-D — VIDA: o CEP completa só o que falta do endereço do SEGURADO (📊 uf/cidade/bairro/logradouro no gravado)
+    const sg = cot.segurado;
+    if (sg.cep && (!sg.logradouro || !sg.cidade || !sg.bairro || !sg.uf)) {
+      const [sc, ce] = await pegar(a.pdocs + '/calculo/cep?cep=' + encodeURIComponent(sg.cep), a.tPdocs);
+      if (sc === 200 && ce) for (const k of ['uf', 'cidade', 'bairro', 'logradouro']) if (!sg[k] && ce[k] != null) sg[k] = ce[k];
+    }
+    const r = M.montarCalculosVida(segs, {status: a.status, fora: a.fora_do_re, comissao: a.comissao,
+                                          agenciamento: a.agenciamento, profissoes: a.profissoes, comBloco: a.com_bloco});
+    let calc = r.calculos, semP = r.semProfissao, semC = r.semComissao;
+    if (a.seguradoras && a.seguradoras.length) {
+      const so = x => a.seguradoras.includes(x[0]);
+      calc = calc.filter(c => a.seguradoras.includes(c.seguradora)); semP = semP.filter(so); semC = semC.filter(so);
+    }
+    cot.calculos = calc;
+    foraVida = semC.map(x => [x[0], x[1], 'comissao']).concat(semP.map(x => [x[0], x[1], 'profissao']));
+    // a comissão é conferida ANTES da profissão: sobrou alguém com comissão e sem profissão → o que falta é a profissão
+    if (!calc.length && (semP.length || semC.length))
+      return {erro: semP.length ? 'profissao_sem_casamento' : 'comissao_de_vida_nao_configurada', fora_vida: foraVida};
+  } else if (!a.da_versao && a.ramo && a.ramo !== 31) {
     // SPEC-129-C — RE: sem placa/FIPE; o CEP completa só o que o pedido não trouxe do ENDEREÇO DO RISCO
     const cfg = cot.configuracoes;
     if (cfg.imovelCep && (!cfg.imovelLogradouro || !cfg.imovelCidade || !cfg.imovelBairro || !cfg.imovelUF)) {
@@ -579,7 +686,15 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
   if (!cot.calculos || !cot.calculos.length) return {erro: 'nenhuma_seguradora'};
   window.__abCorpo = {cotacao: cot, negocio: negocio, correlationId: cot.correlationId};
   return {ok: true, seguradoras: cot.calculos.map(c => c.seguradora), ids: ids, ramo: cot.ramo == null ? 31 : cot.ramo,
-          sem_atividade: semAtividade};
+          sem_atividade: semAtividade, fora_vida: foraVida};
+}"""
+
+# SPEC-129-D: a PROFISSÃO de vida, POR SEGURADORA — o MESMO endpoint que a tela chama na "Busca por profissão" (📊 BLOCO 0
+# M6 16/10: `GET pdocs/calculo/getOptionsBySegFull?executionType=9&filterText=…`, 13 blocos `{seguradora, KeyValue[]}`).
+# Só leitura; o que volta passa pela lista branca `profissoes_por_seguradora` (seguradora + Key/Value/Description).
+JS_PROFISSOES = """async (a) => {""" + _JS_COMUM + """
+  const [s, d] = await pegar(a.pdocs + '/calculo/getOptionsBySegFull?executionType=9&filterText=' + encodeURIComponent(a.termo), a.tPdocs);
+  return [{termo: a.termo, status: s, opcoes: (s === 200 && Array.isArray(d)) ? M.filtrar(d, a.lista) : null}];
 }"""
 
 # SPEC-129-C D-129C-04: a atividade do empresarial, POR SEGURADORA — o MESMO endpoint que a tela chama no "Buscar por
@@ -795,6 +910,15 @@ def _sem_atividade_de(prep: Dict[str, Any]) -> Tuple[Tuple[int, str], ...]:
                  if isinstance(x, (list, tuple)) and len(x) == 2 and isinstance(x[0], int) and not isinstance(x[0], bool))
 
 
+def _fora_da_vida_de(prep: Dict[str, Any]) -> Tuple[Tuple[int, str, str], ...]:
+    """SPEC-129-D: as seguradoras de vida que saíram antes do POST (o `[código, nome, por quê]` do JS), saneadas — nome
+    sem URL nem chave, e o porquê só da lista fechada."""
+    fora = prep.get("fora_vida") if isinstance(prep, dict) else None
+    return tuple((int(x[0]), sem_url_nem_chave(x[1] or ""), str(x[2])) for x in (fora or ())
+                 if isinstance(x, (list, tuple)) and len(x) == 3 and isinstance(x[0], int) and not isinstance(x[0], bool)
+                 and x[2] in (FORA_POR_PROFISSAO, FORA_POR_COMISSAO))
+
+
 async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
     await sessao.garantir_token()
     try:
@@ -805,6 +929,8 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
         recusa = _recusa_do_preparo(prep.get("erro") if isinstance(prep, dict) else None)
         if isinstance(prep, dict) and prep.get("erro") == "sem_atividade_compativel":
             recusa.sem_atividade = _sem_atividade_de(prep)
+        if isinstance(prep, dict) and prep.get("fora_vida"):
+            recusa.fora_da_vida = _fora_da_vida_de(prep)
         raise recusa
     ids = prep.get("ids")
     pedido_ref = args.get("negocio_ref")
@@ -839,7 +965,7 @@ async def _preparar_e_enviar(sessao: Any, args: Dict[str, Any]) -> Disparo:
         sessao.registrar_negocio(ref)
         ramo = prep.get("ramo") if isinstance(prep.get("ramo"), int) and not isinstance(prep.get("ramo"), bool) else RAMO_AUTO
         return Disparo(negocio_ref=ref, versao=int(resp["versao"]), t0=t0, ramo=ramo,
-                       sem_atividade=_sem_atividade_de(prep))
+                       sem_atividade=_sem_atividade_de(prep), fora_da_vida=_fora_da_vida_de(prep))
     if status in STATUS_SESSAO_MORTA:
         # 401/403 = o servidor não autenticou: nada foi criado, a sessão morreu
         raise SessaoMorta(f"a sessão do robô no Agger caiu (HTTP {status})")
@@ -857,6 +983,8 @@ async def disparar(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str, An
     ramo = pedido.get("ramo", RAMO_AUTO) if isinstance(pedido, dict) else RAMO_AUTO
     if ramo in RAMOS_RE:
         return await _disparar_re(sessao, pedido, coberturas, negocio_ref=negocio_ref)
+    if ramo == RAMO_VIDA:
+        return await _disparar_vida(sessao, pedido, coberturas, negocio_ref=negocio_ref)
     base = cotacao_do_pedido(pedido)
     cob = {k: v for k, v in (coberturas or {}).items() if k in CHAVES_DE_COBERTURA}
     # ⛔ NÃO registra `negocio_ref` aqui: a guarda só deixa a versão passar se o negócio JÁ é do robô (registrado
@@ -908,6 +1036,92 @@ async def _disparar_re(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str
         "atividades": atividades, "campo_renovacao": CAMPO_DO_RAMO_NA_RENOVACAO[ramo]})
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D — a PROFISSÃO de vida por seguradora e o disparo de vida
+# ----------------------------------------------------------------------------------------------------------------------
+def normalizar_profissao(texto: Any) -> str:
+    """Sem acento, minúsculas, espaços colapsados — a ÚNICA transformação antes da igualdade."""
+    import unicodedata
+
+    s = "".join(c for c in unicodedata.normalize("NFKD", str(texto or "")) if not unicodedata.combining(c))
+    return _RE_ESPACOS.sub(" ", s.lower()).strip()
+
+
+def escolher_profissoes(respostas: Any, texto: Any) -> Tuple[Dict[int, dict], List[int], List[int]]:
+    """(escolhidas {seguradora: {Key, Value, Description}}, seguradoras COM bloco na busca, ambíguas).
+
+    🔴 Só vale a IGUALDADE do texto normalizado (D-129D-06 revista pelo ao vivo): 📊 16/10, a busca por "Analista de
+    sistemas" devolveu UMA opção em Allianz, Tokio, Yelum e Zurich — e era OUTRA profissão ("Analista de sistemas de
+    automação"). "Única opção" não é "mesma profissão": declarar a profissão errada à seguradora é declaração inexata.
+    Duas opções IGUAIS com códigos diferentes no mesmo bloco → ambígua, nenhuma escolhida. Seguradora com bloco e sem
+    opção igual SAI (o montador a lista); seguradora SEM bloco (📊 Bradesco) não pede profissão."""
+    alvo = normalizar_profissao(texto)
+    escolhidas: Dict[int, dict] = {}
+    com_bloco: List[int] = []
+    ambiguas: List[int] = []
+    for resp in respostas if isinstance(respostas, list) else []:
+        if not isinstance(resp, dict) or resp.get("status") != 200 or not isinstance(resp.get("opcoes"), list):
+            continue
+        for bloco in resp["opcoes"]:
+            cod = bloco.get("seguradora") if isinstance(bloco, dict) else None
+            if not isinstance(cod, int) or isinstance(cod, bool):
+                continue
+            if cod not in com_bloco:
+                com_bloco.append(cod)
+            iguais: Dict[str, dict] = {}
+            for kv in bloco.get("KeyValue") or []:
+                if isinstance(kv, dict) and kv.get("Key") not in (None, "") and alvo \
+                        and normalizar_profissao(kv.get("Value")) == alvo:
+                    iguais[str(kv["Key"])] = {"Key": str(kv["Key"]), "Value": kv.get("Value"),
+                                             "Description": kv.get("Description")}
+            if len(iguais) == 1:
+                escolhidas[cod] = next(iter(iguais.values()))
+            elif len(iguais) > 1 and cod not in ambiguas:
+                ambiguas.append(cod)
+    return escolhidas, com_bloco, ambiguas
+
+
+def _limpo_de_profissoes(respostas: Any) -> bool:
+    if not isinstance(respostas, list):
+        return False
+    return all(isinstance(r, dict) and (r.get("opcoes") is None or _limpo_da_lista(r.get("opcoes"),
+                                                                                    "profissoes_por_seguradora"))
+               for r in respostas)
+
+
+async def ler_profissoes(sessao: Any, termo: str) -> List[dict]:
+    """GET `getOptionsBySegFull?executionType=9` NA PÁGINA; o que volta já passou pela lista branca (JS e Python).
+    🔴 Sem UMA resposta 200 legível, nada sai: sem saber quem pede profissão, o robô mandaria seguradora sem ela."""
+    await sessao.garantir_token()
+    try:
+        r = await sessao.avaliar(JS_PROFISSOES, {**_args_base(sessao), "termo": str(termo), "lista": LISTA_PROFISSOES})
+    except Exception as e:  # noqa: BLE001 — nada saiu (só leitura)
+        raise DisparoRecusado(f"{MOTIVOS_LEGIVEIS['profissao_busca_falhou']} ({type(e).__name__})") from None
+    if isinstance(r, list) and any(isinstance(x, dict) and x.get("status") in STATUS_SESSAO_MORTA for x in r):
+        raise SessaoMorta("a sessão do robô no Agger caiu antes do cálculo (profissão)")
+    if not _limpo_de_profissoes(r):
+        raise DisparoRecusado("a lista de profissões do Agger voltou fora da forma esperada")
+    if not any(isinstance(x, dict) and x.get("status") == 200 and isinstance(x.get("opcoes"), list) for x in r):
+        raise DisparoRecusado(MOTIVOS_LEGIVEIS["profissao_busca_falhou"])
+    return r
+
+
+async def _disparar_vida(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str, Any], *,
+                         negocio_ref: Optional[str]) -> Disparo:
+    base = cotacao_do_pedido(pedido, coberturas=coberturas or {})
+    # 📊 a tela só busca com 3+ letras ("texto ≥ 3"): menos que isso não tem casamento possível
+    if len(normalizar_profissao(base["profissao"])) < 3:
+        raise DisparoRecusado(MOTIVOS_LEGIVEIS["profissao_sem_casamento"])
+    respostas = await ler_profissoes(sessao, base["profissao"])
+    escolhidas, com_bloco, _ambiguas = escolher_profissoes(respostas, base["profissao"])
+    return await _preparar_e_enviar(sessao, {
+        "cot": base["cotacao"], "cob": {}, "comissao": base["comissao"], "agenciamento": base["agenciamento"],
+        "desconto": None, "seguradoras": base["seguradoras"], "seguradora_anterior": None,
+        "negocio_ref": negocio_ref, "versao_base": None, "da_versao": False, "ajuste": None,
+        "ramo": RAMO_VIDA, "status": list(SEGURADORAS_DO_RAMO[RAMO_VIDA]), "fora_do_re": list(SEGURADORAS_FORA_DO_RE),
+        "profissoes": {str(k): v for k, v in escolhidas.items()}, "com_bloco": list(com_bloco)})
+
+
 async def recalcular(sessao: Any, negocio_ref: str, *, versao_base: int, ajuste: Ajuste) -> Disparo:
     """Nova versão do MESMO negócio partindo da `versao_base` (as coberturas e a comissão DELA), mais o ajuste.
     O ramo vem da própria versão (RE: as coberturas em `configuracoes`, a comissão e a atividade de cada item)."""
@@ -944,6 +1158,11 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
             # conserto 129-C: a família é o NOME do tipo (a mesma da comparação), e o motivo vai junto
             await ao_evento(Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, nome or None, cod, SEM_ATIVIDADE, None, ramo,
                                    motivo=MOTIVO_SEM_ATIVIDADE))
+        # SPEC-129-D: na vida, quem saiu antes do POST (sem profissão igual / sem comissão de vida) — o MESMO evento de
+        # "saiu por não ter código compatível", com o motivo DELE (nunca o texto da atividade)
+        for cod, nome, por in getattr(disparo, "fora_da_vida", ()) or ():
+            await ao_evento(Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, nome or None, cod, SEM_ATIVIDADE, None, ramo,
+                                   motivo=MOTIVO_DE_FORA_DA_VIDA.get(por)))
 
     def impossivel(motivo: str, *, morta: bool, pagina_fechada: bool = False) -> LeituraImpossivel:
         return LeituraImpossivel(motivo, sessao_morta=morta, leu=leu, quadro_saiu=quadro, rodada=atual,

@@ -67,6 +67,12 @@ CHAVES_DA_LICENCA = ("licenca", "dataLimiteCalculo", "diasParaExpirarSenha", "ex
 # (nunca `goto`). A licença é AVISO: nada aqui derruba o login.
 ROTA_DO_CURRENT = "/usuario/current"
 ESPERA_DO_CURRENT_S = 2.0
+# 🔴 SPEC-129-D (achado do produto, 📊 BLOCO 0 M6 ao vivo 16/10): a leitura do CORPO de `/usuario/current`
+# (`Response.json` → `Response.body`) NÃO voltou em 2 de 2 logins nesta máquina (Windows, Chromium headless) — o
+# `gather` sem prazo prendeu o `obter` 16–20 min, a sessão nunca foi entregue e o robô ficou logado, parado, sem logout.
+# A licença é AVISO: espera no máximo isto pelas leituras; estourou, segue SEM ela e registra. 💭 5 s: o `current` do app
+# respondeu 21× em 147 s num contexto (BLOCO 0 da 131-A) — uma leitura sã de um corpo pequeno cabe com folga.
+PRAZO_DA_LICENCA_S = 5.0
 _RE_DATA = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
@@ -285,7 +291,14 @@ class Sessoes:
                 while not lidas.get("respondeu") and time.time() < limite:
                     await asyncio.sleep(0.1)
             if leituras:
-                await asyncio.gather(*list(leituras), return_exceptions=True)
+                # 🔴 `wait` com PRAZO (nunca `gather` sem prazo): devolve no prazo mesmo que uma leitura nunca acorde, e
+                # não espera o cancelamento dela terminar (o `wait_for` esperaria)
+                _feitas, presas = await asyncio.wait(set(leituras), timeout=PRAZO_DA_LICENCA_S)
+                for t in presas:
+                    t.cancel()
+                if presas:
+                    logger.info("multicalculo.sessao conta=%s licença: %s leitura(s) sem resposta em %.0fs — segue sem "
+                                "ela", getattr(sessao, "conta_id", "?"), len(presas), PRAZO_DA_LICENCA_S)
         except Exception as e:  # noqa: BLE001
             logger.info("multicalculo.sessao licença não lida (%s)", type(e).__name__)
 

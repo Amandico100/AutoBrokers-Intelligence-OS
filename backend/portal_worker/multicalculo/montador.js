@@ -128,6 +128,62 @@
     return {calculos: out, semAtividade};
   }
 
+  // ===================================================================================================================
+  // SPEC-129-D — a VIDA INDIVIDUAL (91). O auto e o RE acima NÃO mudam (byte a byte).
+  // 📊 O corpo GRAVADO ao vivo (tests/fixtures/agger_ramos/vida_calcularV2_corpo.json, BLOCO 0 M6 16/10):
+  //   · as COBERTURAS moram em `cotacao.configuracoes` (o Python as põe lá) — 0 chaves de cobertura nos itens;
+  //   · cada item = a config da seguradora MENOS as mesmas chaves que o auto não copia (SO_SEG: 📊 os 7 itens gravados
+  //     NÃO têm percComissaoVida/percDescontoVida, que a config da conta tem, e TÊM percAgenciamentoVida, que SO_SEG não
+  //     lista) + percComissao · percDesconto · idIntegracaoCfg/Seg · valoresAjusteSeguradora.profissao · percAgenciamento;
+  //   · SEM a cópia "3" da Porto (📊 o item da Porto gravado não tem percComissao3) e SEM herdeiros (GRUPO é do auto).
+  // ===================================================================================================================
+  const RAMO_VIDA = 91;
+
+  // segs = `calculo/seguradoras` · opcoes = {status: [códigos de vida], fora: [10, 22], comissao, agenciamento,
+  //   profissoes: {cod: {Key, Value, Description}}, comBloco: [cods que a busca de profissão devolveu com bloco]}
+  // → {calculos, semProfissao: [[cod, nome]], semComissao: [[cod, nome]]}
+  function montarCalculosVida(segs, opcoes) {
+    opcoes = opcoes || {};
+    const status = new Set(opcoes.status || []);
+    const fora = new Set(opcoes.fora || [10, 22]);
+    const profissoes = opcoes.profissoes || {};
+    const comBloco = new Set((opcoes.comBloco || []).map(Number));
+    const S = {};
+    for (const s of segs || []) if (s && s.ativo) S[s.seguradora] = s;          // só as ATIVAS na conta
+    const alvo = Object.keys(S).map(Number).filter(k => status.has(k) && !fora.has(k)).sort((a, b) => a - b);
+    const out = [], semProfissao = [], semComissao = [];
+    for (const k of alvo) {
+      const base = S[k];
+      const nome = NOME[k] || base.nomeSeguradora || '';
+      // 🔴 a COMISSÃO: a do pedido; sem ela, a `percComissaoVida` DESTA seguradora na conta. 📊 a tela exige > 0 em toda
+      // seguradora marcada ("O campo Comissão é obrigatório" com 0) e a conta gravada tem 0 nas 8 — então 0/ausente
+      // TIRA a seguradora (listada), nunca um número inventado.
+      const comissao = opcoes.comissao != null ? opcoes.comissao : base.percComissaoVida;
+      if (!(Number(comissao) > 0)) { semComissao.push([k, nome]); continue; }
+      // 🔴 a PROFISSÃO por seguradora (📊 getOptionsBySegFull?executionType=9): com bloco na busca, só entra com a profissão
+      // IGUAL escolhida (Python, `agger_robo.escolher_profissoes`); sem bloco (📊 Bradesco) a seguradora não a pede.
+      const prof = profissoes[k] || profissoes[String(k)] || null;
+      if (comBloco.has(k) && !prof) { semProfissao.push([k, nome]); continue; }
+      const it = {};
+      for (const [kk, vv] of Object.entries(base)) if (!SO_SEG.has(kk)) it[kk] = vv;
+      it.seguradora = k;
+      it.nome = nome || it.nomeSeguradora;
+      it.percComissao = Number(comissao);
+      // o DESCONTO padrão do ramo (o `setComissaoDefault` do RE: percDesconto ← percDesconto<Ramo>); 📊 0 nos 7 gravados
+      it.percDesconto = base.percDescontoVida == null ? null : base.percDescontoVida;
+      it.idIntegracaoCfg = base.idIntegracao; it.idIntegracaoCfgSeg = base.idIntegracao;   // 📊 nos 7 itens gravados
+      if (prof) it.valoresAjusteSeguradora = {profissao: {Key: prof.Key, Value: prof.Value,
+        Description: prof.Description == null ? null : prof.Description}};
+      // 📊 "Agenciamento %" (padrão da tela 0) → percAgenciamento; sem o do pedido, a percAgenciamentoVida da conta
+      it.percAgenciamento = opcoes.agenciamento != null ? opcoes.agenciamento
+        : (base.percAgenciamentoVida == null ? 0 : base.percAgenciamentoVida);
+      if (!('libertyCodigoEstabelecimento' in it)) it.libertyCodigoEstabelecimento = null;  // 📊 null nos gravados
+      it.libertyDescontoRegional = 1;                                                       // 📊 1 nos gravados
+      out.push(it);
+    }
+    return {calculos: out, semProfissao, semComissao};
+  }
+
   // Recálculo de RE a partir de UMA versão: a config ATUAL + a comissão/desconto e a atividade do item da MESMA
   // seguradora na versão-base (as coberturas já vêm em `configuracoes` da versão).
   function montarDaVersaoRE(segs, versao, opcoes) {
@@ -184,6 +240,7 @@
   // Recálculo a partir de UMA versão: as escolhas do app (DO_APP) vêm do item da MESMA seguradora na versão-base;
   // as credenciais vêm da config ATUAL (montarCalculos). Seguradora que não estava na base fica de fora.
   function montarDaVersao(segs, versao, opcoes) {
+    if (versao && versao.ramo === RAMO_VIDA) return [];          // SPEC-129-D: o recálculo de vida não existe nesta versão
     if (versao && versao.ramo != null && versao.ramo !== RAMO_AUTO) return montarDaVersaoRE(segs, versao, opcoes);
     const base = {};
     for (const c of (versao && versao.calculos) || []) if (c && c.seguradora != null) base[c.seguradora] = c;
@@ -203,6 +260,7 @@
     carro_reserva: 'carroReserva', vidros: 'vidros', franquia: 'tipoFranquia', cobertura: 'tipoCobertura'};
   function aplicarAjuste(cotacao, ajuste, opcoes) {
     if (!ajuste) return 0;
+    if (cotacao && cotacao.ramo === RAMO_VIDA) return 0;         // SPEC-129-D: nenhum ajuste de vida nesta versão
     if (cotacao && cotacao.ramo != null && cotacao.ramo !== RAMO_AUTO) return aplicarAjusteRE(cotacao, ajuste, opcoes);
     let n = 0;
     if (ajuste.tipo === 'percentual_fipe') {
@@ -327,5 +385,5 @@
   }
 
   window.__abM = {montarCalculos, montarDaVersao, aplicarAjuste, montarAutomovel, codigoDoCombustivel, filtrar, coletarSegredos,
-                  redigirSegredos, DO_APP, montarCalculosRE, CAMPO_DO_AJUSTE_RE};
+                  redigirSegredos, DO_APP, montarCalculosRE, CAMPO_DO_AJUSTE_RE, montarCalculosVida};
 })();

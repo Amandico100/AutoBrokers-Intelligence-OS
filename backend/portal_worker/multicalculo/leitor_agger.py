@@ -37,7 +37,7 @@ from ..redaction import sem_url_nem_chave
 from .contrato import (
     ACEITACAO, CAMPOS_DO_PEDIDO_AUTO, COMERCIAL, CONJUNTO_FECHADO, CREDENCIAL,
     DADO, DESCONHECIDA, INSTABILIDADE, MOTIVO_MAX, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA,
-    PENDENTE, PERMISSAO, RAMO_AUTO, SEGURADORA_RECUSOU, Campo, Evento, Oferta,
+    PENDENTE, PERMISSAO, RAMO_AUTO, RAMO_VIDA, SEGURADORA_RECUSOU, Campo, Evento, Oferta,
     Parcelamento, PedidoDeCalculoAuto, RespostaDaSeguradora, RodadaDoCalculo,
 )
 from .presets import CHAVES_DE_COBERTURA_RE as _CHAVES_DE_COBERTURA_RE
@@ -166,6 +166,40 @@ ITEM_DA_SEGURADORA_RE: Tuple[str, ...] = (
     "resultados[].coberturas.percDesconto",
 ) + tuple(f"resultados[].coberturas.{c}" for c in COBERTURAS_DA_OFERTA_RE)
 
+# --------------------------------------------------------------------------
+# SPEC-129-D — o resultado de VIDA (91)
+# --------------------------------------------------------------------------
+# 📊 O resultado gravado (tests/fixtures/agger_ramos/vida_resultado.json, BLOCO 0 M6 16/10): a MESMA rota e a MESMA forma
+# do auto e do RE — um item por seguradora (7), `retorno`/`retornoErro`/`premio`/`erros[]` no item. Os 7 voltaram com a
+# recusa ("instabilidade"), sem `resultados`. ⚠️ NÃO há resposta de vida COM preço gravada: a parte de `resultados[]`
+# abaixo é a forma COMUM (a mesma do RE da 129-C) — o canário da V3 confere os rótulos reais.
+# As coberturas ecoadas de vida: 💭 as chaves que o PEDIDO de vida manda em `configuracoes` (a seguradora ecoa o que
+# recebeu, como no RE) — a de capital e as extras. ⛔ NUNCA `fumante`, `praticaEsporteRadical` ou `rendaMensal`: dado de
+# saúde/renda é sensível (LGPD art. 11) e não é cobertura — se a seguradora ecoar, a lista branca corta.
+COBERTURAS_DA_OFERTA_VIDA: Tuple[str, ...] = (
+    "isAppMorte", "isAppMorteAcidental", "isAppInvalidez", "isInvalidezDoenca", "isDespesasMedicasHospitalares",
+    "DIT.valor", "isDoencasGravesGrupo.valor", "funeral.tipo",
+)
+ITEM_DA_SEGURADORA_VIDA: Tuple[str, ...] = (
+    "seguradora", "seguradoraTxt", "nomeSeguradora", "ativo", "nome",
+    "credenciaisValidas", "retorno", "retornoErro", "erros[]", "alertas[]",
+    "premio", "premioMensal", "tempoResposta", "packageType", "selected",
+    "percComissao", "percDesconto", "percAgenciamento",
+    "resultados[].premio", "resultados[].premioMensal",
+    "resultados[].identificacao", "resultados[].packageType",
+    "resultados[].principal", "resultados[].selected",
+    "resultados[].nroCalculo",                           # → marca
+    "resultados[].pathPdf", "resultados[].pdfFileNameAgger",  # → "<removido:pdf>"
+    "resultados[].erros[]", "resultados[].alertas[]", "resultados[].observacoes[]",
+    "resultados[].parcelamentos[].parcelas",
+    "resultados[].parcelamentos[].tipoPag",
+    "resultados[].parcelamentos[].premioPrimeiraParc",
+    "resultados[].parcelamentos[].premioDemaisParc",
+    "resultados[].parcelamentos[].valorIof",
+    "resultados[].coberturas.percComissao",
+    "resultados[].coberturas.percDesconto",
+) + tuple(f"resultados[].coberturas.{c}" for c in COBERTURAS_DA_OFERTA_VIDA)
+
 # corpo de cada endpoint, relativo ao `corpo` do envelope da fixture
 LISTA_BRANCA_POR_ENDPOINT: Dict[str, Tuple[str, ...]] = {
     "calcularV2": tuple(f"cotacao.{p}" for p in COTACAO) + ("negocio.id",),
@@ -175,6 +209,11 @@ LISTA_BRANCA_POR_ENDPOINT: Dict[str, Tuple[str, ...]] = {
     # SPEC-129-C D-129C-04: `getOptionsBySegFull` — só a seguradora e o código/rótulo de cada atividade
     # (📊 forma: formulario_empresarial.json `atividade_por_seguradora.forma`)
     "atividades_por_seguradora": ("[].seguradora", "[].KeyValue[].Key", "[].KeyValue[].Value",
+                                  "[].KeyValue[].Description"),
+    # SPEC-129-D: a vida (o `cotacao/calculos` do 91) e a busca de PROFISSÃO (`getOptionsBySegFull?executionType=9`, 📊 a
+    # MESMA forma da atividade: vida_formulario.json `profissao.forma`)
+    "cotacao_calculos_vida": tuple(f"[].{p}" for p in ITEM_DA_SEGURADORA_VIDA),
+    "profissoes_por_seguradora": ("[].seguradora", "[].KeyValue[].Key", "[].KeyValue[].Value",
                                   "[].KeyValue[].Description"),
     "cotacao_versoes": tuple(f"[].{p}" for p in COTACAO),
     "negocio": COTACAO,
@@ -387,7 +426,9 @@ REGRAS_DE_FAMILIA_RE: Tuple[Tuple[str, "re.Pattern[str]", str, str], ...] = (
 def classificar_mensagens(mensagens: Sequence[str], ramo: int = RAMO_AUTO) -> Optional[str]:
     """A família da 1ª regra (em ordem de prioridade) que casa alguma mensagem. No RE, as regras de RE vêm antes."""
     dobradas = [dobra(m) for m in mensagens if isinstance(m, str) and m.strip()]
-    if ramo != RAMO_AUTO:
+    # SPEC-129-D: as regras do RE vieram do acervo de RE — a vida usa só as comuns (📊 a única recusa de vida gravada, a
+    # "instabilidade", é a MESMA frase das regras comuns). Auto e RE: como antes.
+    if ramo != RAMO_AUTO and ramo != RAMO_VIDA:
         for familia, padrao, _fonte, _motivo in REGRAS_DE_FAMILIA_RE:
             if any(padrao.search(m) for m in dobradas):
                 return familia
@@ -409,7 +450,9 @@ def motivo_de_recusa_re(mensagens: Sequence[str]) -> Optional[str]:
 
 
 def endpoint_de_calculos(ramo: int) -> str:
-    """A lista branca do `cotacao/calculos` do ramo: a do auto só serve ao auto."""
+    """A lista branca do `cotacao/calculos` do ramo: a do auto só serve ao auto; a da vida só à vida."""
+    if ramo == RAMO_VIDA:
+        return "cotacao_calculos_vida"
     return "cotacao_calculos" if ramo == RAMO_AUTO else "cotacao_calculos_re"
 
 
@@ -510,6 +553,8 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
                 primeira_parcela=numero(p.get("premioPrimeiraParc")),
                 demais_parcelas=numero(p.get("premioDemaisParc")),
             ))
+    if ramo == RAMO_VIDA:
+        return _oferta_de_vida(item, r, premio, cob, tuple(parcelas))
     re_ = ramo != RAMO_AUTO
     if re_ and "valorDeNovo" in cob:
         cob["valorDeNovo"] = sim_nao(cob["valorDeNovo"])
@@ -535,6 +580,37 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
         alertas=tuple(_textos(r.get("alertas")) + _textos(r.get("observacoes"))),
         comissao_percentual=numero(cob.get("percComissao")),
         ramo=ramo,
+    )
+
+
+def _oferta_de_vida(item: Dict[str, Any], r: Dict[str, Any], premio: float, cob: Dict[str, Any],
+                    parcelas: Tuple[Parcelamento, ...]) -> Oferta:
+    """SPEC-129-D: a oferta de vida pela forma COMUM do resultado. Vida não tem franquia (franquia_valor/tipo None); as
+    coberturas são as ecoadas da lista de vida — o objeto (`DIT`, `funeral`…) vira o valor que o pedido mandou nele."""
+    coberturas = []
+    for nome in COBERTURAS_DA_OFERTA_VIDA:
+        chave, _, folha = nome.partition(".")
+        v = cob.get(chave)
+        if folha:
+            v = v.get(folha) if isinstance(v, dict) else None
+        if v is not None:
+            coberturas.append((chave, v))
+    return Oferta(
+        seguradora=_limpo(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
+        seguradora_codigo=_inteiro(item.get("seguradora")),
+        pacote=_limpo(r.get("identificacao") or ""),
+        tipo_de_pacote=_inteiro(r.get("packageType")),
+        premio_total=premio,
+        premio_mensal=numero(r.get("premioMensal")),
+        franquia_valor=None,
+        franquia_tipo=None,
+        coberturas=tuple(coberturas),
+        parcelamentos=parcelas,
+        tem_pdf=bool(r.get("pathPdf") or r.get("pdfFileNameAgger")),
+        numero_calculo_presente=bool(r.get("nroCalculo")),
+        alertas=tuple(_textos(r.get("alertas")) + _textos(r.get("observacoes"))),
+        comissao_percentual=numero(cob.get("percComissao")),
+        ramo=RAMO_VIDA,
     )
 
 

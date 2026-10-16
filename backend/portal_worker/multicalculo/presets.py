@@ -471,3 +471,172 @@ def coberturas_da_renovacao_re(ramo: int, valor_basica: float, extras: "Mapping[
     mais["assist24hs"] = ASSISTENCIA_RE["completa"]
     todas = {ANTERIOR: anterior, FRANQUIA_REDUZIDA: tipica, COMPLETA_MAIS: mais}
     return _sem_repetidas({o: todas[o] for o in pedidas})
+
+
+# ======================================================================================================================
+# SPEC-129-D — as opções da VIDA INDIVIDUAL (91). 🔴 A FORMA vem do corpo GRAVADO ao vivo (📊 BLOCO 0 M6, 16/10,
+# tests/fixtures/agger_ramos/vida_calcularV2_corpo.json) e dos códigos do JS da tela (vida_formulario.json).
+# ======================================================================================================================
+# 🔴 NENHUM capital fixo: o capital da Morte é SEMPRE o do pedido (a apólice na renovação, o corretor na cotação nova) —
+#    capital é escolha do segurado (SUSEP, "seguro de vida"); um padrão seria declarar por ele.
+# As opções (§4 da SPEC):
+#   · "padrao"   = o capital da Morte + as coberturas do pedido (a apólice / o corretor), e SÓ elas;
+#   · "economica" ("mais em conta") = SÓ a Morte, com o MESMO capital — nunca capital menor sem o corretor pedir;
+#   · "anterior" (renovação) = o que a apólice tem (as mesmas regras da padrão: as coberturas vêm da ficha).
+# 🔴 Por que TODA cobertura vai EXPLÍCITA (zero = não contratada) e nunca "ausente = o padrão da tela": 📊 a TELA copia o
+#    capital da Morte para Morte acidental e IPA (`controlerCampos.REPLICAR_COBERTURAS`): na gravação a pessoa digitou só a
+#    Morte (R$ 100.000) e o corpo saiu com `isAppMorteAcidental 100000` e `isAppInvalidez 100000`. O "mais em conta" tem
+#    de mandar MA = 0 e IPA = 0 — o robô nunca repete o que a tela faz.
+#: a chave do CAPITAL da Morte nas coberturas de uma opção (o nome que a porta grava em `multicalculo_calculos.coberturas`)
+CAPITAL_DA_VIDA = "capital_morte"
+#: as coberturas EXTRAS de vida — as chaves de `configuracoes` do corpo gravado (📊 vida_calcularV2_corpo.json) que são
+#: coberturas, com o rótulo da TELA (vida_formulario.json `campos[].rotulo`) ao lado:
+CHAVES_DE_COBERTURA_VIDA: Tuple[str, ...] = (
+    "isAppMorteAcidental",            # "Morte acidental" — R$
+    "isAppInvalidez",                 # "Invalidez permanente (IPA)" — R$
+    "isInvalidezDoenca",              # "Invalidez por doença (IFPD)" — R$
+    "isDespesasMedicasHospitalares",  # "Diária de Internação Hospitalar (DIH)" — R$ por diária
+    "DIT",                            # "Diária de Incapacidade Temporária (DIT)" → configuracoes.DIT.valor — R$ por diária
+    "isDoencasGravesGrupo",           # "Doenças graves" → configuracoes.isDoencasGravesGrupo.valor — R$
+    "funeral",                        # "Assistência funeral" → configuracoes.funeral.tipo — o TIPO (abaixo), não R$
+)
+#: 📊 os códigos da "Assistência funeral" do JS da tela (vida_formulario.json `codigos_do_js.assistFuneral`): 0 Sem
+#: Assistência (o padrão da tela) · 1 Individual · 2 Familiar. A tela não tem CAPITAL de funeral (`funeral.valor` null no
+#: corpo gravado): o valor da extra `funeral` é o TIPO.
+FUNERAL_VIDA: Mapping[str, int] = {"sem assistencia": 0, "individual": 1, "familiar": 2}
+#: as opções da vida e a ORDEM do disparo no mesmo negócio (a padrão abre; a "mais em conta" é a versão seguinte)
+ORDEM_VIDA: Tuple[str, ...] = (PADRAO, ECONOMICA)
+
+
+def coberturas_vida(opcao: str, capital: float, extras: "Mapping[str, float] | None" = None) -> Dict[str, float]:
+    """As coberturas de UM cálculo de vida: {"capital_morte": R$, <extra>: valor}. `padrao`/`anterior` = o capital e as
+    extras do pedido; `economica` = SÓ o capital (as extras ficam ZERADAS no corpo por `configuracoes_de_vida`)."""
+    if isinstance(capital, bool) or not isinstance(capital, (int, float)) or capital <= 0:
+        raise ValueError("o capital da Morte é obrigatório e > 0 (vem do pedido)")
+    base = {CAPITAL_DA_VIDA: float(capital)}
+    if opcao in (PADRAO, ANTERIOR):
+        return {**base, **{str(k): float(v) for k, v in (extras or {}).items()}}
+    if opcao == ECONOMICA:
+        return base
+    raise ValueError(f"opção {opcao!r} não existe na vida (há: {PADRAO}, {ECONOMICA}, {ANTERIOR})")
+
+
+def _valor_do_corpo(v: float):
+    """R$ como o corpo gravado leva (📊 `isAppMorte 100000`, `rendaMensal 8000`: número inteiro quando é inteiro)."""
+    f = float(v)
+    return int(f) if f.is_integer() else round(f, 2)
+
+
+def configuracoes_de_vida(coberturas: Mapping[str, object]) -> Dict[str, object]:
+    """A parte de COBERTURAS de `cotacao.configuracoes` de vida, TODAS explícitas (zero = não contratada), no formato do
+    corpo gravado. Chave fora de `CHAVES_DE_COBERTURA_VIDA` (e do capital) → ValueError: nada é descartado calado."""
+    cob = dict(coberturas or {})
+    capital = cob.pop(CAPITAL_DA_VIDA, None)
+    if isinstance(capital, bool) or not isinstance(capital, (int, float)) or capital <= 0:
+        raise ValueError("cobertura sem o capital da Morte")
+    desconhecidas = sorted(set(cob) - set(CHAVES_DE_COBERTURA_VIDA))
+    if desconhecidas:
+        raise ValueError(f"cobertura desconhecida na vida: {', '.join(desconhecidas)}")
+    for k, v in cob.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            raise ValueError(f"cobertura de vida com valor inválido: {k}")
+    tipo_funeral = cob.get("funeral", 0)
+    if tipo_funeral not in set(FUNERAL_VIDA.values()):
+        raise ValueError("assistência funeral sem código medido (0 · 1 · 2)")
+
+    def r(chave: str):
+        return _valor_do_corpo(cob.get(chave, 0))
+
+    # 📊 a ORDEM e a forma das chaves do corpo gravado (`configuracoes` da entrada 3)
+    return {
+        "funeral": {"tipo": int(tipo_funeral), "valor": None},
+        "isAppMorte": _valor_do_corpo(capital),
+        "isAppMorteAcidental": r("isAppMorteAcidental"),
+        "isAppInvalidez": r("isAppInvalidez"),
+        "isDespesasMedicasHospitalares": r("isDespesasMedicasHospitalares"),
+        "isInvalidezDoenca": r("isInvalidezDoenca"),
+        "DIT": {"qtdDiarias": None, "valor": r("DIT")},
+        "isDoencasGravesGrupo": {"qtdDoencas": None, "valor": r("isDoencasGravesGrupo")},
+    }
+
+
+# O RÓTULO da apólice (InfoCap `/itens.garantias` ou a linha do PDF lida pela ficha única) → a extra de vida. 🔴 Por que
+# cada regra (§9.5): 📊 BLOCO 0 M2, os nomes das 15 garantias de VIND lidas na InfoCap: ASSISTÊNCIA FUNERAL 4 · INVALIDEZ
+# POR DOENÇA 3 · MORTE ACIDENTAL 2 · MORTE NATURAL 2 · INVALIDEZ POR ACIDENTE 2 · CONJUGÊ-MORTE 1 · INVALIDEZ FUNC PER
+# P/DOEN 1 — e o rótulo do campo da TELA de cada extra (acima). Cada regra casa a MESMA cobertura pelas palavras dela:
+#   "morte" + "acidental/acidente"  → Morte acidental (a "Morte natural ou acidental" é a BÁSICA: não é extra)
+#   "invalidez" + "acidente"        → IPA (a tela: "Invalidez permanente (IPA)" = por acidente)
+#   "invalidez" + "doenca/doen"     → IFPD (a tela: "Invalidez por doença (IFPD)"; 📊 "INVALIDEZ FUNC PER P/DOEN")
+#   "diaria" + "incapacidade"       → DIT · "diaria" + "internacao/hospitalar" → DIH · "doencas graves" → doenças graves
+#   "funeral" + "familiar"/"individual" → o TIPO 2/1. ⚠️ "ASSISTÊNCIA FUNERAL" SOZINHA não diz qual dos dois: fica FORA
+#   (escolher seria decidir pelo cliente). "auxílio funeral" é reembolso em R$, não a assistência: fica FORA.
+# 💭 DIT/DIH/doenças graves: rótulos da TELA, não medidos na InfoCap (0 linhas no BLOCO 0) — o canário confere.
+# ⛔ FORA sempre: a morte/invalidez de OUTRA pessoa (cônjuge, filhos) — o formulário individual não tem esse campo.
+# O que nenhuma regra casa volta como SOBRA (o corretor confere: a apólice tem algo que o pedido não leva).
+_OUTRA_PESSOA = frozenset({"conjuge", "conjuges", "filho", "filhos", "filha", "filhas", "dependente", "dependentes"})
+
+
+def _palavras_do_rotulo(rotulo: object) -> set:
+    import re as _re
+    import unicodedata as _u
+
+    s = "".join(c for c in _u.normalize("NFKD", str(rotulo or "")) if not _u.combining(c)).lower()
+    return set(_re.sub(r"[^a-z0-9]+", " ", s).split())
+
+
+def _extra_do_rotulo(rotulo: object):
+    """(chave, valor-fixo) da extra que o rótulo É, ou None. valor-fixo só no funeral (o tipo)."""
+    p = _palavras_do_rotulo(rotulo)
+    if p & _OUTRA_PESSOA:
+        return None
+    if "funeral" in p:
+        if "auxilio" in p:
+            return None
+        if "familiar" in p:
+            return ("funeral", FUNERAL_VIDA["familiar"])
+        if "individual" in p:
+            return ("funeral", FUNERAL_VIDA["individual"])
+        return None
+    acidente = bool(p & {"acidental", "acidente", "acidentes"})
+    if "morte" in p and acidente and not (p & {"natural", "qualquer"}):
+        return ("isAppMorteAcidental", None)
+    if "invalidez" in p and acidente:
+        return ("isAppInvalidez", None)
+    if "invalidez" in p and (p & {"doenca", "doencas", "doen"}):
+        return ("isInvalidezDoenca", None)
+    if p & {"diaria", "diarias"} and "incapacidade" in p:
+        return ("DIT", None)
+    if p & {"diaria", "diarias"} and (p & {"internacao", "hospitalar"}):
+        return ("isDespesasMedicasHospitalares", None)
+    if (p & {"doencas", "doenca"}) and (p & {"graves", "grave"}):
+        return ("isDoencasGravesGrupo", None)
+    return None
+
+
+def coberturas_de_vida_da_ficha_com_sobra(linhas) -> Tuple[Dict[str, float], Tuple[str, ...]]:
+    """`linhas` = [(rótulo, capital)] (sem a Morte do segurado — o app a tira antes) → ({extra: valor}, rótulos que NÃO
+    viraram extra). A mesma extra com dois valores diferentes não escolhe nenhum: as duas linhas voltam como sobra."""
+    achadas: Dict[str, list] = {}
+    sobra = []
+    for rotulo, capital in linhas or ():
+        tem_valor = isinstance(capital, (int, float)) and not isinstance(capital, bool) and capital > 0
+        extra = _extra_do_rotulo(rotulo)
+        if extra is None or (extra[1] is None and not tem_valor):
+            sobra.append(str(rotulo))
+            continue
+        chave, fixo = extra
+        achadas.setdefault(chave, []).append((str(rotulo), fixo if fixo is not None else float(capital)))
+    saida: Dict[str, float] = {}
+    for chave, lidas in achadas.items():
+        valores = {v for _r, v in lidas}
+        if len(valores) == 1:
+            saida[chave] = valores.pop()
+        else:
+            sobra += [r for r, _v in lidas]
+    return saida, tuple(sobra)
+
+
+def coberturas_de_vida_da_ficha(linhas) -> Dict[str, float]:
+    """O mapa que o app (V2, `pedido._extras_de_vida_da_ficha`) chama: só as extras. A SOBRA (o aviso ao corretor) está
+    em `coberturas_de_vida_da_ficha_com_sobra`."""
+    return coberturas_de_vida_da_ficha_com_sobra(linhas)[0]
