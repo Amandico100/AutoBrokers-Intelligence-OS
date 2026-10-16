@@ -521,6 +521,15 @@ def coberturas_vida(opcao: str, capital: float, extras: "Mapping[str, float] | N
     raise ValueError(f"opção {opcao!r} não existe na vida (há: {PADRAO}, {ECONOMICA}, {ANTERIOR})")
 
 
+def coberturas_da_opcao_vida(opcao: str, capital: float, explicitas: "Mapping[str, object]") -> Dict[str, float]:
+    """As coberturas EXPLÍCITAS de quem chama (a renovação: o `anterior` montado da ficha) passadas pela MESMA regra de
+    `coberturas_vida`. 🔴 Conserto K1 (red team P2): a "mais em conta" é SÓ a Morte com o capital do pedido — o que
+    quem chama mandar além disso (MA, IPA, qualquer extra) é descartado aqui, nunca chega ao corpo. O capital é sempre
+    o `capital` (o do pedido), nunca o das explícitas."""
+    extras = {str(k): v for k, v in (explicitas or {}).items() if k != CAPITAL_DA_VIDA}
+    return coberturas_vida(opcao, capital, extras)
+
+
 def _valor_do_corpo(v: float):
     """R$ como o corpo gravado leva (📊 `isAppMorte 100000`, `rendaMensal 8000`: número inteiro quando é inteiro)."""
     f = float(v)

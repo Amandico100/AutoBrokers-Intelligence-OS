@@ -412,6 +412,53 @@ def test_3_a_busca_que_falhou_nunca_manda_sem_profissao():
     assert isinstance(e, R.DisparoRecusado) and s.escritas == 0
 
 
+def test_3_a_busca_200_sem_nenhum_bloco_nao_manda_nada():
+    """Conserto K1 (red team B1): 📊 antes, `200 []` mandava o cálculo às 8 seguradoras, NENHUMA com profissão. Zero
+    blocos = a busca não serve (não é "ninguém pede profissão") → `profissao_busca_falhou`, nada sai."""
+    for vazia in ([], [{"seguradora": None, "KeyValue": []}]):
+        s, e = disparar(pedido_vida(), P.coberturas_vida(P.PADRAO, 100000), rotas(blocos=vazia))
+        assert isinstance(e, R.DisparoRecusado) and e.motivo.startswith("profissao_busca_falhou"), (vazia, e)
+        assert s.escritas == 0 and s.enviado is None and s.corpo is None
+    # o montador também recusa sozinho (a defesa na página): `comBloco` vazio → erro, nenhum cálculo
+    r = _node("process.stdout.write(JSON.stringify(M.montarCalculosVida(a.segs, {status: [1, 4, 8], comissao: 10, "
+              "profissoes: {}, comBloco: []})))", {"segs": config_da_conta()})
+    assert r["erro"] == "profissao_busca_falhou" and r["calculos"] == []
+    # CONTROLE (a guarda consegue diferir): blocos de OUTRAS seguradoras e a Bradesco AUSENTE → ela entra sem profissão
+    s, d = disparar(pedido_vida(), P.coberturas_vida(P.PADRAO, 100000), rotas(blocos=[b for b in BLOCOS
+                                                                                     if b["seguradora"] == 4]))
+    assert isinstance(d, R.Disparo), getattr(d, "motivo", d)
+    por = {it["seguradora"]: it for it in s.enviado["cotacao"]["calculos"]}
+    assert 1 in por and "valoresAjusteSeguradora" not in por[1] and por[4]["valoresAjusteSeguradora"]
+
+
+def test_3_a_pontuacao_nao_impede_a_igualdade():
+    """Conserto K1 (red team P8): o ponto final não é outra profissão; o RESTO continua exigindo igualdade."""
+    for texto in ("Analista de sistemas.", "Analista, de sistemas!", "  analista   DE   SISTEMAS; "):
+        esc, _cb, _a = R.escolher_profissoes(_respostas(), texto)
+        assert esc[4]["Key"] == "10183" and esc[8]["Key"] == "3023", texto
+        assert not {5, 7, 11, 12, 25} & set(esc), texto
+    esc, _cb, _a = R.escolher_profissoes(_respostas(), "Analista de sistemas de automação.")   # CONTROLE
+    assert 4 not in esc and 8 not in esc and {5, 7, 11, 12, 25} <= set(esc)
+
+
+def test_2_a_mais_em_conta_nunca_leva_ma_nem_ipa_de_quem_chama():
+    """Conserto K1 (red team P2): mesmo que quem chama mande MA/IPA (ou qualquer extra, ou outro capital) na "mais em
+    conta", ela é SÓ a Morte com o capital do pedido. `coberturas_da_opcao_vida` é a porta única das coberturas
+    EXPLÍCITAS de quem chama (a renovação); a padrão/anterior as levam como vieram (CONTROLE)."""
+    explicitas = {"capital_morte": 1.0, "isAppMorteAcidental": 100000, "isAppInvalidez": 100000, "funeral": 2}
+    assert P.coberturas_vida(P.ECONOMICA, 100000, explicitas) == {"capital_morte": 100000.0}
+    eco = P.coberturas_da_opcao_vida(P.ECONOMICA, 100000, explicitas)
+    assert eco == {"capital_morte": 100000.0}
+    cfg = P.configuracoes_de_vida(eco)
+    assert (cfg["isAppMorte"], cfg["isAppMorteAcidental"], cfg["isAppInvalidez"], cfg["funeral"]["tipo"]) == (100000,
+                                                                                                         0, 0, 0)
+    pad = P.coberturas_da_opcao_vida(P.PADRAO, 100000, explicitas)                              # CONTROLE
+    assert pad == {"capital_morte": 100000.0, "isAppMorteAcidental": 100000.0, "isAppInvalidez": 100000.0,
+                   "funeral": 2.0}
+    with pytest.raises(ValueError):
+        P.coberturas_da_opcao_vida("completa_mais", 100000, explicitas)
+
+
 # ======================================================================================================================
 # 4. A COMISSÃO de vida — a do pedido, ou a da conta; 0/ausente → código, NUNCA um número inventado
 # ======================================================================================================================

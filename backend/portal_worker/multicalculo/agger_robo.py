@@ -78,6 +78,7 @@ STATUS_SESSAO_MORTA = (401, 403)
 
 
 _RE_ESPACOS = re.compile(r"\s+")
+_RE_PONTUACAO = re.compile(r"[^\w\s]|_")
 
 # Os códigos que a página devolve no preparo, em português de gente (o `erro` que a corretora lê pela porta).
 MOTIVOS_LEGIVEIS = {
@@ -99,7 +100,8 @@ MOTIVOS_LEGIVEIS = {
     "profissao_sem_casamento": "profissao_sem_casamento — nenhuma seguradora de vida tem uma profissão igual à do pedido",
     "comissao_de_vida_nao_configurada": "comissao_de_vida_nao_configurada — a comissão de vida é 0 na conta do Agger "
                                         "e o pedido não trouxe outra",
-    "profissao_busca_falhou": "profissao_busca_falhou — a busca de profissão do Agger não respondeu",
+    "profissao_busca_falhou": "profissao_busca_falhou — a busca de profissão do Agger não respondeu ou voltou sem "
+                              "nenhuma seguradora",
     "recalculo_de_vida": "o recálculo de vida não existe nesta versão",
 }
 
@@ -607,6 +609,7 @@ JS_PREPARAR = """async (a) => {""" + _JS_COMUM + """
     }
     const r = M.montarCalculosVida(segs, {status: a.status, fora: a.fora_do_re, comissao: a.comissao,
                                           agenciamento: a.agenciamento, profissoes: a.profissoes, comBloco: a.com_bloco});
+    if (r.erro) return {erro: r.erro};               // conserto K1 (B1): a busca sem NENHUM bloco não serve
     let calc = r.calculos, semP = r.semProfissao, semC = r.semComissao;
     if (a.seguradoras && a.seguradoras.length) {
       const so = x => a.seguradoras.includes(x[0]);
@@ -1040,11 +1043,12 @@ async def _disparar_re(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[str
 # SPEC-129-D — a PROFISSÃO de vida por seguradora e o disparo de vida
 # ----------------------------------------------------------------------------------------------------------------------
 def normalizar_profissao(texto: Any) -> str:
-    """Sem acento, minúsculas, espaços colapsados — a ÚNICA transformação antes da igualdade."""
+    """Sem acento, minúsculas, SEM pontuação, espaços colapsados — a ÚNICA transformação antes da igualdade.
+    Conserto K1 (red team P8): "Analista de sistemas." é a MESMA profissão; o resto continua exigindo igualdade."""
     import unicodedata
 
     s = "".join(c for c in unicodedata.normalize("NFKD", str(texto or "")) if not unicodedata.combining(c))
-    return _RE_ESPACOS.sub(" ", s.lower()).strip()
+    return _RE_ESPACOS.sub(" ", _RE_PONTUACAO.sub(" ", s.lower())).strip()
 
 
 def escolher_profissoes(respostas: Any, texto: Any) -> Tuple[Dict[int, dict], List[int], List[int]]:
@@ -1114,6 +1118,11 @@ async def _disparar_vida(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[s
         raise DisparoRecusado(MOTIVOS_LEGIVEIS["profissao_sem_casamento"])
     respostas = await ler_profissoes(sessao, base["profissao"])
     escolhidas, com_bloco, _ambiguas = escolher_profissoes(respostas, base["profissao"])
+    # 🔴 conserto K1 (red team B1): 📊 `200 []` mandava o cálculo às 8 seguradoras, NENHUMA com profissão. "Sem bloco =
+    # não pede profissão" só vale para quem está AUSENTE de uma resposta que trouxe blocos de OUTRAS (📊 a Bradesco);
+    # ZERO blocos = a busca não serve → nada sai (falha passageira, a madrugada tenta de novo).
+    if not com_bloco:
+        raise DisparoRecusado(MOTIVOS_LEGIVEIS["profissao_busca_falhou"])
     return await _preparar_e_enviar(sessao, {
         "cot": base["cotacao"], "cob": {}, "comissao": base["comissao"], "agenciamento": base["agenciamento"],
         "desconto": None, "seguradoras": base["seguradoras"], "seguradora_anterior": None,

@@ -148,6 +148,9 @@
     const fora = new Set(opcoes.fora || [10, 22]);
     const profissoes = opcoes.profissoes || {};
     const comBloco = new Set((opcoes.comBloco || []).map(Number));
+    // 🔴 conserto K1 (red team B1): ZERO blocos na busca = a busca não serve (não é "ninguém pede profissão") — sem
+    // isto, `200 []` mandava TODAS as seguradoras sem profissão. A ausência só vale quando OUTRAS vieram com bloco.
+    if (!comBloco.size) return {calculos: [], semProfissao: [], semComissao: [], erro: 'profissao_busca_falhou'};
     const S = {};
     for (const s of segs || []) if (s && s.ativo) S[s.seguradora] = s;          // só as ATIVAS na conta
     const alvo = Object.keys(S).map(Number).filter(k => status.has(k) && !fora.has(k)).sort((a, b) => a - b);
