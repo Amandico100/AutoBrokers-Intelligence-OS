@@ -735,7 +735,10 @@ class MulticalculoProvider:
         for o in escolhidas:
             explicitas = (coberturas or {}).get(o)
             if explicitas is not None:
-                cob = {**dict(explicitas), "capital_morte": float(capital)}
+                # red team P2 (conserto da 129-D): a regra da opção vale também para coberturas de quem chama — a "mais
+                # em conta" é SÓ a morte com o capital do pedido (nunca MA/IPA que viessem junto); a do portal decide
+                from portal_worker.multicalculo import presets as _presets_vida
+                cob = _presets_vida.coberturas_da_opcao_vida(o, float(capital), dict(explicitas))
             elif o in OPCOES_DA_VIDA:
                 cob = coberturas_de_vida_da_opcao(o, capital, extras)
             else:
