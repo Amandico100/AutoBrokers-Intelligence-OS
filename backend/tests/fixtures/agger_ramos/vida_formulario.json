@@ -1,0 +1,835 @@
+{
+ "formato": "agger_formulario_ramo_v1",
+ "fonte": "SPEC-129-D BLOCO 0 (M6, entrada 3), 16/10/2026 07:18–07:48 UTC: conta-robô da corretora A, pela TELA (formulário de Vida Individual preenchido com dados de TESTE fictícios), guarda de produção + embrulho (1 calcularV2). Saneado: CPF/nome/endereço/ids → marcadores, config e credencial das seguradoras → <redacted:...>.",
+ "ramo": 91,
+ "rota": "/cotacao/vida/formulario",
+ "n_campos_com_nome": 36,
+ "botoes": [
+  "Minimizar menu",
+  "Nova Cotação",
+  "Instalar extensão",
+  "Aplicar",
+  "Redefinir",
+  "Voltar",
+  "Salvar",
+  "Calcular"
+ ],
+ "campos": [
+  {
+   "campo": "cpf",
+   "rotulo": "CPF",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "nome",
+   "rotulo": "Nome completo",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "dataNasc",
+   "rotulo": "Data de Nascimento",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "sexo",
+   "rotulo": "Sexo",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "estadoCivil",
+   "rotulo": "Estado civil",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "cep",
+   "rotulo": "CEP Residencial",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "fone",
+   "rotulo": "Telefone",
+   "tipo": "input:tel",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "email",
+   "rotulo": "Email",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "altura",
+   "rotulo": "Altura (m)",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "peso",
+   "rotulo": "Peso (kg)",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "isFumante",
+   "rotulo": "Fumante",
+   "tipo": "mat-select",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "rendaMensal",
+   "rotulo": "Renda Mensal",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "profissao",
+   "rotulo": "Busca por profissão*",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "<vazio>"
+  },
+  {
+   "campo": "praticaEsporteRadical",
+   "rotulo": "Pratica esportes radicais",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "Não contratado"
+  },
+  {
+   "campo": "vigenciaIni",
+   "rotulo": "Início de vigência",
+   "tipo": "input",
+   "obrigatorio": true,
+   "padrao_na_tela": "16/10/2026"
+  },
+  {
+   "campo": "percAgenciamento",
+   "rotulo": "Agenciamento %",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "0"
+  },
+  {
+   "campo": "assistMorte",
+   "rotulo": "Morte",
+   "tipo": "input:text",
+   "obrigatorio": true,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "isAppMorteAcidental",
+   "rotulo": "Morte acidental",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "isAppInvalidez",
+   "rotulo": "Invalidez permanente (IPA)",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "assistFuneral",
+   "rotulo": "Assistência funeral",
+   "tipo": "mat-select",
+   "obrigatorio": false,
+   "padrao_na_tela": "Sem Assistência"
+  },
+  {
+   "campo": "isDespesasMedicasHospitalares",
+   "rotulo": "Diária de Internação Hospitalar (DIH)",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "isInvalidezDoenca",
+   "rotulo": "Invalidez por doença (IFPD)",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "valorDIT",
+   "rotulo": "Diária de Incapacidade Temporária (DIT)",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "valorDoencasGraves",
+   "rotulo": "Doenças graves",
+   "tipo": "input:text",
+   "obrigatorio": false,
+   "padrao_na_tela": "R$ 0,00"
+  },
+  {
+   "campo": "percComissao_1",
+   "rotulo": "",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "0"
+  },
+  {
+   "campo": "percComissao_4",
+   "rotulo": "",
+   "tipo": "input",
+   "obrigatorio": false,
+   "padrao_na_tela": "0"
+  }
+ ],
+ "codigos_do_js": {
+  "sexo": {
+   "F": "Feminino",
+   "M": "Masculino"
+  },
+  "estadoCivil": {
+   "1": "Solteiro(a)",
+   "2": "Casado(a)",
+   "3": "Separado(a)",
+   "4": "Divorciado(a)",
+   "5": "Viúvo(a)",
+   "6": "União Estável"
+  },
+  "isFumante": {
+   "true": "Sim",
+   "false": "Não"
+  },
+  "assistFuneral": {
+   "0": "Sem Assistência",
+   "1": "Individual",
+   "2": "Familiar"
+  },
+  "praticaEsporteRadical": {
+   "0": "Não contratado (padrão da tela)",
+   "...": "49 esportes, value numérico"
+  },
+  "assistMorte_faixas": "30 mil–300 mil (10 mil) · 325 mil–1 mi (50 mil) · 1,1–2 mi (100 mil); padrão do JS 50 mil, tela abriu R$ 0,00",
+  "caminhos": {
+   "assistMorte": "configuracoes.isAppMorte",
+   "isFumante": "configuracoes.fumante",
+   "praticaEsporteRadical": "configuracoes.praticaEsporteRadical",
+   "assistFuneral": "configuracoes.funeral.tipo",
+   "valorDIT": "configuracoes.DIT.valor",
+   "valorDoencasGraves": "configuracoes.isDoencasGravesGrupo.valor",
+   "Agenciamento %": "calculos[].percAgenciamento",
+   "profissao": "calculos[].valoresAjusteSeguradora.profissao"
+  }
+ },
+ "profissao": {
+  "busca": "GET pdocs/calculo/getOptionsBySegFull?executionType=9&filterText=<texto ≥ 3>",
+  "forma": "[{seguradora: <codigo>, KeyValue: [{Key, Value, Description}]}] — um bloco por seguradora habilitada no Agger global (13 blocos)",
+  "termo": "Analista de sistemas",
+  "blocos": [
+   {
+    "seguradora": 40,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 0,
+    "opcoes": []
+   },
+   {
+    "seguradora": 3,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 0,
+    "opcoes": []
+   },
+   {
+    "seguradora": 6,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "10183",
+      "Value": "Analista de sistemas",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 34,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "782733453",
+      "Value": "Analista de Sistemas",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 11,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "1409",
+      "Value": "Analista de sistemas de automação",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 12,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "212415",
+      "Value": "Analista de sistemas de automacao",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 33,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "503",
+      "Value": "Analista de Sistemas",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 17,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 0,
+    "opcoes": []
+   },
+   {
+    "seguradora": 4,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "10183",
+      "Value": "Analista de sistemas",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 25,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "92",
+      "Value": "Analista de sistemas de automação",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 5,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "3201198",
+      "Value": "Analista de sistemas de automação",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 8,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "3023",
+      "Value": "ANALISTA DE SISTEMAS",
+      "Description": null
+     }
+    ]
+   },
+   {
+    "seguradora": 7,
+    "chaves_bloco": [
+     "KeyValue",
+     "seguradora"
+    ],
+    "n": 1,
+    "opcoes": [
+     {
+      "Key": "532",
+      "Value": "Analista de sistemas de automação",
+      "Description": null
+     }
+    ]
+   }
+  ],
+  "escolhas_da_tela": [
+   {
+    "grupo": "Allianz",
+    "opcoes_no_grupo": 1,
+    "escolhida": "Analista de sistemas de automação"
+   },
+   {
+    "grupo": "HDI",
+    "opcoes_no_grupo": 1,
+    "escolhida": "Analista de sistemas"
+   },
+   {
+    "grupo": "Porto Seguro",
+    "opcoes_no_grupo": 1,
+    "escolhida": "Analista de sistemas"
+   },
+   {
+    "grupo": "Tokio",
+    "opcoes_no_grupo": 1,
+    "escolhida": "Analista de sistemas de automação"
+   },
+   {
+    "grupo": "Yelum",
+    "opcoes_no_grupo": 1,
+    "escolhida": "Analista de sistemas de automacao"
+   },
+   {
+    "grupo": "Zurich",
+    "opcoes_no_grupo": 1,
+    "escolhida": "Analista de sistemas de automação"
+   }
+  ]
+ },
+ "seguradoras": {
+  "regra": "habilitada em vida = app/seguradoraStatus.vidaStatus == 1 (global) ∩ calculo/seguradoras ativa na conta",
+  "global_vida_ou_ap": [
+   {
+    "seguradora": 1,
+    "nome": "BRADESCO",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": -1
+   },
+   {
+    "seguradora": 3,
+    "nome": "MAPFRE",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": -1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 4,
+    "nome": "HDI",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 5,
+    "nome": "ALLIANZ",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 7,
+    "nome": "ZURICH",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": -1,
+    "acidentesPessoaisIndividualStatus": -1
+   },
+   {
+    "seguradora": 8,
+    "nome": "PORTO_SEGURO",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 11,
+    "nome": "TOKIO",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": -1
+   },
+   {
+    "seguradora": 12,
+    "nome": "LIBERTY_SITE",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 17,
+    "nome": "SULAMERICA",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 19,
+    "nome": "SANCOR",
+    "vidaStatus": -1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": -1
+   },
+   {
+    "seguradora": 25,
+    "nome": "ICATU",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": -1,
+    "acidentesPessoaisIndividualStatus": -1
+   },
+   {
+    "seguradora": 33,
+    "nome": "UNIMED",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": -1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 34,
+    "nome": "METLIFE",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": 1
+   },
+   {
+    "seguradora": 35,
+    "nome": "AXA",
+    "vidaStatus": -1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": -1
+   },
+   {
+    "seguradora": 40,
+    "nome": "CENTAURO",
+    "vidaStatus": 1,
+    "vidaGlobalStatus": 1,
+    "acidentesPessoaisIndividualStatus": -1
+   }
+  ],
+  "na_conta": [
+   {
+    "codigo": 11,
+    "nome_config": "Tokio",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 45,
+    "nome_config": "Azul Assinatura",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": null,
+    "percDescontoVida": null,
+    "percAgenciamentoVida": null
+   },
+   {
+    "codigo": 51,
+    "nome_config": "Youse",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": null,
+    "percDescontoVida": null,
+    "percAgenciamentoVida": null
+   },
+   {
+    "codigo": 4,
+    "nome_config": "Hdi",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": null
+   },
+   {
+    "codigo": 5,
+    "nome_config": "Allianz",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 43,
+    "nome_config": "Ezze",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": null,
+    "percDescontoVida": null,
+    "percAgenciamentoVida": null
+   },
+   {
+    "codigo": 8,
+    "nome_config": "Porto Seguro",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 12,
+    "nome_config": "Liberty Site",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 7,
+    "nome_config": "Zurich",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 1,
+    "nome_config": "Bradesco",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 3,
+    "nome_config": "Mapfre",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 46,
+    "nome_config": "Darwin",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   },
+   {
+    "codigo": 10,
+    "nome_config": "Azul",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": null,
+    "percDescontoVida": null,
+    "percAgenciamentoVida": null
+   },
+   {
+    "codigo": 24,
+    "nome_config": "Sura",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": null,
+    "percDescontoVida": null,
+    "percAgenciamentoVida": null
+   },
+   {
+    "codigo": 13,
+    "nome_config": "Mitsui",
+    "ativo": true,
+    "credencial_valida": true,
+    "percComissaoVida": 0,
+    "percDescontoVida": 0,
+    "percAgenciamentoVida": 0
+   }
+  ],
+  "na_tela_de_vida": [
+   "Allianz",
+   "Bradesco",
+   "HDI",
+   "Mapfre",
+   "Porto Seguro",
+   "Tokio",
+   "Yelum",
+   "Zurich"
+  ],
+  "marcadas_ao_abrir": [
+   "Bradesco",
+   "HDI"
+  ],
+  "regra_da_tela": "sem profissão escolhida a seguradora fica desmarcada e desabilitada; comissão > 0 obrigatória em toda marcada"
+ },
+ "acidentes_pessoais": {
+  "rota": "/cotacao/acidentes_pessoais/formulario",
+  "seguradoras_na_tela": [
+   "Allianz",
+   "HDI",
+   "Mapfre",
+   "Porto Seguro",
+   "Yelum"
+  ],
+  "sura_aparece": false,
+  "campos": [
+   {
+    "campo": "cpfCnpj",
+    "rotulo": "CPF",
+    "obrigatorio": true
+   },
+   {
+    "campo": "nome",
+    "rotulo": "Nome",
+    "obrigatorio": true
+   },
+   {
+    "campo": "dataNasc",
+    "rotulo": "Data de Nascimento",
+    "obrigatorio": true
+   },
+   {
+    "campo": "sexo",
+    "rotulo": "Sexo",
+    "obrigatorio": true
+   },
+   {
+    "campo": "estadoCivil",
+    "rotulo": "Estado civil",
+    "obrigatorio": true
+   },
+   {
+    "campo": "cep",
+    "rotulo": "CEP Residencial",
+    "obrigatorio": true
+   },
+   {
+    "campo": "fone",
+    "rotulo": "Telefone fixo",
+    "obrigatorio": false
+   },
+   {
+    "campo": "fone1",
+    "rotulo": "Telefone celular",
+    "obrigatorio": false
+   },
+   {
+    "campo": "email",
+    "rotulo": "Email",
+    "obrigatorio": false
+   },
+   {
+    "campo": "altura",
+    "rotulo": "Altura (m)",
+    "obrigatorio": false
+   },
+   {
+    "campo": "peso",
+    "rotulo": "Peso (kg)",
+    "obrigatorio": false
+   },
+   {
+    "campo": "fumante",
+    "rotulo": "Fumante",
+    "obrigatorio": true
+   },
+   {
+    "campo": "rendaMensal",
+    "rotulo": "Renda Mensal",
+    "obrigatorio": true
+   },
+   {
+    "campo": "profissao",
+    "rotulo": "Busca por profissão",
+    "obrigatorio": true
+   },
+   {
+    "campo": "praticaEsporteRadical",
+    "rotulo": "Pratica esportes radicais",
+    "obrigatorio": true
+   },
+   {
+    "campo": "vigenciaIni",
+    "rotulo": "Início de vigência",
+    "obrigatorio": true
+   },
+   {
+    "campo": "percAgenciamento",
+    "rotulo": "Agenciamento %",
+    "obrigatorio": false
+   },
+   {
+    "campo": "isAppMorteAcidental",
+    "rotulo": "Morte acidental",
+    "obrigatorio": true
+   },
+   {
+    "campo": "isAppInvalidez",
+    "rotulo": "Invalidez permanente (IPA)",
+    "obrigatorio": false
+   },
+   {
+    "campo": "DIT",
+    "rotulo": "Diária de incapacidade temporária (DIT)",
+    "obrigatorio": false
+   },
+   {
+    "campo": "funeral",
+    "rotulo": "Assistência funeral",
+    "obrigatorio": true
+   }
+  ]
+ }
+}
