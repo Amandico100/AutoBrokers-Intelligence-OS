@@ -76,7 +76,7 @@ const sofia = { id: 'ag-1', name: 'Sofia', agent_role: 'attendance', company_id:
 assert('atendimento leva o nome do banco ("Sofia")', rotuloDoAssistente(sofia) === 'Sofia');
 assert('atendimento sem nome → "Atendimento"', rotuloDoAssistente({ ...sofia, name: null }) === 'Atendimento');
 assert('core → "AutoBrokers" (mesmo se o banco disser "AutoBrokers Sandbox")', rotuloDoAssistente({ id: 'c', name: 'AutoBrokers Sandbox', agent_role: 'core', company_id: A }) === 'AutoBrokers');
-assert('sem agente → "Outros usos"', rotuloDoAssistente(null) === 'Outros usos');
+assert('sem agente → "Outros usos"', rotuloDoAssistente(null) === 'Outros usos (sem assistente)');
 
 // ── 2. isolamento: duas corretoras ──────────────────────────────────────────
 console.log('\n2. duas corretoras, conta só a pedida');
@@ -96,7 +96,7 @@ assert(`A conta 3 chamadas (deu ${vA.uso.chamadas})`, vA.uso.chamadas === 3);
 assert(`controle: B conta 5 com as MESMAS linhas (deu ${vB.uso.chamadas})`, vB.uso.chamadas === 5);
 assert('linha sem corretora não entra em ninguém', vA.uso.chamadas + vB.uso.chamadas === 8);
 assert('agente de OUTRA corretora não vira assistente de A', !vA.por_assistente.some((g) => g.rotulo === 'AutoBrokers' && g.chamadas > 1));
-assert('A por assistente: AutoBrokers · Sofia · Outros usos', ['AutoBrokers', 'Sofia', 'Outros usos'].every((r) => vA.por_assistente.some((g) => g.rotulo === r && g.chamadas === 1)));
+assert('A por assistente: AutoBrokers · Sofia · Outros usos', ['AutoBrokers', 'Sofia', 'Outros usos (sem assistente)'].every((r) => vA.por_assistente.some((g) => g.rotulo === r && g.chamadas === 1)));
 
 // o coletor do servidor: filtra no banco E na view
 function clienteFalso(tabelas, { respeitaFiltro = true } = {}) {

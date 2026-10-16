@@ -55,7 +55,7 @@ export interface AgentRow { id: string; name: string | null; agent_role: string 
 
 /** O nome que o corretor reconhece. O central é sempre "AutoBrokers"; o de atendimento, o nome que a corretora deu. */
 export function rotuloDoAssistente(agente: AgentRow | null | undefined): string {
-  if (!agente) return 'Outros usos';
+  if (!agente) return 'Outros usos (sem assistente)';
   const nome = String(agente.name ?? '').trim();
   if (agente.agent_role === 'core') return 'AutoBrokers';
   if (agente.agent_role === 'attendance') return nome || 'Atendimento';
