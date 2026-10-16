@@ -259,6 +259,9 @@
 >    **T-181** (ligar a linha, só depois da T-178 e do canário) · **T-182** (avisos por tipo — ainda não).
 > 14. **15/10 (SPEC-139 construída, a loja de aplicativos):** ~~T-177~~ ✅ (você escolheu a C) · **T-174** primeiro → **T-183** (Implantar o
 >    `smith-web`, pode ser o MESMO da T-180, fora do horário de atendimento) → **T-184** (o canário da loja, 10 min).
+> 15. **16/10 (SPEC-131-0-B3 construída):** ~~T-178~~ ✅ no essencial (a linha respondeu em produção) · ~~T-181~~ ✅ (você pôs `=1`) ·
+>    **T-185** (InfoCap ativa na Amandus) · **T-186** (Implantar `smith-api` e `smith-worker`) · **T-174** primeiro → **T-187** (Implantar
+>    `smith-web`, pode ser o MESMO da T-180/T-183) → **T-188** (o canário, 10 min) · **T-189** (rotação de segredos) quando puder.
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -476,7 +479,7 @@
 > Junto: a caixa do chat que subia a cada resposta foi consertada e o botão "Pesquisa na web", que não fazia nada, saiu. Nasceram a T-178 a
 > T-182.
 
-- [ ] **T-178** ⏳ 🧑 **quando puder, 10 min, com o celular do seu número de TESTE** · **Parear o chip e medir a linha (M1–M6)** (substitui a
+- [x] **T-178** ✅ **CUMPRIDA NO ESSENCIAL 16/10** — 📊 15/10 (SQL de produção) a linha recebeu e respondeu: as boas-vindas saíram, a pergunta teve resposta em 33 s e um áudio em 40 s (SPEC-131-0-B3 §0.1). Continuam M2 (notifica?) e M3 (RAM) em P-1310B2-01. · *o texto original:* **Parear o chip e medir a linha (M1–M6)** (substitui a
       T-175; D-132F-06) — escreva no chat do Claude Code: *"pronto para o QR"*. O gerente cria a instância de medição e abre o QR na tela
       do computador (ele avisa quando).
       1. No celular de teste: WhatsApp → **Aparelhos conectados** → **Conectar um aparelho** → aponte para o QR (ele troca a cada ~20 s; depois
@@ -500,7 +503,7 @@
       `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/configuracoes?aba=whatsapp` **não** aparece
       "Conectar meu WhatsApp" (está desligada). **Se der errado:** o painel ou a API caem durante o build → anote a hora e mande no chat;
       `/api/versao` com commit antigo → Implantar o `smith-web` de novo. · *de:* S131-0-B2 §8 · D-1310B2-07
-- [ ] **T-181** ⏳ 🧑 **SÓ depois da T-178 (com M1 positivo) e do canário, 5 min** · **Ligar a linha do usuário** — EasyPanel → `smith-api`
+- [x] **T-181** ✅ **FEITA pelo Founder em 15/10** (`LINHA_DO_USUARIO_LIGADA=1` = liga para todas as pessoas; D-1310B3-03) · *o texto original:* **Ligar a linha do usuário** — EasyPanel → `smith-api`
       → **Ambiente** → acrescente a linha `LINHA_DO_USUARIO_LIGADA=1` → **Salvar** → **Implantar** o `smith-api`. Depois, no celular de teste:
       abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/configuracoes?aba=whatsapp` → **Conectar
       meu WhatsApp** → leia o QR com o WhatsApp do seu número de teste.
@@ -559,6 +562,49 @@
          o servidor de teste só conseguiu ver o redirecionamento ANTES do login).
       **Se der errado:** a loja ainda antiga → `Ctrl+F5`; uma página 404, em branco ou com erro → print, o endereço e a hora no chat. Diga
       também o que achou das capas no seu celular. · *de:* S139 §5.1/§6
+
+> **16/10 (SPEC-131-0-B3 — um WhatsApp só por pessoa; branch `spec/131-0-B3-um-whatsapp`):** o WhatsApp que a pessoa conecta na aba
+> WhatsApp de trabalho passa a ser o número de tudo, inclusive o do "Quero renovar" que o cliente toca (📊 hoje o número em produção não
+> muda: o digitado é o mesmo do conectado); trocar de aba num aplicativo fica instantâneo; Custos fala português; o Radar lê a InfoCap pela
+> conexão da corretora. **Nenhuma migration, nenhuma variável nova.** A T-178 foi cumprida no essencial e a T-181 você já fez. Nasceram a
+> T-185 a T-189.
+
+- [ ] **T-185** ⏳ 🧑 **quando puder, 5 min** · **Conectar uma InfoCap ATIVA na Amandus** — 📊 16/10 ela tem 0 conexões InfoCap utilizáveis
+      (as 2 estão arquivadas). Sem isso, a pergunta das renovações pela linha responde "conecte em Personalização → Conectores" (honesto, mas
+      sem números). Logado como administrador da Amandus, abra
+      `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/personalizacao/conectores` → InfoCap →
+      conectar com o login DA PRÓPRIA Amandus. ⚠️ Não use o login de outra corretora: a SPEC-131-0-A mediu que a InfoCap "da Amandus" era a
+      da AutoFleet, e a mesma conta em duas corretoras é recusada na 2ª (portão da 094, P-1310B3-07).
+      **Esperado:** a conexão aparece como conectada. **Se der errado:** uma recusa por conta compartilhada → o login é de outra
+      corretora; use a da Amandus. **Custa esquecer:** o Radar da Amandus nunca mostra números. **Bloqueia?** Não. · *de:* S131-0-B3 §0.1
+- [ ] **T-186** ⏳ 🧑 **quando quiser, 10 min** · **Implantar `smith-api` e `smith-worker`** (o número efetivo e o Radar pela conexão) —
+      EasyPanel → `smith-api` → **Implantar**; depois `smith-worker` → **Implantar**. Nenhuma variável nova.
+      **Esperado:** os dois "running"/saudáveis; nada muda para os segurados. **Se der errado:** "unhealthy" → print do log do contêiner e a
+      hora no chat. **Custa esquecer:** o Radar segue dizendo "sem credencial" e o "Quero renovar" segue no digitado. **Bloqueia?** Não.
+      · *de:* S131-0-B3 §6
+- [ ] **T-187** ⏳ 🧑 **depois da T-174, FORA do horário de atendimento, 15 min (pode ser o MESMO Implantar da T-180/T-183)** · **Implantar
+      o `smith-web`** (a aba, as abas instantâneas, Custos; P-132D-01: o build do site já derrubou o servidor em 14/10) — EasyPanel →
+      `smith-web` → **Implantar**. Depois abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao`.
+      **Esperado:** `commit` começando pelo do push da SPEC-131-0-B3 (o gerente diz qual na resposta final) e `build_em_brasilia` de hoje.
+      **Se der errado:** o painel ou a API caem durante o build → anote a hora e mande no chat; commit antigo → Implantar de novo.
+      **Custa esquecer:** a aba e Custos ficam no texto antigo. **Bloqueia?** Não. · *de:* S131-0-B3 §6 · P-132D-01
+- [ ] **T-188** ⏳ 🧑 **depois da T-186 e da T-187, 10 min, no celular** · **O canário da B3**:
+      1. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/configuracoes?aba=whatsapp`.
+         **Esperado:** "✓ Este é o seu WhatsApp de trabalho · (DD) ****-*XYZ · desde …" e as partes "Para que ele serve hoje", "Em breve,
+         quando a sua corretora ativar" e "Fica de fora".
+      2. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/auxiliares/renovacao?aba=renovacoes`
+         e troque de aba algumas vezes. **Esperado:** a troca é instantânea, e o botão "voltar" do navegador volta à aba anterior.
+      3. Abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/dashboard/personalizacao/corretora/custos`.
+         **Esperado:** nenhuma palavra "Tokens" nem "Even"; "A cobrança por uso ainda não começou na sua conta." e "Saldo de créditos".
+      4. Na sua "Mensagem para você", escreva *"quais renovações tenho essa semana?"*. **Esperado:** sem a T-185, "conecte em Personalização →
+         Conectores"; com a T-185, os números de segunda a domingo da semana corrente.
+      5. Abra uma página de renovação de TESTE e toque **Quero renovar**. **Esperado:** abre o WhatsApp no seu número conectado.
+      **Se der errado:** print, o endereço e a hora no chat. **Custa esquecer:** o `wa.me` com o número conectado nunca foi tocado num celular
+      (P-1310B3-11). **Bloqueia?** Não. · *de:* S131-0-B3 §6
+- [ ] **T-189** ⏳ 🧑 **quando puder** · **Avaliar a rotação dos segredos colados no chat em 15/10** — credenciais do EasyPanel, chaves de API e
+      senhas foram coladas na conversa e agora estão também no histórico dela. Avalie trocar as mais sensíveis: a service role do Supabase,
+      as chaves de LLM e as senhas do banco, do Redis e do MinIO (cada troca exige atualizar a variável no EasyPanel e Implantar).
+      **Custa esquecer:** quem tiver acesso ao histórico tem acesso aos segredos. **Bloqueia?** Não, mas é segurança. · *de:* S131-0-B3 §10.1
 
 ### ① Implantar e conferir — não depende de nada
 

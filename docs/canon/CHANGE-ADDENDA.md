@@ -4226,3 +4226,20 @@ com `RESEARCH_CUTOVER=1` (o padrão, `legacy_adapter.py:41`) essa ferramenta nã
 **Consequência:** o botão some do "+"; o modelo continua pesquisando quando a pergunta pede. Sobram props mortas `pesquisaNaWeb` em
 `Composer.tsx`/`FolhaDoMais.tsx` (P-1310B2-08). Alternativas: Pesquisa profunda própria 60 (exige SPEC) · ligada por padrão 20 · como
 estava 10. **Autorização:** junto do conserto do chat pedido pelo Founder em 15/10; decisão do gerente com nota 85.
+
+## 16/10/2026 · SPEC-131-0-B3 · Raio-X e Radar leem a InfoCap pela CONEXÃO da corretora (F5, D-1310B3-07) — ESSENCIAL · ✅ EXECUTADA (`9cf6f19`, conserto `69b2963`)
+**Problema:** o pedido do Founder de 15/10 era sobre o WhatsApp, as abas e Custos; no "antes de tudo", a primeira pergunta feita pela linha
+("quais renovações tenho essa semana?") recebeu "a corretora está sem credencial da InfoCap". **Evidência:** 📊 15/10: Raio-X e Radar liam
+`CORP_INFOCAP_{SLUG}_*` por NOME (`relatorios_comerciais.py:600,907`) — só funcionavam para quem tinha variável de ambiente com o nome; o
+resolver por conexão já existia (`infocap_analytics_provider._abrir`, SPEC-094). **Consequência:** as duas tools passam a ler a conexão da
+corretora; o legado só com `COMERCIAL_RESOLVER_LEGADO`; "conecte" só quando falta conexão, a conta é compartilhada ou a credencial não serve;
+falha passageira → "tente de novo". 📊 M1 do guarda 24 → 19 linhas. ⚠️ 📊 16/10: a corretora da linha tem 0 conexões InfoCap utilizáveis
+(as 2 arquivadas): a resposta agora é honesta ("conecte"), e os números dependem da T-185. **Autorização:** decisão do gerente pela licença
+de autonomia (protocolo §9: muda o que o corretor lê, não precisa da mão do Founder), nota 92 × variável de ambiente com o nome da
+corretora 10; entrou na SPEC como fatia F5.
+
+## 16/10/2026 · SPEC-131-0-B3 · "esta semana" no leitor de período — VALIOSA · ✅ EXECUTADA (`9cf6f19`)
+**Problema:** a pergunta pela linha falava em "essa semana" e o leitor de período não entendia semanas. **Evidência:** `calculos.entender_periodo`
+não tinha os casos de semana (📊 +14 linhas em `calculos.py`, `git diff --stat 6d3d911..69b2963`). **Consequência:** entende "esta/essa/próxima semana, semana passada, próximas N semanas",
+de segunda a domingo; um teste fica vermelho com o código antigo (📊 mutação "semana" 1 failed). Erros conhecidos em P-1310B3-09 ("essa semana
+que vem", "até o fim da semana", domingo). **Autorização:** junto da F5, decisão do gerente (≤ 30 min, 1 arquivo, sem decisão de produto).

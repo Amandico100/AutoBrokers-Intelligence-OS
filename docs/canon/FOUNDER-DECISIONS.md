@@ -2696,3 +2696,21 @@ Também da execução: `LINHA_DO_USUARIO_MAX_LINHAS` com padrão 💭 **20** at�
 | D-139-CB-02 | **Os enquadramentos da C** (card, cabeçalho 4:1, destaque): a mesma cena montada para o lugar onde aparece. 💭 nota não registrada | ✅ TOMADA · G (conserto B) | — |
 | D-139-CB-03 | **O tile do card só existe com `cover_url`** (a regra da D-139-L6-01 levada ao card). 💭 nota não registrada | ✅ TOMADA · G (conserto B, juiz de design G2) | — |
 | D-139-G-01 | **O nome INTEIRO em "Precisa de você"**, com o porquê escrito na tela (quem age precisa saber quem é); a lista "O que saiu" segue mascarada. Notas **80** × mascarar 50 | ✅ TOMADA · **80** · G (conserto de design 2) | fecha a P-139-03 |
+
+## D-1310B3-01…10 · SPEC-131-0-B3, um WhatsApp só por pessoa — 15–16/10/2026
+
+> Fonte: [SPEC-131-0-B3 §7](specs/SPEC-131-0-B3-um-whatsapp-por-pessoa.md) (01–09) e a execução de 15–16/10 ([relatório](reports/SPEC-131-0-B3-EXECUTION-REPORT.md), 10).
+> G = gerente (autonomia com nota, CLAUDE.md §10).
+
+| # | Decisão | Estado (nota · de) | Substitui / revê |
+|---|---|---|---|
+| D-1310B3-01 | **Um número só: o PAREADO é o WhatsApp de trabalho**; o digitado é a reserva de quem não pareia. Notas **90** × dois números 30 | ✅ TOMADA · **90** · G — SPEC §7 | revê a D-1310B2-08 (a aba passa a ter o pareamento como principal) |
+| D-1310B3-02 | **O envio a clientes pela linha fica na 135** (motor de envio humano); aqui só tela e dados prontos. Notas **88** × ligar já 25 | ✅ TOMADA · **88** · G — SPEC §7 | confirma a D-1310B2-15 |
+| D-1310B3-03 | **A linha abre para todos (`=1`)** depois do teste do Founder. 📊 15/10: o Founder pôs `LINHA_DO_USUARIO_LIGADA=1` e a linha respondeu em 33 s e 40 s. Notas **85** × manter a lista 50 | ✅ TOMADA · **85** · G, **aplicada pelo Founder** 15/10 | fecha a T-181 |
+| D-1310B3-04 | **O efetivo não depende da chave da linha:** depende da linha CONECTADA daquela pessoa naquela corretora. Notas **85** × depender da chave 55 (desligar a conversa trocaria o número do cliente) | ✅ TOMADA · **85** · G — SPEC §7 · a tela diz a verdade no estado pausado (conserto K2) | — |
+| D-1310B3-05 | **A identidade do atalho central continua no número digitado e verificado.** Notas **90** × aceitar o pareado no central 40 (outra porta, outra prova). 📊 `test_spec132c_verificacao` 40 passed sem mudança | ✅ TOMADA · **90** · G — SPEC §7 | mantém a 132-C |
+| D-1310B3-06 | **Abas por `history.pushState`** (Next 15). Notas **90** × tirar `force-dynamic` 40 (o servidor refaria igual) × biblioteca de rota rasa 20. 📊 0 requisições RSC em 8 trocas | ✅ TOMADA · **90** · G — SPEC §7 | — |
+| D-1310B3-07 | **Raio-X e Radar pelo resolver da conexão (094)**; o legado só com `COMERCIAL_RESOLVER_LEGADO`. Notas **92** × criar variável de ambiente com o nome de uma corretora 10 (fere §13.9) | ✅ TOMADA · **92** · G — SPEC §7 | fecha o defeito de produto da P-094-LEGADO |
+| D-1310B3-08 | **Custos: dinheiro só do razão** (`credit_transactions`); uso em português; nunca custo de provedor em reais. Notas **90** × converter USD→BRL 25 (é preço: §13.6) | ✅ TOMADA · **90** · G — SPEC §7 | — |
+| D-1310B3-09 | **O medidor gravado sem corretora vai para a SPEC-062**, não aqui. 📊 7.908 de 8.967 chamadas em 30 dias sem `company_id`. Notas **80** × consertar aqui 45 (Ledger/Billing, §5) | ✅ TOMADA · **80** · G — SPEC §7 | P-1310B3-01 |
+| D-1310B3-10 | **O pareado ganha o 9 e só vale se for número do Brasil válido:** o JID vem sem o 9 (📊 13 caracteres na única linha de produção) → celular de 12 dígitos começando em 6–9 ganha o 9; depois, `e164_do_brasil` decide; estrangeiro ou curto cai no digitado confirmado (conserto K1 do red team B1). 📊 0 números conectados de produção recusados pela regra (confirmação). Notas **85** × deixar como veio 60 | ✅ TOMADA · **85** · G (execução + conserto K1) | — |

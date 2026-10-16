@@ -9965,6 +9965,10 @@ mutação que devolve zero. O `_num` legado continua MEDIDO no guarda, sem prome
 tools**. **Destrava:** aposentar o Raio-X e o Radar, ou migrá-los para o registry. **Dono:** 🤖.
 
 ## P-094-LEGADO · `relatorios_comerciais.py` fala o dialeto da InfoCap em 24 linhas
+🟡 **16/10 (SPEC-131-0-B3, F5): o DEFEITO DE PRODUTO FECHOU nas tools.** Raio-X e Radar passaram a ler a InfoCap pela CONEXÃO
+da corretora (o resolver `_abrir` da 094); o caminho por variável com nome (`CORP_INFOCAP_{SLUG}_*`) só roda com
+`COMERCIAL_RESOLVER_LEGADO` e mora no provider. 📊 M1 do guarda: **24 → 19** linhas em `relatorios_comerciais.py` — o que resta são
+imports, um literal e descrições. **O que resta:** tirar as 19 da allowlist quando o legado for aposentado. [relatório](reports/SPEC-131-0-B3-EXECUTION-REPORT.md)
 📊 Medido em 03/09/2026 pelo grep do M1. São o resolver legado da SPEC-081 dentro da tool de relatório comercial.
 Elas estão na **allowlist explícita** do gate M1, com o número escrito: o guarda reprova se um arquivo NOVO de
 `agents/tools/` passar a falar InfoCap, ou se um da lista CRESCER.
@@ -14349,6 +14353,9 @@ O Founder não pareou (o túnel do receptor caiu no limite de 2 h). 📊 Sem o c
 se o `fromMe` de "Mensagem para você" chega (JID/LID), se a resposta notifica, a RAM por instância, os eventos de aparelho cheio/14 dias, o
 history sync e o id do envio. **De quem:** 🧑 parear · 🤖 medir. **Custa esquecer:** ligar a linha sem saber se ela recebe (M1 negativo →
 D-132F-01, o central).
+🟡 **16/10 (SPEC-131-0-B3): M1 MEDIDA PELA PRODUÇÃO — a linha recebe e responde.** 📊 15/10, SQL: 1 linha `connected`; as boas-vindas
+saíram (marca + id do GO); a pergunta pela linha teve resposta em 33 s e um áudio em 40 s. **Continuam:** M2 (a resposta notifica o
+celular?) e M3 (a RAM por instância) — e o teto `LINHA_DO_USUARIO_MAX_LINHAS` segue no 💭 20 até a M3.
 
 ## P-1310B2-02 · 🤖 Membro removido: o CASCADE apaga a linha no banco sem logout da instância
 `fk_integrations_owner_membro … ON DELETE CASCADE`; a instância do GO segue pareada ao celular (o webhook passa a 401). Membro inativado:
@@ -14535,6 +14542,86 @@ parece defeito.
 
 ## P-LPP-01..03 · 🤖 a chave da linha por pessoa (fix/linha-por-pessoa, 15/10; juiz fresco APROVADO 90, 161 passed)
 - **P-LPP-01** `pareamento.qr()` não confere se a pessoa é membro ativo (ela só vê a própria tentativa, que o `conectar` já barrou) — alinhar com o `estado` por coerência. Custo de esquecer: baixo.
-- **P-LPP-02** tirar alguém da lista com a linha conectada: os eventos de queda daquela linha passam a ser ignorados e o estado gravado envelhece (igual à chave ausente). Destrava: desconectar ANTES de tirar da lista (T-181).
+- **P-LPP-02** tirar alguém da lista com a linha conectada: os eventos de queda daquela linha passam a ser ignorados e o estado gravado envelhece (igual à chave ausente). Destrava: desconectar ANTES de tirar da lista (T-181). 🟢 **16/10: dormente** — o Founder pôs `LINHA_DO_USUARIO_LIGADA=1` (liga para todas as pessoas, `estado.py:12-14`); volta a valer se a chave virar lista de novo.
 - **P-LPP-03** `entrada.ligada` ainda exportado — tirar do `__all__` ou um guarda que obrigue `ligada_para` (evita uso futuro como decisão).
 
+### 131-0-B3 · um WhatsApp só por pessoa — 16/10/2026 · [relatório](reports/SPEC-131-0-B3-EXECUTION-REPORT.md)
+
+> Fonte: o registro da execução + os laudos (juiz 86, red team 82, juiz de design 89→91, confirmação 91). Já fechados no conserto (não
+> entram aqui): juiz B1 (a aba com a conversa pausada), red team B1 (pareado estrangeiro/curto), design B1 ("por pessoa"), juiz P2 (falha
+> passageira dizia "conecte").
+
+## P-1310B3-01..14 · o número efetivo, Custos e o Radar pela conexão
+
+## P-1310B3-01 · 🤖 O medidor `token_usage_logs` grava sem `company_id` e sem pessoa
+📊 16/10, 30 dias: **7.908 de 8.967** chamadas sem corretora (bancada 7.226 · plataforma 547 · bancada_130b 79 · portal 31 · smoke 25) e
+**0** com `details.user_id`; só **251/1.055** das linhas com corretora têm `agent_id` → "Outros usos (sem assistente)" lidera Custos.
+**Destrava:** o medidor gravar corretora, assistente e pessoa — na SPEC-062 (D-1310B3-09). **De quem:** 🤖. **Custa esquecer:** Custos fica
+honesto mas pobre, e a quebra "por pessoa" nunca aparece.
+
+## P-1310B3-02 · 🤖 `situacao_da_equipe` lê a linha uma vez por pessoa (N+1)
+Não há leitura por corretora em `estado.py`. **Destrava:** uma leitura das linhas da corretora inteira. **De quem:** 🤖. **Custa esquecer:**
+valor marginal com equipe pequena; pesa numa corretora grande.
+
+## P-1310B3-03 · 🤖 A tela diz "conectada" pelo estado ao vivo; o backend exige `channel_status='connected'`
+Com o WhatsApp ao vivo `LoggedIn` e o banco fora de `connected`, o título "Este é o seu WhatsApp de trabalho" aparece enquanto o cliente
+recebe o digitado (juiz P3). A frase do "Quero renovar" é guardada pelo `efetivo`; só o título erra. **Destrava:** a tela ler o `efetivo`
+também no título. **De quem:** 🤖. **Custa esquecer:** um título falso numa janela estreita.
+
+## P-1310B3-04 · 🤖 O número pareado do PRÓPRIO dono vai em claro ao navegador dele
+`ler_perfil.whatsapp_trabalho.efetivo.numero` (juiz P4); a tela só o usa para comparar com o digitado. **Destrava:** mandar um sim/não
+no lugar do número. **De quem:** 🤖. **Custa esquecer:** a regra "a API mascara" da B2 ganha uma exceção (não vaza a terceiros).
+
+## P-1310B3-05 · 🤖 Leitura da linha que falha + origem 'linha' → a aba mostra o digitado com "chega aqui"
+`linha` null e `efetivo.origem==='linha'` caem no ramo antigo (confirmação; anterior ao conserto). **Destrava:** tratar `linha` null com
+origem 'linha' como o estado pausado. **De quem:** 🤖. **Custa esquecer:** texto falso quando a leitura da linha falha.
+
+## P-1310B3-06 · 🤖 A falta de conexão é detectada pelo TEXTO da exceção do provider
+`_fonte_da_conexao` lê a frase de `infocap_analytics_provider.py:688`. **Destrava:** uma subclasse `SemConexaoUtilizavel`. **De quem:** 🤖.
+**Custa esquecer:** mudar a frase no provider troca "conecte" por "tente de novo" em silêncio.
+
+## P-1310B3-07 · 🤖 Conta InfoCap compartilhada: a 2ª corretora passa a ser recusada
+O Radar agora passa pelo portão "primeiro que chega" (F-094-07). Se duas corretoras usarem o mesmo login, a 2ª é recusada onde antes lia
+(red team P3; não verificado sem decifrar). **Destrava:** conferir os logins das conexões ativas. **De quem:** 🤖. **Custa esquecer:** uma
+corretora perde o Radar sem entender por quê (a recusa tem motivo fixo, sem vazamento).
+
+## P-1310B3-08 · 🤖 O motivo interno de falha da InfoCap leva `company_id:connection_id` ao modelo
+`fonte_infocap.py:341,346` via `_erro_legivel` (red team P4) — ids da PRÓPRIA corretora. **Destrava:** rótulo sem id. **De quem:** 🤖.
+**Custa esquecer:** um id interno pode aparecer ao corretor.
+
+## P-1310B3-09 · 🤖 O leitor de período erra três frases
+"essa semana que vem" → esta semana; "até o fim da semana" → 90 dias; num domingo "esta semana" é quase só passado (red team P5).
+**Destrava:** casos novos em `calculos.entender_periodo`. **De quem:** 🤖. **Custa esquecer:** a resposta do Radar cobre a semana errada.
+
+## P-1310B3-10 · 🤖 Custos busca nomes em `users_v2` sem conferir o vínculo com a corretora
+`tenant-usage-store.ts`, bloco "por pessoa" (red team P6). 📊 hoje parado: 0 registros com `user_id`. **Destrava:** filtrar pelos membros da
+corretora. **De quem:** 🤖. **Custa esquecer:** quando o medidor gravar a pessoa (P-1310B3-01), um nome de fora pode aparecer.
+
+## P-1310B3-11 · 🧑 O `wa.me` com o pareado precisa do canário real
+O fio prova o link servido; ninguém tocou "Quero renovar" num celular. **Destrava:** T-188, passo 5. **De quem:** 🧑. **Custa esquecer:** um
+formato de número que o WhatsApp não abre só aparece com o cliente.
+
+## P-1310B3-12 · 🤖 O guarda `links-internos-casam-rotas` não lê `history.pushState`
+O destino `?aba=configurar` saiu da conferência com a F3. **Destrava:** o guarda casar também as chamadas a `history.pushState/replaceState`.
+**De quem:** 🤖. **Custa esquecer:** um link de aba quebrado passa verde.
+
+## P-1310B3-13 · 🤖 Polimentos de design não feitos
+P1 três camadas de caixa · P6 onde fica "Mensagem para você" · P7 rolar até a aba ativa no celular · P10 "Busca no conhecimento" dentro de
+"Por modelo" · P11 a nota dos "pedaços de texto" (juiz de design). **Destrava:** uma passada de tela. **De quem:** 🤖. **Custa esquecer:**
+valor marginal (o design aprovou com 91).
+
+## P-1310B3-14 · 🤖 Pontas dos laudos que não entraram nas 13
+(a) pausado + digitado igual ao pareado esconde o bloco do número — não dá para trocar a reserva enquanto pausado (confirmação) · (c) com
+`COMERCIAL_RESOLVER_LEGADO` ligada, credencial que falha não diz "conecte" (confirmação) · comentários de `proposta.py:1392/1519/1625` e
+`contas_da_corretora.py:271` ainda dizem "WhatsApp de trabalho CONFIRMADO" (juiz P6) · um agente de atendimento antigo chamado "Even"
+existe no banco (inativo, 📊 0 registros em 30 dias) e apareceria em Custos se voltasse a ter uso (juiz P9; ver P-139-01) ·
+`test_as_ferramentas_de_relatorio_comercial.py` chama `_arun` contra produção e publica artifact (juiz P10). **De quem:** 🤖. **Custa
+esquecer:** cada uma é pequena; juntas, são as que reaparecem como "achado novo" no próximo juiz.
+
+## A drenagem das pendências que a SPEC-131-0-B3 tocou
+| P | estado |
+|---|---|
+| P-094-LEGADO | 🟡 o defeito de produto FECHADO nas tools (Radar/Raio-X pela conexão); 📊 19 linhas restam (imports, literal, descrições); o legado só no provider, atrás da bandeira |
+| P-1310B2-01 | 🟡 M1 medida pela produção (a linha recebe e responde); M2 e M3 CONTINUAM |
+| P-LPP-02 | 🟢 dormente com `LINHA_DO_USUARIO_LIGADA=1` |
+| P-132D-01 | 🟡 CONTINUA — T-174 antes do Implantar do `smith-web` (T-187) |
