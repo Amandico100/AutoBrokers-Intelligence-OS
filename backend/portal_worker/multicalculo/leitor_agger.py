@@ -352,7 +352,7 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # ⚠️ DEPOIS da CREDENCIAL: 📊 Bradesco "A filial/sucursal deve ser informada corretamente. Confira suas credenciais de
     # acesso." é configuração da CONTA, não dado do segurado — a 1ª regra (credencial) vence.
     (DADO, _RE_DEVE_SER_INFORMADO,
-     "canário de vida 16/10 (HDI, multicalculo_eventos) — CANARIO-AO-VIVO §4.1"),
+     "vivo_vida_canario (canário de vida 16/10: HDI peso → DADO; Bradesco filial → CREDENCIAL) — CANARIO-AO-VIVO §4.1"),
     # gravacao_r1/r2: "A seguradora está apresentando instabilidade no momento. Por favor, tente novamente mais tarde."
     (INSTABILIDADE, re.compile(r"instabilidade|tente novamente mais tarde"),
      "gravacao_r1 · gravacao_r2 (erros[], rodadas intermediárias)"),

@@ -100,6 +100,19 @@
    },
    "parcelamentos_por_oferta": 3,
    "sha256_do_bruto": "f12d261fb323a160b09f879bf72e220f07fe506eb18d03698d0f05cc93333485"
+  },
+  "vivo_vida_canario": {
+   "arquivo": "vivo_vida_canario.json",
+   "origem": "jsonl",
+   "conta": "conta_b",
+   "entradas_lidas": 2,
+   "rodadas": 2,
+   "calculos": 1,
+   "pseudonimos": {
+    "negocio": 1
+   },
+   "parcelamentos_por_oferta": 3,
+   "sha256_do_bruto": "15638940fda6197022b139a83391133d1b737b93bc58fe8b9c17bfa549695ad8"
   }
  }
 }
