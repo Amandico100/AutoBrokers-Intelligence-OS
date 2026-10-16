@@ -684,7 +684,7 @@ def rodar_tool(qual, periodo="2025", fonte=None, publicador=None):
         if classe is None:
             return "", [], "a classe %s nao existe em relatorios_comerciais.py" % qual
         tool = classe(company_id=EMPRESA_A, supabase=object())
-        return tool._montar(periodo), capturas, ""
+        return tool._montar(periodo, fonte), capturas, ""   # SPEC-131-0-B3 F5: a fonte vem da conexão
     except Exception as exc:  # noqa: BLE001
         return "", capturas, "%s: %s" % (type(exc).__name__, exc)
     finally:

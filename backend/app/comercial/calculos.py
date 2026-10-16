@@ -431,6 +431,20 @@ def entender_periodo(texto: str, hoje: Optional[date] = None,
             ini = date(ano, num, 1)
             return Periodo(ini, _fim_do_mes(ini), f"{nome.capitalize()} de {ano}")
 
+    # semana, de segunda a domingo. 🔴 SPEC-131-0-B3 (15/10): "quais renovações tenho essa semana?" — a 1ª pergunta do
+    # Founder pela linha do WhatsApp — caía no padrão de 90 dias; o dado vinha certo, a janela não.
+    seg = hoje - timedelta(days=hoje.weekday())
+    if re.search(r"\b(esta|essa|nesta|nessa|desta|dessa)\s+semana\b", t) or "semana atual" in t:
+        return Periodo(seg, seg + timedelta(days=6), "esta semana")
+    if re.search(r"\b(proxima|na proxima)\s+semana\b", t) or "semana que vem" in t:
+        return Periodo(seg + timedelta(days=7), seg + timedelta(days=13), "próxima semana")
+    if "semana passada" in t or "semana anterior" in t:
+        return Periodo(seg - timedelta(days=7), seg - timedelta(days=1), "semana passada")
+    m = re.search(r"proximas?\s+(\d{1,2})\s*semanas", t)
+    if m:
+        n = int(m.group(1))
+        return Periodo(hoje, hoje + timedelta(days=7 * n), f"próximas {n} semanas")
+
     # "este mes" / "mes passado"
     if "este mes" in t or "mes atual" in t or "esse mes" in t:
         ini = date(hoje.year, hoje.month, 1)

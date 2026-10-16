@@ -547,6 +547,80 @@ def _erro_legivel(exc: Exception) -> str:
 
 
 # ==========================================================================
+# 🔴 SPEC-131-0-B3 · F5 — a fonte vem da CONEXÃO da corretora (P-094-LEGADO)
+# ==========================================================================
+async def _fonte_da_conexao(supabase: Any, company_id: str) -> Any:
+    """A fonte de leitura DESTA corretora, pela conexão que ela cadastrou.
+
+    📊 15/10/2026, produção: o Radar respondeu ao Founder *"a conexão com a
+    InfoCap está sem credencial configurada"*. As duas tools chamavam
+    `para_empresa(slug)`, que lê variável de ambiente pelo NOME da corretora —
+    e corretora nova não tem variável (CLAUDE.md §13.9: nem deve ter).
+
+    🔴 Não é um resolver novo (CLAUDE.md §5). É o `_abrir` da SPEC-094, o mesmo
+    do Pulso 360 e do dono da apólice: `tenant_connections` da corretora, a
+    credencial decifrada pelo caminho do produto, o gate de conta compartilhada
+    ANTES da primeira chamada, e a chave de cache `company_id:connection_id` —
+    é ela que impede duas corretoras de lerem a carteira uma da outra pelo
+    Redis. O provider vem pelo REGISTRO do port, como no Pulso: esta tool não
+    nomeia sistema de gestão nenhum (gate M1).
+
+    ⚠️ O caminho legado (variável por nome) continua existindo, DENTRO do
+    `_abrir`, atrás de `COMERCIAL_RESOLVER_LEGADO`. O slug só é lido quando a
+    bandeira está ligada: sem ela, ele não serve para nada e custaria uma
+    consulta ao banco por pergunta.
+    """
+    from app.agents.tools.executive_intelligence import ExecutiveIntelligenceTool
+    from app.comercial import cbim
+    from app.core.feature_flags import env_ligada
+    from app.providers.brokerage_analytics_provider import (
+        resolve_brokerage_analytics_provider)
+
+    provider = ExecutiveIntelligenceTool._provider(
+        resolve_brokerage_analytics_provider, cbim.PROVIDER_PILOTO)
+    slug = None
+    if env_ligada("COMERCIAL_RESOLVER_LEGADO"):
+        slug = await asyncio.to_thread(_slug_da_empresa, supabase, company_id)
+    fonte, _conexao, _impressao, _db = await provider._abrir(
+        company_id=company_id, db=supabase, slug=slug)
+    return fonte
+
+
+def _erro_de_conexao(exc: Exception) -> str:
+    """O que o modelo deve DIZER quando a corretora não tem a fonte conectada.
+
+    🔴 É outra frase, e não a de `_erro_legivel`: "tente de novo" é mentira
+    quando falta a conexão — de novo vai falhar igual. O que destrava é o
+    corretor conectar o sistema de gestão na tela de Conectores.
+
+    O motivo interno é o texto do próprio provider (SPEC-094: *"a corretora não
+    tem uma conexão ... utilizável"*), reusado — e nunca o nome de variável de
+    ambiente, que não diz nada a quem está do outro lado.
+
+    ⛔ A recusa de conta compartilhada carrega o `company_id` da OUTRA
+    corretora no texto. Ela vira um motivo FIXO aqui: nada de outro tenant
+    chega ao modelo, nem identificador.
+    """
+    nome = type(exc).__name__
+    if nome.startswith("Recusa"):
+        motivo = "conexão compartilhada com outra corretora (F-094-07)"
+    elif nome.startswith("Falha"):
+        motivo = str(exc)[:200]
+    else:
+        motivo = nome
+    return (
+        "RELATORIO_SEM_CONEXAO · o relatório NÃO foi gerado e NÃO existe link. "
+        "É PROIBIDO afirmar que ele está pronto ou mandar qualquer endereço. "
+        "Diga a verdade, em linguagem simples: a corretora ainda não conectou "
+        "o sistema de gestão de onde vêm estes números (ou a conexão precisa "
+        "ser refeita). Para o relatório sair, é só conectar em "
+        "Personalização → Conectores e pedir de novo. Não cite nome de "
+        "variável, chave ou configuração técnica. "
+        f"Motivo interno: {motivo}"
+    )
+
+
+# ==========================================================================
 # BLOCO C — Raio-X Comercial
 # ==========================================================================
 class RaioXComercialTool(BaseTool):
@@ -586,18 +660,25 @@ class RaioXComercialTool(BaseTool):
             "`exige_async=True` — o executor precisa aguardar `_arun`.")
 
     async def _arun(self, periodo: str = "", **_: Any) -> str:
+        # 🔴 SPEC-131-0-B3 F5: a fonte nasce AQUI, no loop (o resolver é
+        # assíncrono), e desce pronta para `_montar`, que roda em thread.
         try:
-            return await asyncio.to_thread(self._montar, periodo)
+            fonte = await _fonte_da_conexao(self.supabase, str(self.company_id or ""))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[RAIO-X] sem fonte (%s)", type(exc).__name__)
+            return _erro_de_conexao(exc)
+        try:
+            return await asyncio.to_thread(self._montar, periodo, fonte)
         except Exception as exc:  # noqa: BLE001
             logger.error("[RAIO-X] falhou (%s): %s", type(exc).__name__, exc)
             return _erro_legivel(exc)
 
     # ------------------------------------------------------------------ #
-    def _montar(self, texto_do_periodo: str) -> str:
-        calc, FonteInfocap, FalhaDaInfocap, anos_de_vencimento_para = _comercial()
+    def _montar(self, texto_do_periodo: str, fonte: Any) -> str:
+        # ⛔ `fonte` é OBRIGATÓRIA: quem a resolve é `_fonte_da_conexao`, pela
+        # conexão da corretora. Resolver aqui de novo por nome é a mutação 6.
+        calc, _leitura, FalhaDaLeitura, anos_de_vencimento_para = _comercial()
         p = calc.entender_periodo(texto_do_periodo)
-        slug = _slug_da_empresa(self.supabase, str(self.company_id or ""))
-        fonte = FonteInfocap.para_empresa(slug)
 
         apolices = fonte.producao(p.inicio, p.fim)
         if not apolices:
@@ -610,7 +691,7 @@ class RaioXComercialTool(BaseTool):
         anterior_respondeu = True
         try:
             apolices_ant = fonte.producao(ant.inicio, ant.fim)
-        except FalhaDaInfocap:
+        except FalhaDaLeitura:
             # Comparação é enfeite; o relatório do período pedido não pode
             # morrer porque o ano anterior não respondeu.
             #
@@ -891,20 +972,25 @@ class RadarDeRenovacoesTool(BaseTool):
             "ignorou `exige_async=True` — o executor precisa aguardar `_arun`.")
 
     async def _arun(self, periodo: str = "", **_: Any) -> str:
+        # 🔴 SPEC-131-0-B3 F5: a mesma porta do Raio-X — a conexão da corretora.
         try:
-            return await asyncio.to_thread(self._montar, periodo)
+            fonte = await _fonte_da_conexao(self.supabase, str(self.company_id or ""))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[RADAR] sem fonte (%s)", type(exc).__name__)
+            return _erro_de_conexao(exc)
+        try:
+            return await asyncio.to_thread(self._montar, periodo, fonte)
         except Exception as exc:  # noqa: BLE001
             logger.error("[RADAR] falhou (%s): %s", type(exc).__name__, exc)
             return _erro_legivel(exc)
 
-    def _montar(self, texto_do_periodo: str) -> str:
+    def _montar(self, texto_do_periodo: str, fonte: Any) -> str:
         # 🔴 O padrão do Radar olha para o FUTURO — 90 dias. O do Raio-X olha
         # para trás. Um radar que abre no ano corrente mostraria o que já
         # venceu, que é o oposto do que ele serve para fazer.
-        calc, FonteInfocap, FalhaDaInfocap, _anos = _comercial()
+        # ⛔ `fonte` vem pronta de `_fonte_da_conexao` (mutação 6).
+        calc, _leitura, _falha, _anos = _comercial()
         p = calc.entender_periodo(texto_do_periodo, padrao_dias_futuro=90)
-        slug = _slug_da_empresa(self.supabase, str(self.company_id or ""))
-        fonte = FonteInfocap.para_empresa(slug)
 
         venc = fonte.carteira_a_vencer(p.inicio, p.fim)
         if not venc:
