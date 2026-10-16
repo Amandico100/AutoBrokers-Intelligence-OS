@@ -308,6 +308,22 @@ def dobra(texto: str) -> str:
     return "".join(saida)
 
 
+# "<campo> deve(m) ser informado(a)(s) corretamente" — o grupo 1 é o CAMPO (até 40 letras desde o início da frase)
+_RE_DEVE_SER_INFORMADO = re.compile(r"(?:^|[.!?;]\s*)([^.!?;]{1,40}?)\s+devem? ser informad[oa]s? corretamente")
+_ARTIGO = re.compile(r"^(?:o|a|os|as)\s+")
+
+
+def campo_que_falta(mensagens: Sequence[str]) -> Optional[str]:
+    """O CAMPO de "<campo> deve ser informado corretamente" (dobrado, sem artigo): 📊 HDI → "peso". None se nenhuma
+    mensagem tem a forma. Só o rótulo que a seguradora escreveu — nunca um valor do segurado."""
+    for m in mensagens:
+        if isinstance(m, str):
+            achou = _RE_DEVE_SER_INFORMADO.search(dobra(m))
+            if achou:
+                return _ARTIGO.sub("", achou.group(1).strip()) or None
+    return None
+
+
 # (família, padrão sobre o texto DOBRADO, a fixture que a justifica)
 REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # gravacao_r1/r2: "Login ou senha incorreta. Confira suas credenciais de acesso."
@@ -330,6 +346,13 @@ REGRAS_DE_FAMILIA: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
     # chegava junto do "Read terminated" — e INSTABILIDADE convida a repetir o MESMO pedido, que falha de novo.
     (DADO, re.compile(r"cobertura \w+ fora do permitido|cobertura .{0,80}nao pode ser contratada"),
      "vivo_conta_a (erros[]) · LAUDO-M0-M3 §M2 (ao vivo 05/10, a 2ª forma)"),
+    # SPEC-129-D conserto K4 — 📊 canário de vida 16/10 (HDI): "Peso deve ser informado corretamente. Houve uma
+    # instabilidade ao realizar o cálculo nesta seguradora, tente novamente em breve." — é FALTA DE DADO (o pedido de vida
+    # não leva peso); a cauda "instabilidade" convidaria a repetir o MESMO pedido. Por isso ANTES da INSTABILIDADE.
+    # ⚠️ DEPOIS da CREDENCIAL: 📊 Bradesco "A filial/sucursal deve ser informada corretamente. Confira suas credenciais de
+    # acesso." é configuração da CONTA, não dado do segurado — a 1ª regra (credencial) vence.
+    (DADO, _RE_DEVE_SER_INFORMADO,
+     "canário de vida 16/10 (HDI, multicalculo_eventos) — CANARIO-AO-VIVO §4.1"),
     # gravacao_r1/r2: "A seguradora está apresentando instabilidade no momento. Por favor, tente novamente mais tarde."
     (INSTABILIDADE, re.compile(r"instabilidade|tente novamente mais tarde"),
      "gravacao_r1 · gravacao_r2 (erros[], rodadas intermediárias)"),
@@ -538,7 +561,7 @@ def sim_nao(valor: Any) -> Any:
     return valor
 
 
-def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Oferta]:
+def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int, capital_pedido: Any = None) -> Optional[Oferta]:
     premio = numero(r.get("premio"))
     if premio is None or premio <= 0:
         return None
@@ -554,7 +577,7 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
                 demais_parcelas=numero(p.get("premioDemaisParc")),
             ))
     if ramo == RAMO_VIDA:
-        return _oferta_de_vida(item, r, premio, cob, tuple(parcelas))
+        return _oferta_de_vida(item, r, premio, cob, tuple(parcelas), capital_pedido)
     re_ = ramo != RAMO_AUTO
     if re_ and "valorDeNovo" in cob:
         cob["valorDeNovo"] = sim_nao(cob["valorDeNovo"])
@@ -583,18 +606,63 @@ def _oferta(item: Dict[str, Any], r: Dict[str, Any], ramo: int) -> Optional[Ofer
     )
 
 
+#: SPEC-129-D conserto K4 — a chave da oferta para o capital que o PEDIDO mandou (`configuracoes.isAppMorte` do corpo),
+#: quando a seguradora NÃO ecoa o capital. 🔴 Nunca `isAppMorte`: aquela é o eco da seguradora; esta diz "o pedido".
+#: 📊 canário 16/10 (Porto): a oferta saiu só com `{"DIT": "Não Contratada", "isDoencasGravesGrupo": "Selecione"}`.
+CAPITAL_PEDIDO = "capital_pedido"
+
+# 🔴 Por que cada valor NÃO é cobertura da oferta (§9.5) — o texto dobrado, sem pontuação nas pontas:
+#   "selecione…"        📊 canário 16/10 (Porto, `isDoencasGravesGrupo`): o texto VAZIO da caixa de seleção da tela
+#   "nao contratada/o"  📊 canário 16/10 (Porto, `DIT`) · "Não contratado" é o rótulo do código 0 da tela (vida_formulario)
+#   "sem assistencia"   📊 vida_formulario.json `codigos_do_js.assistFuneral` 0 = "Sem Assistência" (o funeral não contratado)
+#   número 0            o corpo de vida manda TODA cobertura explícita e "zero = não contratada" (presets.configuracoes_de_vida)
+_NAO_E_COBERTURA = re.compile(r"selecion\w*|nao contratad[ao]s?|sem assistencia")
+
+
+def _cobertura_contratada(v: Any) -> bool:
+    if v is None or isinstance(v, bool):
+        return v is True
+    if isinstance(v, (int, float)):
+        return math.isfinite(v) and v != 0
+    if isinstance(v, str):
+        d = re.sub(r"^[\W_]+|[\W_]+$", "", dobra(v))
+        return bool(d) and not _NAO_E_COBERTURA.fullmatch(d)
+    return True
+
+
+def _capital_valido(v: Any) -> Optional[float]:
+    """O capital do pedido só se for NÚMERO > 0 finito (o corpo leva número — 📊 `isAppMorte 100000`). Nada além."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0:
+        return None
+    return int(v) if float(v).is_integer() else round(float(v), 2)
+
+
+def capital_pedido_do_corpo(corpo: Any) -> Optional[float]:
+    """O capital da Morte que o corpo do `calcularV2` de vida LEVOU (`cotacao.configuracoes.isAppMorte`). Aceita o corpo
+    inteiro ou só a `cotacao`. Sem número > 0 → None (nunca um número inventado)."""
+    if not isinstance(corpo, dict):
+        return None
+    cot = corpo.get("cotacao") if isinstance(corpo.get("cotacao"), dict) else corpo
+    cfg = cot.get("configuracoes") if isinstance(cot.get("configuracoes"), dict) else {}
+    return _capital_valido(cfg.get("isAppMorte"))
+
+
 def _oferta_de_vida(item: Dict[str, Any], r: Dict[str, Any], premio: float, cob: Dict[str, Any],
-                    parcelas: Tuple[Parcelamento, ...]) -> Oferta:
+                    parcelas: Tuple[Parcelamento, ...], capital_pedido: Any = None) -> Oferta:
     """SPEC-129-D: a oferta de vida pela forma COMUM do resultado. Vida não tem franquia (franquia_valor/tipo None); as
-    coberturas são as ecoadas da lista de vida — o objeto (`DIT`, `funeral`…) vira o valor que o pedido mandou nele."""
+    coberturas são as ecoadas da lista de vida — o objeto (`DIT`, `funeral`…) vira o valor que o pedido mandou nele.
+    Conserto K4: placeholder e não contratada ficam FORA; sem o capital ecoado, entra o `capital_pedido` (marcado)."""
     coberturas = []
     for nome in COBERTURAS_DA_OFERTA_VIDA:
         chave, _, folha = nome.partition(".")
         v = cob.get(chave)
         if folha:
             v = v.get(folha) if isinstance(v, dict) else None
-        if v is not None:
+        if v is not None and _cobertura_contratada(v):
             coberturas.append((chave, v))
+    pedido = _capital_valido(capital_pedido)
+    if pedido is not None and not any(k == "isAppMorte" for k, _ in coberturas):
+        coberturas.insert(0, (CAPITAL_PEDIDO, pedido))
     return Oferta(
         seguradora=_limpo(item.get("seguradoraTxt") or item.get("nomeSeguradora") or ""),
         seguradora_codigo=_inteiro(item.get("seguradora")),
@@ -614,10 +682,12 @@ def _oferta_de_vida(item: Dict[str, Any], r: Dict[str, Any], premio: float, cob:
     )
 
 
-def ler_resposta(item: Dict[str, Any], ramo: int = RAMO_AUTO) -> RespostaDaSeguradora:
+def ler_resposta(item: Dict[str, Any], ramo: int = RAMO_AUTO, *, capital_pedido: Any = None) -> RespostaDaSeguradora:
+    """`capital_pedido` (só vida): o capital que o corpo enviou (`capital_pedido_do_corpo`) — vai à oferta marcado
+    quando a seguradora não ecoa o dela. None = nada entra."""
     resultados = item.get("resultados")
     resultados = [r for r in resultados if isinstance(r, dict)] if isinstance(resultados, list) else []
-    ofertas = tuple(o for o in (_oferta(item, r, ramo) for r in resultados) if o is not None)
+    ofertas = tuple(o for o in (_oferta(item, r, ramo, capital_pedido) for r in resultados) if o is not None)
     mensagens = _textos(item.get("erros"))
     for r in resultados:
         mensagens += [m for m in _textos(r.get("erros")) if m not in mensagens]
@@ -646,7 +716,8 @@ def ler_resposta(item: Dict[str, Any], ramo: int = RAMO_AUTO) -> RespostaDaSegur
     )
 
 
-def ler_rodada(json: Any, *, t_s: Optional[float] = None, ramo: int = RAMO_AUTO) -> RodadaDoCalculo:
+def ler_rodada(json: Any, *, t_s: Optional[float] = None, ramo: int = RAMO_AUTO,
+               capital_pedido: Any = None) -> RodadaDoCalculo:
     """Aceita a resposta crua (lista), o envelope da fixture (`{"t_s", "corpo"}`)
     ou um objeto com `calculos` (uma versão). Lixo vira rodada vazia, nunca exceção."""
     corpo = json
@@ -660,7 +731,7 @@ def ler_rodada(json: Any, *, t_s: Optional[float] = None, ramo: int = RAMO_AUTO)
         if isinstance(json.get("ramo"), int) and not isinstance(json.get("ramo"), bool):
             ramo = json["ramo"]
     itens = [i for i in corpo if isinstance(i, dict)] if isinstance(corpo, list) else []
-    respostas = tuple(ler_resposta(i, ramo) for i in itens)
+    respostas = tuple(ler_resposta(i, ramo, capital_pedido=capital_pedido) for i in itens)
     fechado = bool(respostas) and all(r.familia != PENDENTE for r in respostas)
     return RodadaDoCalculo(t_s=t_s, respostas=respostas, fechado=fechado, ramo=ramo)
 
@@ -748,8 +819,13 @@ def eventos_entre(anterior: Optional[RodadaDoCalculo], nova: RodadaDoCalculo) ->
                                       primeiro.seguradora_codigo, OFERTA, o, nova.ramo))
         fam = _familia_consolidada(rs)
         if fam not in (OFERTA, PENDENTE) and familia_antes.get(k) != fam:
+            motivo = motivo_das_mensagens(rs)
+            campo = campo_que_falta([m for x in rs for m in (x.mensagens or ())]) if fam == DADO else None
+            if campo:
+                # conserto K4: a falta de dado diz QUAL campo (📊 HDI "peso"), na frente da frase da seguradora
+                motivo = f"falta dado: {campo} — {motivo or ''}".rstrip(" —")[:MOTIVO_MAX]
             eventos.append(Evento(SEGURADORA_RECUSOU, nova.t_s, primeiro.seguradora, primeiro.seguradora_codigo,
-                                  fam, None, nova.ramo, motivo=motivo_das_mensagens(rs)))
+                                  fam, None, nova.ramo, motivo=motivo))
     if nova.fechado and not (anterior is not None and anterior.fechado):
         eventos.append(Evento(CONJUNTO_FECHADO, nova.t_s, ramo=nova.ramo))
     return eventos

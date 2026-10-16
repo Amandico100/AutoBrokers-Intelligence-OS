@@ -530,8 +530,78 @@ def test_5_uma_oferta_de_vida_na_forma_comum_e_lida_sem_saude():
     assert sujos == []
     r = L.ler_rodada(limpos, ramo=91).respostas[0]
     assert r.familia == C.OFERTA and r.ofertas[0].premio_total == 612.34 and r.ofertas[0].ramo == 91
-    assert dict(r.ofertas[0].coberturas) == {"isAppMorte": 100000, "isAppInvalidez": 0}
+    # §9.3 (conserto K4): a afirmação antiga incluía `"isAppInvalidez": 0` — zero é "não contratada" no corpo
+    # (presets.configuracoes_de_vida) e não é cobertura da oferta. A lição migrou: o zero continua testado, agora SAINDO.
+    assert dict(r.ofertas[0].coberturas) == {"isAppMorte": 100000}
     assert r.ofertas[0].comissao_percentual == 10 and r.ofertas[0].franquia_valor is None
+
+
+# ======================================================================================================================
+# 6. CONSERTO K4 — o leitor da OFERTA de vida (📊 canário ao vivo 16/10 12:12–12:18 UTC, CANARIO-AO-VIVO.md §3/§4)
+# ======================================================================================================================
+#: 📊 a oferta da Porto como foi GRAVADA na linha `multicalculo_ofertas` (§3): coberturas só
+#: `{"DIT": "Não Contratada", "isDoencasGravesGrupo": "Selecione"}` — o item abaixo dá exatamente isso no leitor de antes
+#: (o leitor tira o `.valor` do objeto). ⚠️ A resposta CRUA não foi gravada (o robô não a guarda): forma reconstruída.
+def _item_da_porto_do_canario(**cob_extra):
+    return {"seguradora": 8, "seguradoraTxt": "Porto Seguro", "nomeSeguradora": "Porto Seguro", "retorno": True,
+            "retornoErro": False, "percComissao": 10,
+            "resultados": [{"premio": 227.16, "premioMensal": 18.93, "identificacao": "Porto Vida", "packageType": 0,
+                            "pdfFileNameAgger": R.MARCAS_PERMITIDAS["pdfFileNameAgger"],
+                            "coberturas": {"DIT": {"valor": "Não Contratada"},
+                                           "isDoencasGravesGrupo": {"valor": "Selecione"}, "percComissao": 10,
+                                           **cob_extra},
+                            "parcelamentos": [{"parcelas": 12, "tipoPag": 2, "premioPrimeiraParc": 18.93,
+                                               "premioDemaisParc": 18.93}]}]}
+
+
+def _oferta_lida(item, **kw):
+    limpos, sujos = R.separar_itens(_filtrar_como_a_pagina([item], 91), 91)
+    assert sujos == []
+    r = L.ler_rodada(limpos, ramo=91, **kw).respostas[0]
+    assert r.familia == C.OFERTA and r.ofertas[0].premio_total == 227.16
+    return dict(r.ofertas[0].coberturas)
+
+
+def test_6_selecione_e_nao_contratada_nunca_viram_cobertura():
+    assert _oferta_lida(_item_da_porto_do_canario()) == {}           # nada de lixo; e capital nenhum inventado
+
+
+def test_6_sem_o_capital_na_resposta_a_oferta_leva_o_capital_pedido_marcado():
+    cob = _oferta_lida(_item_da_porto_do_canario(), capital_pedido=100000.0)
+    assert cob == {L.CAPITAL_PEDIDO: 100000} and "isAppMorte" not in cob      # nunca como o capital da seguradora
+    # quando a seguradora ECOA o capital, vale o dela, e o pedido não entra (CONTROLE: o mesmo item, só com o eco)
+    assert _oferta_lida(_item_da_porto_do_canario(isAppMorte=150000), capital_pedido=100000.0) == {"isAppMorte": 150000}
+    # capital inválido no pedido → nada (nunca um número inventado)
+    for ruim in (None, 0, -5, float("nan"), True, "100000"):
+        assert _oferta_lida(_item_da_porto_do_canario(), capital_pedido=ruim) == {}, ruim
+
+
+def test_6_o_capital_pedido_sai_do_corpo_que_o_robo_enviou():
+    s, d = disparar(pedido_vida(), P.coberturas_vida(P.PADRAO, 100000))
+    assert isinstance(d, R.Disparo) and L.capital_pedido_do_corpo(s.enviado) == 100000
+    assert L.capital_pedido_do_corpo(s.enviado["cotacao"]) == 100000
+    assert L.capital_pedido_do_corpo({"cotacao": {"configuracoes": {"isAppMorte": 0}}}) is None
+    assert L.capital_pedido_do_corpo(None) is None
+
+
+#: 📊 as DUAS frases reais do canário (CANARIO-AO-VIVO.md §2, `multicalculo_eventos`, AutoFleet)
+HDI_PESO = ("Peso deve ser informado corretamente. Houve uma instabilidade ao realizar o cálculo nesta seguradora, "
+            "tente novamente em breve.")
+BRADESCO_FILIAL = "A filial/sucursal deve ser informada corretamente. Confira suas credenciais de acesso."
+
+
+def test_6_deve_ser_informado_corretamente_e_falta_de_dado_e_a_credencial_vence():
+    assert L.classificar_mensagens([HDI_PESO], 91) == C.DADO
+    assert L.classificar_mensagens([BRADESCO_FILIAL], 91) == C.CREDENCIAL
+    # CONTROLE: a metade da instabilidade, sozinha, continua INSTABILIDADE — quem mudou a família foi o "deve ser informado"
+    assert L.classificar_mensagens([HDI_PESO.split(". ", 1)[1]], 91) == C.INSTABILIDADE
+    assert L.campo_que_falta([HDI_PESO]) == "peso"
+    item = {"seguradora": 4, "seguradoraTxt": "Hdi", "retorno": True, "retornoErro": True, "erros": [HDI_PESO]}
+    ev = [e for e in L.eventos_entre(None, L.ler_rodada([item], ramo=91)) if e.tipo == C.SEGURADORA_RECUSOU]
+    assert len(ev) == 1 and ev[0].familia == C.DADO and ev[0].motivo.startswith("falta dado: peso")
+    brad = {"seguradora": 1, "seguradoraTxt": "Bradesco", "retorno": True, "retornoErro": True, "erros": [BRADESCO_FILIAL]}
+    ev = [e for e in L.eventos_entre(None, L.ler_rodada([brad], ramo=91)) if e.tipo == C.SEGURADORA_RECUSOU]
+    assert ev[0].familia == C.CREDENCIAL and not ev[0].motivo.startswith("falta dado")
 
 
 # ======================================================================================================================
