@@ -2714,3 +2714,31 @@ Também da execução: `LINHA_DO_USUARIO_MAX_LINHAS` com padrão 💭 **20** at�
 | D-1310B3-08 | **Custos: dinheiro só do razão** (`credit_transactions`); uso em português; nunca custo de provedor em reais. Notas **90** × converter USD→BRL 25 (é preço: §13.6) | ✅ TOMADA · **90** · G — SPEC §7 | — |
 | D-1310B3-09 | **O medidor gravado sem corretora vai para a SPEC-062**, não aqui. 📊 7.908 de 8.967 chamadas em 30 dias sem `company_id`. Notas **80** × consertar aqui 45 (Ledger/Billing, §5) | ✅ TOMADA · **80** · G — SPEC §7 | P-1310B3-01 |
 | D-1310B3-10 | **O pareado ganha o 9 e só vale se for número do Brasil válido:** o JID vem sem o 9 (📊 13 caracteres na única linha de produção) → celular de 12 dígitos começando em 6–9 ganha o 9; depois, `e164_do_brasil` decide; estrangeiro ou curto cai no digitado confirmado (conserto K1 do red team B1). 📊 0 números conectados de produção recusados pela regra (confirmação). Notas **85** × deixar como veio 60 | ✅ TOMADA · **85** · G (execução + conserto K1) | — |
+
+## D-129D-01…19 · SPEC-129-D, Vida Individual no multicálculo — 16/10/2026
+
+> Fonte: [SPEC-129-D §7](specs/SPEC-129-D-vida-no-multicalculo.md) (01–11) e §7.1 (a revisão da 06 e 12–19, da execução de 16/10 —
+> [relatório](reports/SPEC-129-D-EXECUTION-REPORT.md)). G = gerente (autonomia com nota, CLAUDE.md §10). Nada liga sem o Founder (D-129D-09).
+
+| # | Decisão | Estado (nota · de) | Substitui / revê |
+|---|---|---|---|
+| D-129D-01 | **Vida INDIVIDUAL primeiro** (📊 Resulta VIND 11 + 11 em 90 d passados/futuros); vida em grupo depois (Vida Global ≠ apólice coletiva — medir). Notas **90** × VIND+VGRP juntas 50 | ✅ TOMADA · **90** · G — SPEC §7 | — |
+| D-129D-02 | **Moto FORA:** 📊 4 de 684 AUTO (0,6 %) na AutoFleet, 0 na Resulta; segue "renove manualmente" (D-131-38). Notas **88** × fazer agora 35 | ✅ TOMADA · **88** · G — SPEC §7 | confirma a D-131-38 |
+| D-129D-03 | **MOBI fora:** é a Mobilidade da SURA (📊 28/28); a SURA não aparece em Acidentes Pessoais do Agger (ao vivo). Notas **92** × AP no lugar 30 | ✅ TOMADA · **92** · G — SPEC §7, confirmada ao vivo | — |
+| D-129D-04 | **A renovação repete capital e coberturas do PDF da apólice** (ficha única 130-B); sem leitura → falta dado. Notas **88** × pedir sempre ao corretor 55 × capital padrão 5 (§13.6) | ✅ TOMADA · **88** · G — SPEC §7 | — |
+| D-129D-05 | **Fumante, renda e esporte sem fonte → falta dado, NUNCA presumir** (📊 0 de 22 VIND trazem os três; Código Civil art. 766). Notas **90** × presumir "não" 20 | ✅ TOMADA · **90** · G — SPEC §7 | — |
+| D-129D-06 | **Profissão pela busca do Agger, por IGUALDADE do texto normalizado** (sem acento, caixa e pontuação), por seguradora; "única opção" NÃO é casamento. 📊 ao vivo: "Analista de sistemas" exata só em HDI/Porto; 4 seguradoras só "…de automação"; canário: 5 de 8 saíram sem código errado. Notas **88** (revista) · original 80 × código fixo 40 | ✅ TOMADA · **88** · G — SPEC §7, **REVISTA** pelo BLOCO 0 ao vivo | revê a própria D-129D-06 (casamento "inequívoco") |
+| D-129D-07 | **VGRP separada de VIND na família** (`policy_data_provider`) antes de ligar o 91. Notas **90** × deixar junto 10 | ✅ TOMADA · **90** · G — SPEC §7 | — |
+| D-129D-08 | **Comissão e agenciamento de vida explícitos**, padrão = o do Agger da corretora. Notas **82** × 0 % do Agger 40 | ✅ TOMADA · **82** · G — SPEC §7 · ver a D-129D-13 | — |
+| D-129D-09 | **Chave `MULTICALCULO_VIDA_LIGADO`** (ausente = nada muda); ligar é do Founder (T-196). Notas **92** × ligar já 20 | ✅ TOMADA · **92** · G — SPEC §7 | — |
+| D-129D-10 | **Proposta/página de vida na 130-C.** Notas **82** × aqui 40 (escopo) | ✅ TOMADA · **82** · G — SPEC §7 | segue a D-129C-08 |
+| D-129D-11 | **2 cotações de teste no total** (BLOCO 0 pela UI + canário pelo robô), nunca emissão. 📊 cumprida: 1 + 1 `calcularV2` na AutoFleet. Notas **85** × só a do BLOCO 0 60 | ✅ TOMADA · **85** · G — SPEC §7 | — |
+| D-129D-12 | **Prazo de 5 s na leitura da licença no login** — a licença é aviso, não portão. 📊 sem prazo o login travava 16–20 min (BLOCO 0); no canário disparou e o login entrou em 23,9 s. Notas **92** × sem prazo 0 | ✅ TOMADA · **92** · G (BLOCO 0 ao vivo → V1) | — |
+| D-129D-13 | **Comissão de vida 0/ausente → a seguradora sai; todas → `pendente` com a frase do Agger** (nunca inventar). 📊 `percComissaoVida` 0 nas 8 seguradoras da conta medida. Nota **90** | ✅ TOMADA · **90** · G (V1 + conserto K2) | detalha a D-129D-08 |
+| D-129D-14 | **"Mais em conta" zera MA e IPA explícitos** (a tela copia a Morte para eles) e passa pela regra do preset mesmo com coberturas explícitas (red team P2). Nota **95** | ✅ TOMADA · **95** · G (V1 + porta `09042af`) | — |
+| D-129D-15 | **As respostas do cliente (fumante/renda/esporte/profissão) pela tela da renovação**, guardadas em `renovacao_eventos.dados` (sem migration), "confirme com o cliente", nada pré-marcado. Notas **85** × presumir 20 × tabela nova (migration) 60 | ✅ TOMADA · **85** · G (conserto K2, juiz B1 + red team B3) | — |
+| D-129D-16 | **A cotação nova de vida pelo chat responde no chat, SEM página ao cliente** (a 130-C faz a página); `cotacao/workflow.py` tocado fora do pacote do builder, aceito. Nota **85** | ✅ TOMADA · **85** · G (conserto K3, red team B3) | — |
+| D-129D-17 | **Oferta sem capital ecoado leva o capital PEDIDO, marcado como tal** (nunca como o da seguradora). 📊 canário: a Porto não ecoou o capital. Notas **80** × nova sessão só para medir 50 | ✅ TOMADA · **80** · G (conserto K5) | — |
+| D-129D-18 | **"Peso deve ser informado" (HDI) = falta de dado da seguradora**, não instabilidade; a CREDENCIAL continua vencendo. Notas **85** × exigir peso em todo pedido 40 (a decisão de coletar peso fica com o Founder, P-129D-03) | ✅ TOMADA · **85** · G (conserto K4, do canário) | — |
+| D-129D-19 | **A vigência da cotação nova = hoje, assumida e mostrada** (80); **o sexo nunca é deduzido pelo nome** (88) | ✅ TOMADA · **80 / 88** · G (conserto K3) | — |
+| (confirmadas) | A comissão do ano anterior **não** vale para vida (75); o capital do cadastro InfoCap é aceito **com aviso** quando o PDF não traz (70) | ✅ TOMADAS · **75 / 70** · G | — |

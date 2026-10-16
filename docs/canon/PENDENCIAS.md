@@ -13676,6 +13676,7 @@ pedem credencial própria para RE e corrigir a HDI (T-136). **Custa esquecer:** 
 
 ## P-129C-05 · 🤖 A página/proposta dos outros ramos (130-C)
 A página de hoje é de carro; o ranking de RE (com `avisos`) ainda não chega ao cliente nem ao chat. **Destrava:** a 130-C (D-129C-08).
+↪ **16/10 · 🟡 CONTINUA.** A 130-C passa a incluir a página de VIDA (D-129D-10/16): a cotação nova de vida responde só no chat.
 
 ## P-129C-06 · 🤖 A atividade do empresarial: a busca do Agger exige 3 letras e casa por trecho (inferido de 1 amostra)
 A classe `imovel_desocupado` e o radical de busca não foram medidos ao vivo além do canário. **Destrava:** o próximo cálculo real de
@@ -13919,6 +13920,8 @@ seguradoras que recusam, e a corretora acha que "a Allianz não cotou".
 do juiz B3) e, com o aceite de uma comercial (T-156), uma noite com Prosseguir medido. **De quem:** 🤖 (o canário) · 🧑 (Implantar e aceite).
 **Custa esquecer:** a licença vence sem aviso e a madrugada daquela corretora falha toda noite; o Prosseguir entra no ar sem nunca ter sido
 visto funcionar.
+↪ **16/10 · 🟡 PARCIAL (SPEC-129-D).** 📊 O canário de vida leu a licença AO VIVO pelo robô (`licenca_agger`, `dataLimiteCalculo` 27/10/2026 na
+AutoFleet) e o prazo novo de 5 s disparou (login em 23,9 s). O Prosseguir segue sem prova; o servidor Linux, P-129D-12.
 
 ## P-131A-03 · 🤖 A4 não medido — duas sessões do Agger da MESMA corretora ao mesmo tempo
 O teto por corretora ficou em 1 (D-131-30) porque não se mediu se dois logins da mesma corretora calculam juntos sem se atrapalhar.
@@ -13937,6 +13940,9 @@ A moto pela placa é pega no robô (`tipoVeic` do Agger, D-131-38); a moto pela 
 `veiculo_nao_cotado('HONDA CG 160 FAN')` = None (confirmação N1: a descrição real não casa). **Destrava:** medir os rótulos de categoria/
 espécie da InfoCap nas duas bases e casar a moto ANTES de pedir. **De quem:** 🤖. **Custa esquecer:** toda moto gasta uma sessão do Agger
 até a placa revelar; sem placa, ela pode ir como carro.
+↪ **16/10 · 🟡 CONTINUA (SPEC-129-D, conserto K2).** A moto pega pela placa caía em `falhou(calculo_falhou)`: o motor grava "o portal recusou o
+cálculo: veiculo_moto — …" e a 1ª palavra era "o". Agora o prefixo sai e ela volta a `pendente(ramo_nao_cotado)` "renove manualmente"
+(`test_spec129d_conserto_app::test_v3_…`, com controle). O rótulo da InfoCap segue sem medição.
 
 ## P-131A-06 · 🤖 Estado civil, uso e garagem vão pelo padrão da tela (parte da P-129B-05)
 O perfil da renovação (F5) manda o que a InfoCap não traz pelo padrão da tela do Agger (D-128-07), marcado "não conferido"; supõe também
@@ -14001,6 +14007,8 @@ que falha no conflito e conferir quem ganhou. **De quem:** 🤖. **Custa esquece
 `test_moto_pela_placa…` confere `"erro: 'veiculo_moto'" in js` — regex sobre o código (CLAUDE.md §9.4); o montador JS não roda no teste
 (confirmação). **Destrava:** rodar o `JS_PREPARAR` num motor JS com uma resposta de `buscaPlaca` de moto. **De quem:** 🤖. **Custa
 esquecer:** o guarda continua verde se a recusa sair do caminho real.
+↪ **16/10 · 🟡 PARCIAL (SPEC-129-D).** Um guarda novo usa o texto REAL que o motor grava (`motor._motivo_recusado`), com controle; o
+`JS_PREPARAR` ainda não roda num motor JS.
 
 ## A drenagem das pendências que a SPEC-131-A tocou
 | P | estado |
@@ -14625,3 +14633,112 @@ esquecer:** cada uma é pequena; juntas, são as que reaparecem como "achado nov
 | P-1310B2-01 | 🟡 M1 medida pela produção (a linha recebe e responde); M2 e M3 CONTINUAM |
 | P-LPP-02 | 🟢 dormente com `LINHA_DO_USUARIO_LIGADA=1` |
 | P-132D-01 | 🟡 CONTINUA — T-174 antes do Implantar do `smith-web` (T-187) |
+
+### 129-D · Vida Individual no multicálculo — 16/10/2026 · [relatório](reports/SPEC-129-D-EXECUTION-REPORT.md)
+
+> Fonte: o registro da execução + os laudos (juiz 84, red team 62 QUEBREI, confirmação 88) + o canário ao vivo
+> (`programa-multicalculo/129-D/CANARIO-AO-VIVO.md`). 📊 Hoje nada roda: `MULTICALCULO_VIDA_LIGADO` ausente = a vida segue "renove
+> manualmente". Já fechados no conserto (não entram aqui): juiz B1 (as perguntas não chegavam à tela), red team B1 (busca de profissão
+> vazia), B2 (frase da comissão), B3 (nenhum caminho de produção), P2 (MA/IPA na "mais em conta"), P8 (pontuação na profissão), e do canário
+> o capital não lido / "Selecione" como cobertura e a HDI como instabilidade.
+
+## P-129D-01..20 · a vida no motor, a tela das respostas e o canário
+
+## P-129D-01 · 🤖 Nenhuma resposta de vida COM PREÇO foi gravada crua
+📊 Canário 16/10: a oferta da Porto veio com coberturas só `{"DIT": "Não Contratada", "isDoencasGravesGrupo": "Selecione"}` — sem o capital.
+O robô do produto não guarda a resposta crua, então os rótulos reais (e se a seguradora ecoa o capital) seguem 💭. Hoje a oferta mostra o
+capital PEDIDO marcado como tal (D-129D-17). **Destrava:** gravar UMA resposta com preço, saneada (`vida_resultado_com_preco.json`), e mapear
+onde cada seguradora põe o capital. **De quem:** 🤖. **Custa esquecer:** o corretor nunca vê o capital que a seguradora realmente cotou.
+
+## P-129D-02 · 🤖 Capital fora das faixas da tela
+A tela oferece capitais em degraus (📊 BLOCO 0: 30 mil–2 mi); a renovação manda o capital do PDF e o reajuste `round(x*(1+pct/100),2)` gera
+valores quebrados (📊 red team: 87.432,15 vai como veio). Se o servidor aceita, arredonda ou recusa: não medido. **Destrava:** um cálculo com
+capital fora do degrau. **De quem:** 🤖. **Custa esquecer:** a oferta pode sair com outro capital sem aviso.
+
+## P-129D-03 · 🧑 A HDI exige peso e altura
+📊 Canário: "Peso deve ser informado corretamente" (o pedido de vida não coleta peso nem altura) — hoje vira falta de dado (D-129D-18). Toda
+vida na HDI vai recusar. **Destrava:** decisão de produto — o pedido passa a pedir peso/altura, ou a HDI sai antes do cálculo. **De quem:** 🧑
+decide · 🤖 executa. **Custa esquecer:** uma seguradora a menos em toda cotação de vida.
+
+## P-129D-04 · 🤖 Esporte radical "sim" fica com a pessoa
+O contrato não tem "qual esporte" (📊 49 códigos na tela, não mapeados); "sim" → `pendente` para a corretora. **Destrava:** mapear os códigos
+e perguntar qual. **De quem:** 🤖. **Custa esquecer:** quem pratica esporte nunca é cotado pelo produto.
+
+## P-129D-05 · 🤖 A tela de Serviços não tem o campo da comissão de vida
+O PUT de Serviços aceita `vida_por_ramo` (conserto K2), mas não há campo na tela; hoje a frase manda ajustar no Agger ou pedir ao suporte.
+**Destrava:** o campo na tela de Serviços. **De quem:** 🤖. **Custa esquecer:** a corretora depende do Agger para uma config do produto.
+
+## P-129D-06 · 🤖 A lista de renovações só atualiza ao recarregar depois de responder
+Depois de enviar as respostas de vida, o detalhe muda e a lista não. **Destrava:** revalidar a lista no envio. **De quem:** 🤖. **Custa
+esquecer:** valor marginal (o item parece pendente até recarregar).
+
+## P-129D-07 · 🤖 As respostas (saúde/renda) ficam visíveis a membros da mesma corretora
+Elas moram em `renovacao_eventos.dados`, lido pela RLS da corretora, não por pessoa. **Destrava:** decidir se só o dono da renovação vê.
+**De quem:** 🤖 (com 🧑 a regra). **Custa esquecer:** dado sensível (LGPD art. 11) aberto à atendente da mesma corretora.
+
+## P-129D-08 · 🤖 O teto de renda é 💭 10 milhões
+Régua de sanidade sem fonte. **Destrava:** um teto medido (ou nenhum). **De quem:** 🤖. **Custa esquecer:** valor marginal.
+
+## P-129D-09 · 🤖 Instabilidade em todas as seguradoras vira falha definitiva
+A regra C1 (todos os ramos): quando todas dão instabilidade, o item vai a `falhou`. 📊 BLOCO 0: 7/7 "instabilidade" às 04:40 BRT, e o
+canário às 12:12 UTC cotou. **Destrava:** "todas instáveis" = passageira, tenta na noite seguinte. **De quem:** 🤖. **Custa esquecer:** uma
+madrugada ruim do Agger mata a renovação daquele dia.
+
+## P-129D-10 · 🤖 Profissão sem casamento e comissão zero são tentadas toda noite
+Custa 1 login + 1 busca por noite por item, sem `calcularV2`. **Destrava:** marcar o item como "precisa de você" até a resposta mudar.
+**De quem:** 🤖. **Custa esquecer:** sessões do Agger gastas à toa toda madrugada.
+
+## P-129D-11 · 🧑 `portal-worker` e `smith-api` precisam subir JUNTOS
+App novo + worker velho = "ramo 91 não implementado" + 1 login por noite (red team P5). **Destrava:** T-195 (os 3 serviços no mesmo
+Implantar), antes de ligar. **De quem:** 🧑. **Custa esquecer:** falhas e logins inúteis toda noite.
+
+## P-129D-12 · 🤖 O prazo da licença no contêiner Linux não foi medido
+📊 Só no Windows (no canário disparou: login em 23,9 s). `asyncio.wait(timeout=5)` + `cancel()` sem aguardar (red team P6). **Destrava:** um
+login do `portal-worker` em produção com o evento `licenca_agger`. **De quem:** 🤖. **Custa esquecer:** a trava de 16–20 min pode voltar no
+servidor.
+
+## P-129D-13 · 🤖 VGRP e AP → SPEC própria
+Vida Global ≠ apólice coletiva — medir. 📊 Resulta VGRP 11/12 (90 d passados/futuros, BLOCO 0). **Destrava:** medir o produto no Agger.
+**De quem:** 🤖. **Custa esquecer:** metade das renovações de vida da Resulta segue manual.
+
+## P-129D-14 · 🤖 O recálculo (ajuste) de vida não leva `capital_pedido`
+Hoje não existe ajuste de vida (recusado em 4 lugares); se nascer, precisa levar o capital pedido. **De quem:** 🤖. **Custa esquecer:** o
+ajuste mostraria oferta sem capital.
+
+## P-129D-15 · 🤖 `resumo_do_pedido` não mascara `segurado.cpf` na tela de cotações
+`api/cotacoes.resumo_do_pedido` lê `segurado.cpf_cnpj`; a vida grava `segurado.cpf` → aparece "Vida individual" sem documento (juiz
+P-tela). Nada errado é mostrado. **Destrava:** ler as duas chaves, mascarado. **De quem:** 🤖. **Custa esquecer:** a lista sem documento.
+
+## P-129D-16 · 🤖 A cotação nova de vida ignora a apólice anexada
+Pelo chat, o capital e as coberturas vêm só do que o corretor diz. **Destrava:** ler a apólice anexada pela ficha única (130-B). **De
+quem:** 🤖. **Custa esquecer:** o corretor redigita o que já mandou.
+
+## P-129D-17 · 🧑 A sessão do robô da Resulta no Agger: "sessão ativa" em 06:51, 07:13 e 12:07 UTC (16/10)
+Ou é a sessão fantasma da 1ª entrada do BLOCO 0 (P-130A-18), ou alguém usa o login do robô da Resulta. O produto clicou só "Cancelar"
+(nunca forçou). **Destrava:** T-190. **De quem:** 🧑. **Custa esquecer:** a Resulta não calcula nada no Agger (nenhum ramo).
+
+## P-129D-18 · 🤖 Com a chave desligada, um item de vida criado com ela ligada ainda aceita as respostas
+`e_vida` aceita `ramo_agger==91` sem olhar a chave: o POST vira `pronta` (confirmação P3-a). Inofensivo: a madrugada sem a chave não cota o
+91. **Destrava:** conferir a chave no POST. **De quem:** 🤖. **Custa esquecer:** valor marginal.
+
+## P-129D-19 · 🤖 "Deve ser informado corretamente" vira falta de dado em TODOS os ramos
+A regra DADO do leitor (K4) vale para auto/RE também — essa mensagem deixa de ser instabilidade (não repete). 💭 É o certo; nenhuma fixture do
+auto muda; no banco não medido (confirmação P3-b). **Destrava:** contar a frase nas recusas gravadas do auto/RE. **De quem:** 🤖. **Custa
+esquecer:** uma recusa passageira real com essa frase deixaria de ser repetida.
+
+## P-129D-20 · 🤖 Renda 0 é aceita
+Tela e backend aceitam 0 como declaração válida (confirmação P3-c). **Destrava:** decidir se 0 = "sem renda" ou falta de dado. **De quem:** 🤖.
+**Custa esquecer:** valor marginal.
+
+Pontas menores dos laudos, sem número: a porta não confere as chaves de `coberturas_extras` (só o robô recusa, depois do login — red team
+P3) · `_rotulo_da_vida` cai na 1ª palavra ("solteiro com união estável" → Solteiro(a), red team P7) · `libertyDescontoRegional = 1` só diz "1
+nos gravados" (juiz §9.5). **De quem:** 🤖.
+
+## A drenagem das pendências que a SPEC-129-D tocou
+| P | estado |
+|---|---|
+| P-131A-02 | 🟡 PARCIAL — a licença foi lida AO VIVO pelo robô (📊 canário 16/10: `licenca_agger` com `dataLimiteCalculo` 27/10/2026) e o prazo de 5 s disparou; o Prosseguir segue sem prova; o servidor, P-129D-12 |
+| P-131A-05 | 🟡 CONTINUA — o rótulo de moto da InfoCap segue sem medição; mas a moto pega pela placa agora vira `pendente(ramo_nao_cotado)` "renove manualmente" (antes caía em `falhou(calculo_falhou)` pelo prefixo do motor — conserto K2) |
+| P-131A-16 | 🟡 PARCIAL — `test_spec129d_conserto_app::test_v3_…` usa o texto REAL que o motor grava (`motor._motivo_recusado`), com controle; o `JS_PREPARAR` ainda não roda num motor JS |
+| P-129C-05 | 🟡 CONTINUA — a 130-C passa a incluir a página de vida (D-129D-10/16) |
+| P-130A-18 | 🟡 CONTINUA — a sessão fantasma pode ser a da Resulta em 16/10 (P-129D-17) |

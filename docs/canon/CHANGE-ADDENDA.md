@@ -4243,3 +4243,26 @@ corretora 10; entrou na SPEC como fatia F5.
 não tinha os casos de semana (📊 +14 linhas em `calculos.py`, `git diff --stat 6d3d911..69b2963`). **Consequência:** entende "esta/essa/próxima semana, semana passada, próximas N semanas",
 de segunda a domingo; um teste fica vermelho com o código antigo (📊 mutação "semana" 1 failed). Erros conhecidos em P-1310B3-09 ("essa semana
 que vem", "até o fim da semana", domingo). **Autorização:** junto da F5, decisão do gerente (≤ 30 min, 1 arquivo, sem decisão de produto).
+
+## 16/10/2026 · SPEC-129-D · a última milha da vida: respostas pela tela e cotação nova pelo chat — ESSENCIAL · ✅ EXECUTADA (`594c884`, `931a237`)
+**Problema:** a SPEC prometia a renovação de vida com as perguntas ao comercial e a cotação nova "pelo chat/Cotação Rápida", mas as fatias V1–V3
+não davam dono à tela nem ao chat. **Evidência:** juiz B1 — as perguntas morriam em `renovacao_eventos.dados` e a corretora lia "falta um
+dado da apólice" (📊 `grep -n "dados" app/api/renovacoes.py` → só o `via` do envio); red team B3 — 📊 0 de 22 VIND trazem fumante/renda/
+esporte e não havia onde responder; o teste do fio só atravessava trocando a borda `perfil_do_segurado`; `pedido_da_conversa` mandava vida
+para "outro". **Consequência:** K2 — o detalhe da renovação mostra as perguntas e a corretora responde (rota `POST /api/renovacoes/<id>/
+respostas-de-vida`, BFF com company/user da sessão, outra corretora 404, nada pré-marcado, valores só no evento); K3 — "cotação de vida"
+no chat, atrás da chave, pergunta o que falta sem presumir, a mesma porta, resposta no chat sem página (D-129D-16). 📊 `conserto_app` 13
+passed · `cotacao_nova` 9 passed · guarda da tela verde com controle vermelho. **Autorização:** licença de autonomia (protocolo §9) — reduzir
+o OUTCOME exigiria decisão do Founder (CLAUDE.md §11, D5), então o escopo foi cumprido, não cortado; nota 85 × entregar só o motor 30.
+
+## 16/10/2026 · SPEC-129-D · `cotacao/workflow.py` tocado fora do pacote do K3 — VALIOSA · ✅ EXECUTADA (`931a237`)
+**Problema:** o pacote do builder K3 listava `pedido_da_conversa.py`, `cotacao_tool.py` e `pedido.py`; para a resposta de vida voltar ao
+chat sem página, o `workflow.py` também precisava mudar. **Evidência:** 📊 `git show --numstat 931a237` → `services/cotacao/workflow.py` +39/−1. **Consequência:** com o ramo 91, o workflow grava a mensagem no chat com url/token/artifact `None` e nenhuma mensagem ao
+cliente; o auto segue igual (confirmação item 4). **Autorização:** aceito pelo gerente (≤ 1 arquivo, sem decisão de produto; D-129D-16, nota 85).
+
+## 16/10/2026 · SPEC-129-D · prazo de 5 s na leitura da licença no login (defeito do produto achado ao vivo) — ESSENCIAL · ✅ EXECUTADA (`eddaaea`)
+**Problema:** no BLOCO 0 ao vivo, a 1ª entrada na conta da Resulta travou no login. **Evidência:** a leitura da licença do Agger
+(`/usuario/current` + `/usuario/login/pdocs`, D-131-36) não tinha prazo; 📊 a sessão ficaria presa 16–20 min. Afeta TODOS os ramos (é o
+login), não só vida. **Consequência:** `asyncio.wait(timeout=5)` + log "licença: N leitura(s) sem resposta em 5s — segue sem ela"; o login
+segue. 📊 No canário (16/10 12:11 UTC) o prazo disparou e o login entrou em 23,9 s. Sem prova no contêiner Linux (P-129D-12). **Autorização:**
+licença de autonomia (protocolo §9: muda o que o robô faz, sem decisão de produto); D-129D-12, nota 92 × sem prazo 0.

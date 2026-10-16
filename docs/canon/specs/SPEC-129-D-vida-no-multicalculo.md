@@ -6,6 +6,11 @@ modelo: claude-opus-5-5
 > **CRÍTICO** por piso (robô em portal real: cálculo cria negócio no Agger da corretora). Fonte: as palavras do Founder de 15/10 · D-131-28 ·
 > D-131-38 · D-129C-08/09 · o molde da [129-C](SPEC-129-C-mais-ramos-do-agger.md). BLOCO 0 em `docs/canon/programa-multicalculo/129-D/`.
 > 📊 medido · 💭 ilustrativo.
+>
+> ⚠️ **ERRATA (16/10, o BLOCO 0 ao vivo — `129-D/BLOCO0-129D-AO-VIVO.md`):** o "47 campos" do M3 era a PÁGINA toda (todo input, como nos
+> outros ramos); a tela de vida tem 📊 24 campos com nome pelo laudo ao vivo (a fixture registra `n_campos_com_nome: 36`, 26 listados —
+> divergência de documento, juiz P-doc). E a profissão é por **IGUALDADE** do texto normalizado por seguradora — "única opção" não é
+> casamento (D-129D-06 revista em §7). Execução: [relatório](../reports/SPEC-129-D-EXECUTION-REPORT.md).
 
 ## 0. EXECUTION CARD
 ```
@@ -101,6 +106,20 @@ Resulta (dados de TESTE; ofertas lidas; logout); nada ao cliente. **Verba** de A
 | D-129D-09 | Chave `MULTICALCULO_VIDA_LIGADO` (ausente = nada muda); ligar é do Founder | 92 | ligar já 20 |
 | D-129D-10 | Proposta/página de vida na 130-C | 82 | aqui 40 (escopo) |
 | D-129D-11 | O BLOCO 0 grava 1 cotação real pela UI; o canário faz 1 pelo robô — 2 cotações de teste no total, nunca emissão | 85 | só a do BLOCO 0 60 (o robô ficaria sem prova ao vivo) |
+
+### 7.1 Decisões da execução (16/10/2026, gerente — autonomia com nota)
+| # | decisão | nota | contra |
+|---|---|---|---|
+| D-129D-06 **revista** | Profissão por **IGUALDADE** do texto normalizado (sem acento, caixa e pontuação), por seguradora; "única opção" NÃO é casamento. 📊 ao vivo: "Analista de sistemas" exata só em HDI/Porto; Allianz/Tokio/Yelum/Zurich só "…de automação"; no canário 5 de 8 saíram sem código errado | 88 | "única opção" — derrubada pelo ao vivo (mandaria profissão diferente = declaração inexata, CC art. 766) |
+| D-129D-12 | Prazo de 5 s na leitura da licença no login — a licença é aviso, não portão. 📊 BLOCO 0: sem prazo o login travava 16–20 min; canário: disparou e o login entrou em 23,9 s | 92 | sem prazo 0 |
+| D-129D-13 | Comissão de vida 0/ausente → a seguradora sai; todas → `pendente` com a frase do Agger (nunca inventar). 📊 `percComissaoVida` 0 nas 8 da conta medida | 90 | — (inventar comissão fere §13.6) |
+| D-129D-14 | "Mais em conta" zera MA e IPA explícitos (a tela copia a Morte para eles) e passa pela regra do preset mesmo com coberturas explícitas | 95 | — |
+| D-129D-15 | Respostas do cliente (fumante/renda/esporte/profissão) pela tela da renovação, em `renovacao_eventos.dados` (sem migration), "confirme com o cliente", nada pré-marcado | 85 | presumir 20 · tabela nova 60 |
+| D-129D-16 | Cotação nova de vida pelo chat responde no chat, SEM página ao cliente (a 130-C faz a página); `cotacao/workflow.py` fora do pacote do builder, aceito | 85 | — |
+| D-129D-17 | Oferta sem capital ecoado leva o capital PEDIDO, marcado como tal (nunca como o da seguradora) | 80 | nova sessão só para medir 50 |
+| D-129D-18 | "Peso deve ser informado" (HDI) = falta de dado da seguradora, não instabilidade; a CREDENCIAL continua vencendo | 85 | exigir peso em todo pedido 40 |
+| D-129D-19 | Vigência da cotação nova = hoje, assumida e mostrada (80); sexo nunca deduzido pelo nome (88) | 80 / 88 | — |
+| confirmadas | A comissão do ano anterior não vale para vida (75); o capital do cadastro InfoCap é aceito com aviso quando o PDF não traz (70) | 75 / 70 | — |
 
 ## 8. O QUE O ESTADO DA ARTE FAZ, E O QUE MODELAMOS
 1. **https://www.gov.br/susep/pt-br/assuntos/meu-futuro-seguro/seguros/seguro-de-vida** · faz: explica capital segurado, coberturas e

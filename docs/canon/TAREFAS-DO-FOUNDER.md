@@ -262,6 +262,9 @@
 > 15. **16/10 (SPEC-131-0-B3 construída):** ~~T-178~~ ✅ no essencial (a linha respondeu em produção) · ~~T-181~~ ✅ (você pôs `=1`) ·
 >    **T-185** (InfoCap ativa na Amandus) · **T-186** (Implantar `smith-api` e `smith-worker`) · **T-174** primeiro → **T-187** (Implantar
 >    `smith-web`, pode ser o MESMO da T-180/T-183) → **T-188** (o canário, 10 min) · **T-189** (rotação de segredos) quando puder.
+> 16. **16/10 (SPEC-129-D construída, vida DESLIGADA):** **T-190** (a sessão presa da Resulta, hoje) · **T-193** (licença da AutoFleet até
+>    27/10) · **T-192** (comissão de vida no Agger) + **T-195** (Implantar os 3 juntos; o `smith-web` depois da T-174) → **T-196** (LIGAR a vida,
+>    só depois das duas) · **T-191** (Bradesco) e **T-194** (apagar os testes) quando puder.
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -605,6 +608,59 @@
       senhas foram coladas na conversa e agora estão também no histórico dela. Avalie trocar as mais sensíveis: a service role do Supabase,
       as chaves de LLM e as senhas do banco, do Redis e do MinIO (cada troca exige atualizar a variável no EasyPanel e Implantar).
       **Custa esquecer:** quem tiver acesso ao histórico tem acesso aos segredos. **Bloqueia?** Não, mas é segurança. · *de:* S131-0-B3 §10.1
+
+> **16/10 (SPEC-129-D — Vida Individual no multicálculo; branch `spec/129-D-vida`):** o mesmo robô que cota carro e RE no Agger passa a
+> cotar seguro de vida individual — na renovação (com o capital da apólice atual e as perguntas de saúde/renda respondidas por vocês na tela
+> da renovação, nunca presumidas) e na cotação nova pelo chat. 📊 Provado ao vivo: 1 cálculo de teste na conta da AutoFleet deu preço da
+> Porto (R$ 227,16/ano). **Tudo DESLIGADO** atrás de `MULTICALCULO_VIDA_LIGADO`. **Nenhuma migration.** Nasceram a T-190 a T-196.
+>
+> 🔴 **AVISO: ligar a vida (T-196) só DEPOIS da comissão de vida configurada no Agger (T-192) e do Implantar dos 3 serviços juntos
+> (T-195).** Com a comissão em 0 (📊 0 nas 8 seguradoras de vida da AutoFleet), toda seguradora sai do cálculo e toda vida para em
+> "Precisa de você". Com só um serviço implantado, o robô responde "ramo 91 não implementado" e gasta um login por noite.
+
+- [ ] **T-190** ⏳ 🧑 **hoje, 3 min** · **Limpar a sessão presa do robô da Resulta no Agger** — 📊 16/10 o login do robô da Resulta deu "sessão
+      ativa" três vezes (06:51, 07:13 e 12:07 UTC); o produto só clicou "Cancelar" (nunca força). Entre no **aggilizador.com.br** com o login
+      do robô da Resulta (o `cotador@`), clique **"Prosseguir"** no aviso de sessão ativa e depois **"Sair"** (menu do usuário).
+      **Esperado:** o aviso some e você sai sem erro. **Se der errado:** se o aviso voltar logo depois, alguém está usando esse login —
+      pergunte à equipe da Resulta e peça que use o próprio login. **Custa esquecer:** a Resulta não calcula NADA no Agger pelo robô (nenhum
+      ramo). **Bloqueia?** Não a SPEC; bloqueia a Resulta. · *de:* S129-D §11 · P-129D-17
+- [ ] **T-191** ⏳ 🧑 **quando puder, 5 min** · **Bradesco na conta da AutoFleet: filial/sucursal** — 📊 no canário de vida a Bradesco recusou
+      com "A filial/sucursal deve ser informada corretamente. Confira suas credenciais de acesso." Agger da AutoFleet → **Configurações →
+      Seguradoras → Bradesco** → preencha filial/sucursal (ou peça à corretora/suporte do Agger).
+      **Esperado:** o próximo cálculo de vida traz a Bradesco. **Custa esquecer:** a vida da AutoFleet cota sem a Bradesco. **Bloqueia?** Não.
+      · *de:* S129-D §6 · ver também T-109
+- [ ] **T-192** ⏳ 🧑 **ANTES de ligar a vida, 10 min** · **A comissão de vida no Agger** — 📊 16/10 a comissão de vida (`percComissaoVida`)
+      está em **0** nas 8 seguradoras de vida da AutoFleet; o produto nunca inventa comissão (D-129D-13), então com 0 a seguradora sai.
+      Em cada corretora que vai usar a vida: Agger → **Configurações → Seguradoras** → em cada seguradora de vida (Allianz, Bradesco, HDI,
+      Mapfre, Porto, Tokio, Yelum, Zurich) → **comissão de vida** com o percentual da corretora. Se não achar o campo, peça ao suporte do
+      Agger para gravar a comissão padrão de vida.
+      **Esperado:** o campo deixa de mostrar 0. **Custa esquecer:** com a vida ligada, toda renovação e cotação de vida para em "Precisa de
+      você" com a frase da comissão. **Bloqueia?** **Sim, para LIGAR a vida (T-196).** · *de:* S129-D §13.1 · P-129D-05
+- [ ] **T-193** ⏳ 🧑 **até 27/10** · **A licença do Agger da AutoFleet para de calcular em 27/10/2026** — 📊 lida pelo robô no canário de 16/10
+      (`dataLimiteCalculo` 2026-10-27, 11 dias). Agger da AutoFleet → **Meu plano** → renove.
+      **Esperado:** a data nova em Meu plano. **Custa esquecer:** a partir de 27/10 nenhum ramo calcula na AutoFleet. **Bloqueia?** Não
+      hoje; em 11 dias sim. · *de:* S129-D §6 · ver T-159
+- [ ] **T-194** ⏳ 🧑 **opcional, 3 min** · **Apagar os 2 negócios de teste de vida no Agger da AutoFleet** — segurado "TESTE AUTOBROKERS",
+      criados em 16/10 (BLOCO 0 de madrugada e canário às 09:12 de Brasília). Agger da AutoFleet → menu **⋮** do negócio → **"Excluir
+      cotação"**. ⚠️ Confira o nome "TESTE AUTOBROKERS" antes: nunca apague negócio de pessoa. **Custa esquecer:** nada (só aparecem na
+      lista). **Bloqueia?** Não. · *de:* S129-D §6
+- [ ] **T-195** ⏳ 🧑 **quando quiser, 15 min** · **Implantar `smith-api` + `smith-worker` + `portal-worker` JUNTOS** (o código da vida, ainda
+      desligado) — EasyPanel → `portal-worker` → **Implantar**; `smith-api` → **Implantar**; `smith-worker` → **Implantar**, um logo depois do
+      outro. Depois o `smith-web` (a tela das respostas de vida) **FORA do horário de atendimento e depois da T-174** (pode ser o MESMO
+      Implantar da T-180/T-183/T-187). Nenhuma variável nova.
+      **Esperado:** os quatro "running"; nada muda para ninguém (a chave está desligada). Abra
+      `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao` → `commit` do push da SPEC-129-D (o
+      gerente diz qual). **Se der errado:** "unhealthy" → print do log e a hora no chat. **Custa esquecer:** a vida não pode ser ligada.
+      **Bloqueia?** Sim, para a T-196. · *de:* S129-D §11 · P-129D-11
+- [ ] **T-196** ⏳ 🧑 **SÓ depois da T-192 e da T-195** · **LIGAR a vida** — EasyPanel → em `smith-api`, `smith-worker` e `portal-worker`:
+      **Ambiente** → acrescente a linha `MULTICALCULO_VIDA_LIGADO=1` → **Implantar** cada um. Depois o teste, no chat principal:
+      *"cotação de vida individual para TESTE AUTOBROKERS, nascido em 10/05/1985, homem, casado, CEP 89201-000, analista de sistemas, não
+      fumante, renda de 8 mil por mês, não pratica esporte radical, capital de 100 mil"*.
+      **Esperado:** o chat pede o que falta (o CPF) sem presumir nada; respondido, ele calcula e responde NO CHAT com as ofertas (sem página
+      ao cliente). Na tela Renovações, uma renovação de vida aparece em "Precisa de você" com as perguntas de fumante/renda/esporte para
+      vocês responderem. **Se der errado:** "esse ramo ainda não" → a variável não pegou em algum serviço (confira os três); todas as
+      seguradoras fora pela comissão → T-192. **Para desligar:** apague a linha dos três serviços e Implante. **Bloqueia?** É a decisão.
+      · *de:* S129-D §11 · D-129D-09
 
 ### ① Implantar e conferir — não depende de nada
 
