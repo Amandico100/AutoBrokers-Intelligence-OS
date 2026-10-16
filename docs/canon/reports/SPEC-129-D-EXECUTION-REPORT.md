@@ -131,7 +131,17 @@ AutoFleet: cálculo até 27/10/2026 (11 dias). Varredura das linhas do pedido (s
 (leitor) e K5 (capital pedido no robô e na retomada), estes dois nascidos do canário.
 
 ## 📊 A BATERIA — quantas rodadas nesta SPEC
-<<BATERIA: o gerente preenche>>
+📊 16/10/2026, HEAD `9e5b0a0`, worktrees limpos `C:/wt129da·db·dc` (sem link), TRÊS PARTES (`tests` + `--ignore`: 348·129·200 arquivos):
+**A** 19 failed · 1861 passed · 2 skipped (1:03:08) · **B** 0 failed · 397 passed (8:34) · **C** 89 failed · 4804 passed · 8 skipped · 31 xfailed ·
+1 xpassed (2:14:28; máquina com ~845 MB livres). TRIAGEM nominal contra a base (35): 31 iguais · 4 sumiram (não conferidas) · 77 novas →
+76 de carga/ambiente (67 do meta-guarda por timeout de 120 s: 65 passam isoladas e 2 saem rc=0 como processo; `piloto_e_medido`, `red_b3`,
+`quatro_anexos`, `CONTROLE_executor`, `uma_corretora` passam isoladas; `roda_no_node`, `design_k1`, `fonte_comercial` XPASS e árvore limpa
+iguais à B3) · **1 REGRESSÃO desta SPEC**: `test_contrato_do_calculo_agger::test_cada_regra_cita_uma_fixture_que_existe` ← a regra nova do
+leitor (K4) citava o relato do canário, não uma fixture → **consertada**: fixture `vivo_vida_canario` (gerador oficial; as 2 frases REAIS do
+canário — HDI peso → DADO, Bradesco filial → CREDENCIAL; ⚠️ a resposta HTTP crua não foi gravada: o bruto foi remontado a partir de
+`multicalculo_eventos.motivo`, textos/códigos/tempos reais) → `test_contrato_do_calculo_agger` 55 passed · `agger_fixtures_sem_vazamento` 27 ·
+`test_spec129d_portal_vida` 25. **Regressões em aberto: 0.** Recomendação: estender o guarda de vazamento a `fixtures/agger_ramos/` (as 3
+`vida_*` estão limpas por varredura manual).
 
 ## 9. Mudanças além do texto da SPEC (CHANGE-ADDENDA 16/10)
 ESSENCIAL: a última milha da vida no conserto (respostas pela tela + cotação nova pelo chat) — licença §9, escopo não reduzido. ESSENCIAL: o

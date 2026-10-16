@@ -1,3 +1,9 @@
+# 📊 16/10/2026, SPEC-129-D (branch spec/129-D-vida, HEAD 9e5b0a0), worktrees limpos C:/wt129da·db·dc (sem link), TRÊS PARTES em paralelo
+#   (tests + --ignore das outras partes: 348·129·200 arquivos) → 19 failed · 1861 passed · 2 skipped (1:03:08) · 0 failed · 397 passed (8:34) ·
+#   89 failed · 4804 passed · 8 skipped · 31 xfailed · 1 xpassed (2:14:28, ~845 MB livres). TRIAGEM contra a base (35): 31 iguais · 4 sumiram ·
+#   77 novas: 76 de carga/ambiente (67 do meta-guarda por timeout de 120 s → passam isoladas; demais isoladas passam ou iguais à B3) ·
+#   1 REGRESSÃO: test_contrato_do_calculo_agger::test_cada_regra_cita_uma_fixture_que_existe ← leitor_agger.py (efe7efa) → consertada com a
+#   fixture vivo_vida_canario (55 passed). A lista abaixo não muda.
 # 📊 16/10/2026, SPEC-131-0-B3 (branch spec/131-0-B3-um-whatsapp, HEAD 69b2963), worktrees limpos C:/wtb3a·b·c (sem link), TRÊS PARTES em paralelo
 #   (tests + --ignore das outras partes: 348·129·195 arquivos) → 24 failed · 1856 passed · 2 skipped (47:51) · 0 failed · 397 passed (8:06) ·
 #   19 failed · 4775 passed · 7 skipped · 30 xfailed · 1 xpassed (1:15:31). TRIAGEM contra a base (35): 32 iguais · 3 sumiram (não conferidas) ·
