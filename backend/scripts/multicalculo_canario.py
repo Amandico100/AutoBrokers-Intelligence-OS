@@ -16,6 +16,20 @@ O que faz, no PROCESSO (navegador local; o motor do serviço não é tocado):
      senha|loginws|senhaws|token|authorization|https?://  ⑧ SEMPRE (finally): logout, contas `teste` -> `pausado` e
      senha apagada.
 ⛔ O perfil (o pedido com os dados da apólice autorizada) NUNCA é impresso. Renovação ao vivo: não roda aqui (declarado).
+
+SPEC-129-D (V3) — `--ramo 91`: UMA cotação de VIDA INDIVIDUAL de TESTE pelo MESMO porta → motor → robô, na conta da
+corretora (o `--corretora` uma vez, o uuid — CLAUDE.md §13.9: nenhum nome de corretora no script), numa conta escolhida
+(`--conta <uuid do portal_accounts>`, opcional; sem ela, o rodízio do motor):
+
+    AUTOBROKERS_CANARIO=1 … .venv/Scripts/python.exe scripts/multicalculo_canario.py --ramo 91 \
+        --corretora <uuid> [--conta <uuid>] [--comissao 10]
+
+  o pedido é o do BLOCO 0 (embutido, NADA de pessoa real): "TESTE AUTOBROKERS", CPF GERADO com dígito válido (semente
+  fixa), 10/05/1985, M, casado(a), CEP 89201-000, não fumante, renda 8.000, sem esporte radical, "Analista de sistemas",
+  capital de Morte 100.000, só a opção "padrão" (= 1 calcularV2) e a comissão de vida EXPLÍCITA (📊 as contas têm
+  `percComissaoVida` 0 — sem ela nenhuma seguradora entra; é um TESTE, declarado). Imprime só: as seguradoras que
+  entraram e as que saíram (com o motivo), as ofertas lidas (seguradora, prêmio, capital), as recusas, as trocas de token
+  e o logout. ⛔ Nunca emissão; nada ao cliente; a chave MULTICALCULO_VIDA_LIGADO é ligada SÓ neste processo.
 """
 from __future__ import annotations
 
@@ -45,9 +59,17 @@ TERMINAIS = ("fechado", "falhou", "incerto", "cancelado", "expirado")
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="multicalculo_canario", description="O canário do multicálculo (SPEC-129-B U6).")
-    p.add_argument("--canal", required=True)
-    p.add_argument("--corretora", required=True, action="append", help="2 vezes: as duas corretoras")
-    p.add_argument("--perfil", required=True, help="JSON local FORA do git com o pedido ({grupo: {campo: valor}})")
+    # SPEC-129-D: os três deixam de ser `required` no PARSER (a vida não usa canal nem perfil); o auto os exige em
+    # `executar` — a mesma recusa, com rc 2
+    p.add_argument("--canal", help="auto: o uuid do canal")
+    p.add_argument("--corretora", action="append",
+                   help="auto: 2 vezes (as duas corretoras) · vida (--ramo 91): 1 vez, a corretora dona do Agger")
+    p.add_argument("--perfil", help="auto: JSON local FORA do git com o pedido ({grupo: {campo: valor}})")
+    p.add_argument("--ramo", type=int, choices=(31, 91), default=31,
+                   help="31 = o canário do auto (o de sempre) · 91 = 1 cotação de VIDA de teste (SPEC-129-D)")
+    p.add_argument("--conta", default=None, help="vida: o uuid da conta do Agger (portal_accounts) que calcula")
+    p.add_argument("--comissao", type=float, default=10.0,
+                   help="vida: a comissão de vida EXPLÍCITA do teste (em %%; as contas têm percComissaoVida 0)")
     p.add_argument("--ajuste", default="franquia=normal", help="tipo=valor (ex.: franquia=normal)")
     p.add_argument("--matar-depois-do-checkpoint", action="store_true")
     p.add_argument("--teto", type=int, default=8, help="teto de cálculos desta execução")
@@ -104,6 +126,9 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
 
     if os.environ.get("AUTOBROKERS_CANARIO") != "1":
         escrever("RECUSADO: o canário exige AUTOBROKERS_CANARIO=1 no processo")
+        return 2
+    if not args.canal or not args.corretora or not args.perfil:
+        escrever("RECUSADO: o canário do auto exige --canal, --corretora (2 vezes) e --perfil")
         return 2
     corretoras = [str(c).strip().lower() for c in args.corretora]
     if len(corretoras) != 2 or len(set(corretoras)) != 2:
@@ -303,6 +328,209 @@ async def executar(args, *, supa, escrever: Callable[[str], Any] = print, abrir_
     return rc
 
 
+# ======================================================================================================================
+# SPEC-129-D (V3) — o canário da VIDA INDIVIDUAL (ramo 91): 1 cotação de TESTE pelo mesmo porta → motor → robô
+# ======================================================================================================================
+#: a semente do CPF de teste (📊 BLOCO 0 M6: "CPF GERADO com dígito válido — semente fixa, não é de pessoa conhecida")
+SEMENTE_DO_CPF = 1291016
+
+
+def cpf_de_teste(semente: int = SEMENTE_DO_CPF) -> str:
+    """Um CPF GERADO (9 dígitos de uma semente fixa + os 2 verificadores pela regra da Receita) — de ninguém."""
+    import random
+
+    rng = random.Random(semente)
+    while True:
+        base = [rng.randint(0, 9) for _ in range(9)]
+        if len(set(base)) > 1:
+            break
+    for peso in (10, 11):
+        soma = sum(d * (peso - i) for i, d in enumerate(base))
+        resto = (soma * 10) % 11
+        base.append(0 if resto == 10 else resto)
+    return "".join(map(str, base))
+
+
+def pedido_de_teste_da_vida(*, comissao: float, hoje=None) -> Dict[str, Any]:
+    """O pedido de VIDA do BLOCO 0 (dados de TESTE) — o dict que `PedidoDeCalculo.de_dict(..., ramo=91)` aceita."""
+    from datetime import date as _date
+
+    hoje = hoje or _date.today()
+    return {
+        "segurado": {"cpf": cpf_de_teste(), "nome": "TESTE AUTOBROKERS", "data_nascimento": "1985-05-10",
+                     "sexo": "Masculino", "estado_civil": "Casado(a)", "cep": "89201000",
+                     "profissao_texto": "Analista de sistemas"},
+        "vida": {"capital_morte": 100000, "fumante": False, "renda_mensal": 8000, "esporte_radical": False,
+                 "vigencia_inicio": (hoje + timedelta(days=1)).isoformat(), "origem": "cotacao"},
+        "comissao_desconto": {"comissao_percentual": float(comissao)},
+    }
+
+
+async def executar_vida(args, *, supa, escrever: Callable[[str], Any] = print, abrir_navegador=None,
+                        upload=None, intervalo_s: Optional[float] = None) -> int:
+    """O canário de VIDA. As bordas (banco, navegador, upload) são injetáveis só para o teste do script."""
+    from app.services.multicalculo import MulticalculoProvider, PedidoDeCalculo
+    from app.services.multicalculo.repositorio import RepositorioMulticalculo
+    from portal_worker.multicalculo import contrato as K
+    from portal_worker.multicalculo import motor as MOT
+    from portal_worker.multicalculo import robos as ROB
+    from portal_worker.multicalculo.agger_sessao import URL_BASE_AGGER, Sessoes
+
+    if os.environ.get("AUTOBROKERS_CANARIO") != "1":
+        escrever("RECUSADO: o canário exige AUTOBROKERS_CANARIO=1 no processo")
+        return 2
+    if args.canal or args.perfil:
+        escrever("RECUSADO: a vida usa o pedido de TESTE embutido (sem --canal e sem --perfil)")
+        return 2
+    if len(args.corretora or []) != 1:
+        escrever("RECUSADO: na vida, passe --corretora UMA vez (o uuid da corretora dona do Agger)")
+        return 2
+    if int(args.teto) < 1:
+        escrever(f"RECUSADO: o canário de vida faz 1 cálculo e o --teto é {args.teto}")
+        return 2
+    if not (0 < float(args.comissao) <= 100):
+        escrever("RECUSADO: --comissao entre 0 e 100 (a de vida das contas é 0: sem ela nenhuma seguradora entra)")
+        return 2
+    corretora = str(args.corretora[0]).strip().lower()
+    os.environ["MULTICALCULO_MOTOR_LIGADO"] = "true"     # SÓ neste processo (o serviço não é tocado)
+    os.environ["MULTICALCULO_VIDA_LIGADO"] = "1"         # idem: a chave da vida (D-129D-09) segue desligada no serviço
+    pedido = PedidoDeCalculo.de_dict(pedido_de_teste_da_vida(comissao=args.comissao), ramo=K.RAMO_VIDA)
+    escrever(f"pedido de TESTE: {pedido!r}")
+
+    contas = list(ROB.candidatos(supa, corretora))
+    conta = str(args.conta).strip().lower() if args.conta else None
+    if conta is not None and conta not in {str(c["id"]).lower() for c in contas}:
+        escrever("RECUSADO: --conta não é uma conta do Agger desta corretora (rodízio global/teste)")
+        return 2
+    escrever("robôs: " + " · ".join(f"{x['id']} ({x['robo_estado']}, {x.get('uso')})" for x in contas))
+    porta = MulticalculoProvider(RepositorioMulticalculo(supa))
+    contador = _Contador(intervalo_s)
+    sessoes_abertas: List[Any] = []
+    navegadores: List[Any] = []
+    motores: List[Any] = []
+    meus_pedidos: set = set()
+    pw = None
+    rc = 1
+
+    class _SessoesContadas(Sessoes):
+        """As sessões REAIS, guardadas para contar no fim as trocas de token e o logout (a guarda conta)."""
+
+        async def obter(self, *a, **k):
+            s = await super().obter(*a, **k)
+            if s not in sessoes_abertas:
+                sessoes_abertas.append(s)
+            return s
+
+    def linhas(tabela: str, **filtro) -> List[Dict[str, Any]]:
+        q = supa.table(tabela).select("*")
+        for k, v in filtro.items():
+            q = q.eq(k, v)
+        return list(q.execute().data or [])
+
+    try:
+        aberto = await porta.calcular(company_id=corretora, pedido=pedido, origem="teste", opcoes=("padrao",),
+                                      quadro_s=int(args.quadro_s))
+        pedido = None   # noqa: F841
+        meus_pedidos.add(aberto.pedido_id)
+        if conta is not None:
+            (supa.table("multicalculo_calculos")
+             .update({"conta_exigida_id": conta, "conta_regra": "canario_vida",
+                      "conta_motivo": "o canário de vida escolheu a conta (--conta)"})
+             .eq("pedido_id", aberto.pedido_id).eq("company_id", corretora).eq("status", "na_fila").execute())
+        escrever(f"pedido {aberto.pedido_id}: {len(aberto.calculos)} cálculo(s) na fila"
+                 + (f" · conta {conta}" if conta else " · conta: o rodízio do motor"))
+        if abrir_navegador is not None:
+            nav = await abrir_navegador()
+        else:
+            from playwright.async_api import async_playwright
+
+            from portal_worker.worker import _launch_kwargs
+
+            pw = await async_playwright().start()
+            nav = await pw.chromium.launch(**_launch_kwargs())
+        navegadores.append(nav)
+        kw = {"upload": upload} if upload is not None else {}
+        m = MOT.Motor(supa, sessoes=_SessoesContadas(nav, url_base=args.url_base or URL_BASE_AGGER),
+                      robo=contador.mod, canario=True, dono=f"canario-vida:{socket.gethostname()}:{os.getpid()}",
+                      somente_pedidos=meus_pedidos, **kw)
+        motores.append(m)
+        t0 = time.time()
+        terminou = False
+        while time.time() - t0 < 600:
+            await m.uma_volta()
+            if all(c["status"] in TERMINAIS for c in linhas("multicalculo_calculos", pedido_id=aberto.pedido_id)):
+                terminou = True
+                break
+            await asyncio.sleep(2)
+        if not terminou:
+            escrever("⚠️ o pedido não terminou no limite")
+        await m.encerrar()                              # logout pela tela (a sessão sai; o motor não fica de pé)
+        motores.remove(m)
+
+        calcs = linhas("multicalculo_calculos", pedido_id=aberto.pedido_id)
+        evs = linhas("multicalculo_eventos", pedido_id=aberto.pedido_id)
+        ofs = linhas("multicalculo_ofertas", pedido_id=aberto.pedido_id)
+        for c in calcs:
+            escrever(f"cálculo {c['opcao']} · {c['status']} · conta {c.get('account_id')}"
+                     + (f" · {c['erro']}" if c.get("erro") else ""))
+        sairam = [e for e in evs if e.get("tipo") == K.SEM_ATIVIDADE_COMPATIVEL]
+        entraram = sorted({(e.get("seguradora_codigo"), e.get("seguradora")) for e in evs
+                           if e.get("tipo") not in (K.SEM_ATIVIDADE_COMPATIVEL, K.CONJUNTO_FECHADO)
+                           and e.get("seguradora_codigo") is not None}, key=lambda x: x[0])
+        escrever(f"ENTRARAM no cálculo ({len(entraram)}): "
+                 + (" · ".join(f"{cod} {nome or '-'}" for cod, nome in entraram) or "nenhuma"))
+        escrever(f"SAÍRAM antes do cálculo ({len(sairam)}):")
+        for e in sorted(sairam, key=lambda x: x.get("seguradora_codigo") or 0):
+            escrever(f"  {e.get('seguradora_codigo')} {e.get('seguradora') or '-'} · {e.get('motivo') or '-'}")
+        escrever(f"OFERTAS lidas ({len(ofs)}):")
+        for o in sorted(ofs, key=lambda x: float(x.get("premio_total") or 0)):
+            capital = (o.get("coberturas") or {}).get("isAppMorte")
+            escrever(f"  {o.get('seguradora_codigo')} {o.get('seguradora') or '-'} · prêmio {o.get('premio_total')} · "
+                     f"capital {capital if capital is not None else '-'} · pacote {o.get('pacote') or '-'}")
+        recusas = [e for e in evs if e.get("tipo") == K.SEGURADORA_RECUSOU]
+        escrever(f"RECUSAS ({len(recusas)}):")
+        for e in sorted(recusas, key=lambda x: x.get("seguradora_codigo") or 0):
+            escrever(f"  {e.get('seguradora_codigo')} {e.get('seguradora') or '-'} · {e.get('familia') or '-'} · "
+                     f"{e.get('motivo') or '-'}")
+        for s in sessoes_abertas:
+            n = s.contagem_de_escritas()
+            escrever(f"SESSÃO: logins {n.get('login')} · trocas de token (login/pdocs) {n.get('pdocs')} · calcularV2 "
+                     f"{n.get('calcularV2')} · logout {n.get('logout')} · barradas pela guarda {n.get('barradas')}")
+        if not sessoes_abertas:
+            escrever("SESSÃO: nenhuma (o login não aconteceu)")
+        escrever(f"calcularV2 pelo robô: {contador.n} (esperado 1)")
+        # a varredura: nada de senha/token/url, e nada do pedido de teste (CPF, renda) nas linhas DESTE pedido
+        achados = 0
+        proibido = re.compile(PROIBIDO.pattern + "|" + cpf_de_teste() + r"|fumante|rendaMensal", re.I)
+        for t, rs in (("multicalculo_calculos", calcs), ("multicalculo_eventos", evs), ("multicalculo_ofertas", ofs),
+                      ("multicalculo_pedidos", linhas("multicalculo_pedidos", id=aberto.pedido_id))):
+            for r in rs:
+                for k, v in r.items():
+                    if k == "pedido_cifrado":
+                        continue
+                    texto = v if isinstance(v, str) else (json.dumps(v, ensure_ascii=False)
+                                                          if isinstance(v, (dict, list)) else None)
+                    if texto and proibido.search(texto):
+                        achados += 1
+                        escrever(f"  ⚠️ {t}.{k} casou o padrão proibido")
+        escrever(f"varredura (senha|token|url|o CPF de teste|fumante|renda) nas linhas do pedido: {achados}")
+        rc = 0 if not achados and contador.n <= 1 else 1
+    finally:
+        for m in motores:
+            try:
+                await m.encerrar()
+            except Exception as e:  # noqa: BLE001
+                escrever(f"⚠️ desligar o motor falhou ({type(e).__name__})")
+        for nav in navegadores:
+            try:
+                await nav.close()
+            except Exception:  # noqa: BLE001
+                pass
+        if pw is not None:
+            await pw.stop()
+    return rc
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     # 📊 05/10 21:27: o console Windows (cp1252) derrubou o canário com UnicodeEncodeError no meio da execução — a
     # saída nunca derruba o canário: o que não cabe na tabela do console vira "?" (como `comando_robo.main`)
@@ -317,6 +545,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
     from portal_worker.worker import _supabase
 
+    if args.ramo == 91:
+        return asyncio.run(executar_vida(args, supa=_supabase()))
     return asyncio.run(executar(args, supa=_supabase()))
 
 

@@ -344,10 +344,9 @@ def _extras(valor: Any) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------------------------------------------------
 # SPEC-129-D — a VIDA INDIVIDUAL (ramo 91), atrás de MULTICALCULO_VIDA_LIGADO
 # ---------------------------------------------------------------------------------------------------------------------
-#: 🔴 Por que 91 (CLAUDE.md §9.5): 📊 `tests/fixtures/agger_formularios/formularios_por_ramo.json` `ramos_codigo["91"] =
-#: "vida"` (o mapa da tela do Agger) e 📊 A-PROVA §10: 32 negócios com ramo 91 no Agger de uma corretora piloto. Quando o
-#: contrato do portal_worker expuser `RAMO_VIDA` (a V1), vale o dele — o guarda confere que é o mesmo número.
-RAMO_VIDA: int = int(getattr(_contrato, "RAMO_VIDA", 91))
+#: 🔴 Por que 91 (CLAUDE.md §9.5): 📊 o `cotacao.ramo` do corpo GRAVADO ao vivo (BLOCO 0 M6) — o número é o do CONTRATO do
+#: portal_worker (`contrato.RAMO_VIDA`, V1); um lugar só (costura V3).
+RAMO_VIDA: int = int(_contrato.RAMO_VIDA)
 #: D-129D-09 — a chave. Ausente (ou qualquer valor fora da lista fechada de `env_ligada`) = a vida segue
 #: `ramo_nao_cotado` "renove manualmente", byte a byte. Ligar é do Founder.
 ENV_VIDA = "MULTICALCULO_VIDA_LIGADO"
@@ -359,28 +358,18 @@ def vida_ligada() -> bool:
     return env_ligada(ENV_VIDA)
 
 
-#: O pedido de VIDA — o contrato V1 ↔ V2 (§3 da SPEC), NOMES e nada mais. 🔴 Um catálogo só (CLAUDE.md §5): quando o
-#: contrato do portal_worker expuser `CAMPOS_DO_PEDIDO_VIDA` (a V1), a costura (V3) troca esta tabela pela dele — o guarda
-#: `test_o_catalogo_de_vida_e_o_do_contrato_quando_a_v1_o_expuser` fica vermelho se os nomes divergirem. `comissao_desconto`
-#: é a extensão do §3 que a D-129D-08 pede (a comissão/agenciamento explícitos que a CORRETORA configurou; ausente = a do
-#: Agger dela, que o robô lê).
+#: O pedido de VIDA — o contrato V1 ↔ V2 (§3 da SPEC), NOMES e nada mais. 🔴 Um catálogo só (CLAUDE.md §5, costura V3):
+#: os NOMES e a ORDEM vêm de `contrato.CAMPOS_DO_PEDIDO_VIDA` (o portal_worker, V1) — o app não guarda cópia.
+#: `comissao_desconto` é a extensão do §3 que a D-129D-08 pede (a comissão/agenciamento explícitos que a CORRETORA
+#: configurou; ausente = a do Agger dela, que o robô lê).
 CAMPOS_DO_PEDIDO_VIDA: Dict[str, Tuple[str, ...]] = {
-    "segurado": ("cpf", "nome", "data_nascimento", "sexo", "estado_civil", "cep", "profissao_texto",
-                 "profissao_codigo_infocap"),
-    "vida": ("capital_morte", "coberturas_extras", "fumante", "renda_mensal", "esporte_radical", "vigencia_inicio",
-             "origem"),
-    "comissao_desconto": ("comissao_percentual", "agenciamento_percentual"),
-}
-#: Os obrigatórios — 📊 os 12 do formulário de vida (`agger_formularios`, vida: 47 campos, 12 obrigatórios): cpf · nome ·
-#: dataNasc · sexo · estadoCivil · cep · profissao (a BUSCA do Agger, pelo texto) · isFumante · rendaMensal ·
-#: praticaEsporteRadical · vigenciaIni · assistMorte (o capital). ⛔ `None` em fumante/renda/esporte = FALTA (D-129D-05):
-#: nunca um padrão — declaração inexata pode fazer perder a garantia (Código Civil, art. 766).
-OBRIGATORIOS_DA_VIDA: Tuple[Tuple[str, str], ...] = (
-    ("segurado", "cpf"), ("segurado", "nome"), ("segurado", "data_nascimento"), ("segurado", "sexo"),
-    ("segurado", "estado_civil"), ("segurado", "cep"), ("segurado", "profissao_texto"),
-    ("vida", "capital_morte"), ("vida", "fumante"), ("vida", "renda_mensal"), ("vida", "esporte_radical"),
-    ("vida", "vigencia_inicio"),
-)
+    g: tuple(c[0] for c in cs) for g, cs in _contrato.CAMPOS_DO_PEDIDO_VIDA.items()}
+#: Os obrigatórios — os do CONTRATO (📊 os 12 da TELA: 11 com `*` no DOM + a profissão, "Busca por profissão*", que é
+#: por seguradora): cpf · nome · dataNasc · sexo · estadoCivil · cep · profissao (a BUSCA do Agger, pelo texto) ·
+#: assistMorte (o capital) · isFumante · rendaMensal · praticaEsporteRadical · vigenciaIni. ⛔ `None` em fumante/renda/
+#: esporte = FALTA (D-129D-05): nunca um padrão — declaração inexata pode fazer perder a garantia (Código Civil, art. 766).
+OBRIGATORIOS_DA_VIDA: Tuple[Tuple[str, str], ...] = tuple(
+    (g, c[0]) for g, cs in _contrato.CAMPOS_DO_PEDIDO_VIDA.items() for c in cs if c[2])
 ORIGENS_DA_VIDA: Tuple[str, ...] = ("renovacao", "cotacao")
 #: O SEXO e o ESTADO CIVIL no RÓTULO da tela de vida do Agger — 📊 as opções do formulário (`agger_formularios`, vida:
 #: Sexo "Feminino · Masculino"; Estado civil "Solteiro(a) · Casado(a) · Separado(a) · Divorciado(a) · Viúvo(a) · União
@@ -1297,26 +1286,19 @@ def coberturas_de_vida_da_opcao(opcao: str, capital: float, extras: Optional[Map
                                 ) -> Dict[str, Any]:
     """As coberturas de UM cálculo de vida (§4 da SPEC): `padrao`/`anterior` = o capital e as coberturas do pedido (a
     apólice); `economica` ("mais em conta") = SÓ a morte com o MESMO capital — nunca capital menor sem o corretor pedir.
-    Chaves: `capital_morte` + os códigos das extras (o robô, V1, as põe no corpo; a assistência funeral obrigatória, se
-    a gravação mostrar que é, é dele)."""
-    base = {"capital_morte": float(capital)}
-    if opcao in ("padrao", _presets.ANTERIOR):
-        return {**base, **{str(k): float(v) for k, v in (extras or {}).items()}}
-    if opcao == "economica":
-        return base
-    raise ValueError(f"opção {opcao!r} não existe na vida (há: padrao, economica, {_presets.ANTERIOR})")
+    🔴 Um lugar só (costura V3): DELEGA ao preset do portal (`presets.coberturas_vida`, V1) — o app não tem regra própria."""
+    return _presets.coberturas_vida(opcao, capital, extras)
 
 
 def _extras_de_vida_da_ficha(apolice: Any, ficha: Any) -> Tuple[Dict[str, float], bool]:
-    """(as extras {código: capital}, há linha que não virou código). O mapa rótulo → campo do Agger é da V1
-    (`presets.coberturas_de_vida_da_ficha`, das constantes da gravação); sem ele, nada é deduzido aqui."""
+    """(as extras {código: capital}, há linha que NÃO virou código). O mapa rótulo → campo do Agger é o do portal
+    (`presets.coberturas_de_vida_da_ficha_com_sobra`, V1, das constantes da gravação); a SOBRA (o que a apólice tem e
+    o pedido não leva) vira o aviso `coberturas_de_vida_nao_mapeadas` — o corretor confere (costura V3: antes o aviso
+    nunca existia, porque o mapa sem a sobra dizia "tudo mapeado")."""
     linhas = [(r, v) for (r, v, _o) in _linhas_de_vida(apolice, ficha)
               if v is not None and v > 0 and not e_a_morte_do_segurado(r)]
-    mapa = getattr(_presets, "coberturas_de_vida_da_ficha", None)
-    if not callable(mapa):
-        return {}, bool(linhas)
-    extras = {str(k): float(v) for k, v in (mapa(linhas) or {}).items() if _numero_ou_none(v)}
-    return extras, False
+    extras, sobra = _presets.coberturas_de_vida_da_ficha_com_sobra(linhas)
+    return {str(k): float(v) for k, v in (extras or {}).items() if _numero_ou_none(v)}, bool(sobra)
 
 
 def _de_apolice_vida(apolice: Any, perfil: Dict[str, Dict[str, Any]], *, ficha: Any,

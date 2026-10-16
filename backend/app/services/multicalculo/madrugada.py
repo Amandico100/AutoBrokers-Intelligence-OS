@@ -370,6 +370,68 @@ def motivo_da_excecao(exc: BaseException, *, ficha: Any = None) -> Tuple[str, st
 MOTIVO_LICENCA_VENCIDA = "licenca_agger_vencida"
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# SPEC-129-D (costura V3) — as recusas do robô de VIDA → o estado do item (nunca a falha genérica)
+# ---------------------------------------------------------------------------------------------------------------------
+#: a frase da configuração que falta (o comercial não responde isto — a corretora configura, em Serviços)
+FRASE_DA_COMISSAO_DE_VIDA = "configure a comissão de vida da corretora (Serviços)"
+#: o Agger pede QUAL esporte (📊 49 esportes na tela, 0 = "Não contratado"): o "sim" do pedido não basta
+PERGUNTA_DO_ESPORTE_RADICAL = "Qual esporte radical o segurado pratica?"
+#: o código que o robô (`agger_robo.MOTIVOS_LEGIVEIS` e a recusa do esporte em `_cotacao_do_pedido_vida`) põe na FRENTE do
+#: texto — e o motor grava depois de `motor.PREFIXO_DA_RECUSA` — → (estado, motivo, dados do evento). 🔴 Por que cada um:
+#:   profissão sem casamento → FALTA DADO: o comercial confere a profissão do cadastro (é dado do segurado, D-129D-06)
+#:   comissão de vida 0       → pendente(porta_recusou): é a CONFIGURAÇÃO da corretora, não um dado da apólice (D-129D-08)
+#:   esporte "sim"            → FALTA DADO "qual esporte": nunca um esporte por palpite
+#:   busca de profissão caiu  → falhou PASSAGEIRO (`calculo_falhou`, a próxima noite tenta de novo; nunca definitivo)
+#: ⛔ Os dados levam só NOMES e as frases — nunca valores (LGPD art. 11).
+CODIGO_DO_ESPORTE_RADICAL = "vida.esporte_radical:qual_esporte"
+
+
+def _recusas_de_vida() -> Dict[str, Tuple[str, str, Dict[str, Any]]]:
+    from app.services.multicalculo.pedido import PERGUNTA_DE_VIDA
+
+    return {
+        "profissao_sem_casamento": ("pendente", "falta_dado", {
+            "faltando": ["segurado.profissao_texto"], "perguntas": [PERGUNTA_DE_VIDA["segurado.profissao_texto"]]}),
+        "comissao_de_vida_nao_configurada": ("pendente", "porta_recusou", {
+            "configurar": ["vida_por_ramo.91.comissao_pct"], "perguntas": [FRASE_DA_COMISSAO_DE_VIDA]}),
+        CODIGO_DO_ESPORTE_RADICAL: ("pendente", "falta_dado", {
+            "faltando": ["vida.esporte_radical"], "perguntas": [PERGUNTA_DO_ESPORTE_RADICAL]}),
+        "profissao_busca_falhou": ("falhou", "calculo_falhou", {"causa": "profissao_busca_falhou"}),
+    }
+
+
+def _recusa_de_vida(calc: Mapping[str, Any]) -> Optional[Tuple[str, str, Dict[str, Any]]]:
+    """(estado, motivo, dados) da recusa de VIDA que o motor gravou no `erro` do cálculo, ou None. Só o CÓDIGO na
+    cabeça do texto (depois do prefixo do motor; o esporte, dentro do "pedido sem: …" do validador) — nunca uma
+    palavra solta no meio do texto de uma seguradora."""
+    from portal_worker.multicalculo.motor import PREFIXO_DA_RECUSA
+
+    if str(calc.get("status") or "") != "falhou":
+        return None
+    texto = str(calc.get("erro") or "").strip()
+    if texto.startswith(PREFIXO_DA_RECUSA):
+        texto = texto[len(PREFIXO_DA_RECUSA):].lstrip(": ").strip()
+    tabela = _recusas_de_vida()
+    if texto.startswith("pedido sem: "):
+        problemas = {p.strip() for p in texto[len("pedido sem: "):].split(" — ", 1)[0].split(",")}
+        return tabela[CODIGO_DO_ESPORTE_RADICAL] if CODIGO_DO_ESPORTE_RADICAL in problemas else None
+    cabeca = texto.split(" ", 1)[0] if texto else ""
+    achada = tabela.get(cabeca)
+    return achada if achada is not None and cabeca != CODIGO_DO_ESPORTE_RADICAL else None
+
+
+def dados_derivados(calculos: List[Mapping[str, Any]], ofertas: int) -> Optional[Dict[str, Any]]:
+    """Os dados do evento do item quando o estado DERIVADO vem de uma recusa de vida (a pergunta, a configuração, a
+    causa). None = nada a dizer — o auto e o RE seguem sem dados novos."""
+    if not calculos or ofertas > 0:
+        return None
+    if not all(str(c.get("status")) in ESTADOS_TERMINAIS_DO_CALCULO for c in calculos):
+        return None
+    achada = _recusa_de_vida(calculos[0])
+    return dict(achada[2]) if achada is not None else None
+
+
 def _motivo_do_calculo(calc: Mapping[str, Any]) -> str:
     erro = str(calc.get("erro") or "").strip()
     cabeca = erro.split(" ", 1)[0] if erro else ""
@@ -429,6 +491,9 @@ def estado_derivado(calculos: List[Mapping[str, Any]], ofertas: int, pessoa_em_u
     if terminais:
         if ofertas > 0:
             return "calculada", None
+        vida = _recusa_de_vida(calculos[0])
+        if vida is not None:
+            return vida[0], vida[1]       # SPEC-129-D: a recusa de vida vira a pergunta/a configuração, nunca "falhou"
         motivo = _motivo_do_calculo(calculos[0])
         # confirmação N1: a moto que só a PLACA revelou (o Agger devolve tipoVeic "m") não é falha do robô — é um ramo
         # que o aplicativo não cota (D-131-28): vira pendência "renove manualmente", fora do denominador dos cotáveis
@@ -544,9 +609,19 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
         from app.services.multicalculo import pedido as P
 
         perguntas = P.perguntas_de_vida(faltam) if getattr(pedido, "e_vida", False) else []
-        return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos,
+        return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos, **_avisos_de_vida(pedido),
                                                  **({"perguntas": perguntas} if perguntas else {})}
-    return "pronta", None, pedido, (supostos or None)
+    return "pronta", None, pedido, ({**supostos, **_avisos_de_vida(pedido)} or None)
+
+
+def _avisos_de_vida(pedido: Any) -> Dict[str, Any]:
+    """SPEC-129-D (costura V3): os AVISOS do pedido de VIDA (a cobertura da apólice que não casa com campo do Agger, o
+    capital ambíguo, o capital do cadastro) vão no evento do item — o corretor confere antes de cotar. Só os CÓDIGOS
+    (nunca valores). O auto e o RE não ganham a chave (byte a byte)."""
+    if not getattr(pedido, "e_vida", False):
+        return {}
+    avisos = sorted(str(a) for a in (getattr(pedido, "avisos", None) or ()))
+    return {"avisos": avisos} if avisos else {}
 
 
 async def preparar_dia(db: Any, company_id: str, dia: Any, *, por: str = "madrugada.preparar",
@@ -873,7 +948,8 @@ def acompanhar(db: Any, company_id: str, *, por: str) -> Dict[str, int]:
         estado, motivo = estado_derivado(calcs, ofertas, pessoa)
         if estado != item["estado"]:
             try:
-                repo.transicionar(cid, item["id"], estado, por=por, motivo=motivo)
+                repo.transicionar(cid, item["id"], estado, por=por, motivo=motivo,
+                                  dados=dados_derivados(calcs, ofertas))
             except (R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
                 logger.warning("[RENOV] releitura não gravou (%s)", type(exc).__name__)
         if estado == "calculada":

@@ -68,6 +68,25 @@ SEM_ATIVIDADE = str(getattr(_contrato, "SEM_ATIVIDADE_COMPATIVEL", "sem_atividad
 FRASE_DA_FAMILIA[SEM_ATIVIDADE] = "não tem na lista dela a atividade deste negócio"
 #: no RE o "perfil" é um RISCO (o imóvel), não um motorista
 FRASE_DA_FAMILIA_RE: Dict[str, str] = {ACEITACAO: "não aceitou este risco"}
+#: SPEC-129-D (costura V3) — na VIDA a mesma família SEM_ATIVIDADE é quem saiu ANTES do cálculo por não ter a PROFISSÃO
+#: igual à do segurado na lista dela, ou por não ter comissão de vida (o robô as narra com o motivo do contrato,
+#: `MOTIVO_DE_FORA_DA_VIDA`). ⛔ Nunca "atividade" (palavra do empresarial). O evento lido pela porta não traz o
+#: motivo: sem ele, a frase cobre os dois porquês; com ele, a frase é a do porquê.
+RAMO_VIDA = int(getattr(_contrato, "RAMO_VIDA", 91))
+FRASE_DA_FAMILIA_VIDA: Dict[str, str] = {
+    SEM_ATIVIDADE: "não entrou no cálculo: a profissão do segurado não está na lista dela, ou falta a comissão de vida"}
+_FRASE_DO_MOTIVO_DE_VIDA: Dict[str, str] = {
+    str(getattr(_contrato, "MOTIVO_SEM_PROFISSAO", "")): "não tem na lista dela a profissão do segurado",
+    str(getattr(_contrato, "MOTIVO_SEM_COMISSAO_DE_VIDA", "")): "não entrou no cálculo: falta a comissão de vida dela",
+}
+
+
+def _frase_da_recusa(familia: str, ramo: int, ev: Mapping[str, Any]) -> str:
+    """A frase de quem não respondeu: a do ramo (RE · VIDA) quando ele tem uma; senão a geral."""
+    if ramo == RAMO_VIDA and familia == SEM_ATIVIDADE:
+        return _FRASE_DO_MOTIVO_DE_VIDA.get(str(ev.get("motivo") or ""), FRASE_DA_FAMILIA_VIDA[SEM_ATIVIDADE])
+    return ((FRASE_DA_FAMILIA_RE.get(familia) if ramo in RAMOS_RE else None)
+            or FRASE_DA_FAMILIA.get(familia, FRASE_DA_FAMILIA[DESCONHECIDA]))
 # a família mais INFORMATIVA vence quando a mesma seguradora recusou de mais de um jeito
 _PRIORIDADE_DA_FAMILIA = (SEM_ATIVIDADE, ACEITACAO, INSTABILIDADE, COMERCIAL, DADO, PENDENTE, CREDENCIAL, PERMISSAO,
                           DESCONHECIDA)
@@ -709,9 +728,7 @@ def comparar(ofertas: Iterable[Mapping[str, Any]], eventos: Iterable[Mapping[str
         prio = _PRIORIDADE_DA_FAMILIA.index(familia) if familia in _PRIORIDADE_DA_FAMILIA else len(_PRIORIDADE_DA_FAMILIA)
         if atual is None or prio < atual["_prio"]:
             recusas[opcao][chave] = {"seguradora": nome_de_exibicao(ev.get("seguradora")), "familia": familia,
-                                     "motivo": (FRASE_DA_FAMILIA_RE.get(familia) if ramo in RAMOS_RE else None)
-                                     or FRASE_DA_FAMILIA.get(familia, FRASE_DA_FAMILIA[DESCONHECIDA]),
-                                     "_prio": prio}
+                                     "motivo": _frase_da_recusa(familia, ramo, ev), "_prio": prio}
     nao_responderam_por_opcao = {
         op: sorted(({k: v for k, v in r.items() if k != "_prio"} for r in rs.values()), key=lambda r: r["seguradora"])
         for op, rs in recusas.items()}

@@ -48,6 +48,7 @@ from . import robos
 from .contrato import (
     CONJUNTO_FECHADO, MOTIVO_MAX, MOTIVO_SEM_ATIVIDADE, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, RAMO_AUTO,
     SEGURADORA_RECUSOU, SEM_ATIVIDADE, SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento, Oferta, RespostaDaSeguradora, RodadaDoCalculo,
+    MOTIVO_DE_FORA_DA_VIDA,
 )
 
 logger = logging.getLogger("portal_worker.multicalculo")
@@ -289,11 +290,16 @@ def erro_curto(texto: Any, limite: int = 200) -> str:
     return s[:limite]
 
 
+#: o que vai NA FRENTE de toda recusa do robô no `erro` do cálculo. SPEC-129-D: a madrugada (`madrugada._recusa_de_vida`)
+#: tira ESTE prefixo para ler o código da recusa de vida — um lugar só para o texto
+PREFIXO_DA_RECUSA = "o portal recusou o cálculo"
+
+
 def _motivo_recusado(exc: BaseException) -> str:
     motivo = getattr(exc, "motivo", None)
     if isinstance(motivo, str) and motivo.strip():
-        return erro_curto("o portal recusou o cálculo: " + motivo)
-    return "o portal recusou o cálculo"
+        return erro_curto(PREFIXO_DA_RECUSA + ": " + motivo)
+    return PREFIXO_DA_RECUSA
 
 
 def chave_do_evento(e: Evento) -> str:
@@ -1569,6 +1575,8 @@ class Motor:
             except robo.DisparoRecusado as exc:
                 # costura 129-C (D-129C-04): NENHUMA seguradora casou a atividade — quem saiu é gravado ANTES do `falhou`
                 await self._gravar_sem_atividade(g, c, getattr(exc, "sem_atividade", ()), _ramo_do_pedido(pedido))
+                # SPEC-129-D (costura V3): na VIDA, nenhuma ficou (sem profissão igual / sem comissão de vida) — idem
+                await self._gravar_fora_da_vida(g, c, getattr(exc, "fora_da_vida", ()), _ramo_do_pedido(pedido))
                 if getattr(exc, "sessao_morta", False):
                     # nada saiu (401/403 antes do cálculo): a sessão é DESCARTADA e o que não saiu volta à fila
                     g.sessao_morta = True
@@ -1593,6 +1601,9 @@ class Motor:
             # costura 129-C (D-129C-04): quem saiu por atividade é gravado JÁ no checkpoint (o `acompanhar` narra de novo
             # e o upsert por chave o engole) — a retomada reconstrói o Disparo sem essa lista
             await self._gravar_sem_atividade(g, c, getattr(d, "sem_atividade", ()), getattr(d, "ramo", RAMO_AUTO))
+            # SPEC-129-D (costura V3): quem saiu da VIDA antes do POST, JÁ no checkpoint — uma queda antes da 1ª leitura
+            # não perde a lista (a retomada reconstrói o Disparo sem ela; o `acompanhar` narra de novo, a chave engole)
+            await self._gravar_fora_da_vida(g, c, getattr(d, "fora_da_vida", ()), getattr(d, "ramo", RAMO_AUTO))
             disparos[c["id"]] = d
             if c.get("opcao") != "ajuste" and negocio is None:
                 negocio = d.negocio_ref
@@ -1757,6 +1768,22 @@ class Motor:
                 continue
             e = Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, erro_curto(nome, 120) or None, cod, SEM_ATIVIDADE, None, ramo,
                        motivo=MOTIVO_SEM_ATIVIDADE)
+            await self._gravar_evento(g, c, e, {"feita": True})
+
+    async def _gravar_fora_da_vida(self, g: Grupo, c: Dict[str, Any], fora: Iterable[Any], ramo: int) -> None:
+        """SPEC-129-D (costura V3): cada seguradora de VIDA que o robô tirou antes do POST — `(código, nome, por quê)`,
+        o porquê da lista fechada do contrato (`profissao` · `comissao`) — vira o MESMO evento que o `acompanhar` do robô
+        narra (`SEM_ATIVIDADE_COMPATIVEL`, família SEM_ATIVIDADE: a mesma chave, o upsert engole a repetição), com o
+        motivo DELA (`contrato.MOTIVO_DE_FORA_DA_VIDA`) — nunca o texto da atividade do empresarial."""
+        for item in fora or ():
+            try:
+                cod, nome, por = item
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(cod, int) or isinstance(cod, bool) or por not in MOTIVO_DE_FORA_DA_VIDA:
+                continue
+            e = Evento(SEM_ATIVIDADE_COMPATIVEL, 0.0, erro_curto(nome, 120) or None, cod, SEM_ATIVIDADE, None, ramo,
+                       motivo=MOTIVO_DE_FORA_DA_VIDA[por])
             await self._gravar_evento(g, c, e, {"feita": True})
 
     async def _gravar_linha_de_evento(self, g: Grupo, c: Dict[str, Any], campos: Dict[str, Any]) -> None:
