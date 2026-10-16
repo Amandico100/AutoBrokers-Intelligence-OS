@@ -46,7 +46,7 @@ from ..worker import _inteiro_do_ambiente, _upload_portal_blob, portal_real_enab
 from . import presets as _presets
 from . import robos
 from .contrato import (
-    CONJUNTO_FECHADO, MOTIVO_MAX, MOTIVO_SEM_ATIVIDADE, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, RAMO_AUTO,
+    CONJUNTO_FECHADO, MOTIVO_MAX, MOTIVO_SEM_ATIVIDADE, NOVA_OFERTA, OFERTA, OFERTA_ATUALIZADA, RAMO_AUTO, RAMO_VIDA,
     SEGURADORA_RECUSOU, SEM_ATIVIDADE, SEM_ATIVIDADE_COMPATIVEL, Ajuste, Evento, Oferta, RespostaDaSeguradora, RodadaDoCalculo,
     MOTIVO_DE_FORA_DA_VIDA,
 )
@@ -1161,9 +1161,11 @@ class Motor:
             # nada (o Disparo de sempre, byte a byte)
             ramo = _ramo_do_pedido(linha)
             do_ramo = {"ramo": ramo} if ramo != RAMO_AUTO else {}
+            # 🔴 conserto 129-D K5: na VIDA, o capital do pedido volta da linha do cálculo (o que o disparo levou) — sem
+            # ele a oferta lida na retomada sai sem o capital (📊 canário 16/10, Porto). Auto/RE: nada muda
             disparos = {c["id"]: self.robo.Disparo(negocio_ref=c["negocio_ref"], versao=int(c["versao"]),
                                                     t0=(_ts(c.get("disparado_em")) or self.agora()).timestamp(),
-                                                    **do_ramo)
+                                                    **do_ramo, **_capital_da_retomada(ramo, c))
                         for c in g.calculos}
         else:
             disparos = await self._disparar_todos(g, conta, sessao, pedido or {}, perdeu)
@@ -1974,6 +1976,18 @@ class Motor:
             familia=OFERTA if s["ofertas"] else (s["familia"] or OFERTA), ofertas=tuple(s["ofertas"].values()))
             for s in por_seg.values())
         return RodadaDoCalculo(t_s=None, respostas=respostas, fechado=fechado)
+
+
+def _capital_da_retomada(ramo: int, calculo: Dict[str, Any]) -> Dict[str, Any]:
+    """SPEC-129-D K5: `{"capital_pedido": n}` do `coberturas["capital_morte"]` do cálculo — SÓ na vida e SÓ número > 0
+    finito (o leitor confere de novo). Fora disso `{}`: o Disparo de sempre, byte a byte."""
+    if ramo != RAMO_VIDA:
+        return {}
+    cob = calculo.get("coberturas") if isinstance(calculo, dict) else None
+    v = cob.get("capital_morte") if isinstance(cob, dict) else None
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not (0 < v < float("inf")):
+        return {}
+    return {"capital_pedido": v}
 
 
 def _ramo_do_pedido(linha: Any) -> int:

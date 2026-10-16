@@ -124,15 +124,15 @@ class SessaoDoFio(V1.SessaoNode):
 
 
 class SessoesDoFio:
-    def __init__(self, cfg, blocos):
-        self.cfg, self.blocos = cfg, blocos
+    def __init__(self, cfg, blocos, classe=SessaoDoFio):
+        self.cfg, self.blocos, self.classe = cfg, blocos, classe
         self.abertas, self.todas, self.logouts = {}, [], 0
 
     async def obter(self, conta, *, senha, negocios_do_robo, **_extra):
         assert senha == SENHA and "secret_encrypted" not in conta
         s = self.abertas.get(conta["id"])
         if s is None:
-            s = self.abertas[conta["id"]] = SessaoDoFio(self.cfg, self.blocos, conta["id"], negocios_do_robo)
+            s = self.abertas[conta["id"]] = self.classe(self.cfg, self.blocos, conta["id"], negocios_do_robo)
             self.todas.append(s)
         return s
 
@@ -216,7 +216,8 @@ def montar(m, monkeypatch, *, profissao=PROFISSAO, comissao_da_corretora=10, lin
         p = await PERF.BORDA_REAL(db, cid, item, fonte, **contexto)
         if p is None or respostas is None:
             return p
-        # o que o comercial RESPONDEU (nunca deduzido; o produto ainda não tem o caminho da resposta — pendência)
+        # o que o comercial RESPONDEU (nunca deduzido; o caminho da resposta é a rota POST …/respostas-de-vida do conserto K2 —
+        # aqui a resposta entra na borda do perfil; `test_spec129d_conserto_app.py` atravessa a rota até o pedido)
         return PR.PerfilMontado({**dict(p), "vida": dict(respostas)}, getattr(p, "nao_conferidos", {}))
 
     monkeypatch.setattr(M, "perfil_do_segurado", perfil_respondido)
@@ -233,17 +234,20 @@ def eventos_do_item(m, c, item) -> list:
     return [e for e in m.banco.linhas("renovacao_eventos") if e["renovacao_id"] == item["id"]]
 
 
-def noite(m, c, *, cfg_da_conta=None, blocos=None):
-    """00:30 preparar → 01:00 calcular → o MOTOR (uma volta, o robô REAL) → a releitura da madrugada. Devolve as sessões."""
-    asyncio.run(M.preparar_dia(m.db, c.id, FIO.DIA))
-    asyncio.run(M.calcular_dia(m.db, c.id, FIO.DIA))
-    sessoes = SessoesDoFio(cfg_da_conta if cfg_da_conta is not None else V1.config_da_conta(), blocos)
+def noite(m, c, *, cfg_da_conta=None, blocos=None, sessao=SessaoDoFio, robo=ROBO_RAPIDO, dono="motor-vida",
+          madrugada=True):
+    """00:30 preparar → 01:00 calcular → o MOTOR (uma volta, o robô REAL) → a releitura da madrugada. Devolve as sessões.
+    `madrugada=False`: só o MOTOR (a retomada de um cálculo que já saiu)."""
+    if madrugada:
+        asyncio.run(M.preparar_dia(m.db, c.id, FIO.DIA))
+        asyncio.run(M.calcular_dia(m.db, c.id, FIO.DIA))
+    sessoes = SessoesDoFio(cfg_da_conta if cfg_da_conta is not None else V1.config_da_conta(), blocos, sessao)
 
     async def upload(supa, caminho, blob, content_type="application/pdf"):
         return caminho
 
     async def motor():
-        mot = MOT.Motor(m.banco.visao("motor-vida"), sessoes=sessoes, robo=ROBO_RAPIDO, dono="motor-vida",
+        mot = MOT.Motor(m.banco.visao(dono), sessoes=sessoes, robo=robo, dono=dono,
                         agora=m.relogio.agora, batida_s=1.0, upload=upload, freio=lambda: False, canario=False)
         for _ in range(6):
             await mot.uma_volta()
@@ -253,7 +257,8 @@ def noite(m, c, *, cfg_da_conta=None, blocos=None):
         await mot.desligar()
 
     asyncio.run(motor())
-    M.acompanhar(m.db, c.id, por="madrugada.calcular")
+    if madrugada:
+        M.acompanhar(m.db, c.id, por="madrugada.calcular")
     return sessoes
 
 
@@ -355,7 +360,8 @@ def test_c_comissao_zero_na_conta_e_nenhuma_no_pedido_pede_a_configuracao(fio, m
     assert item["estado"] == "pendente", (item["estado"], item["motivo"])
     ultimo = eventos_do_item(fio, c, item)[-1]
     assert ultimo["dados"]["perguntas"] == [M.FRASE_DA_COMISSAO_DE_VIDA]
-    assert "Serviços" in M.FRASE_DA_COMISSAO_DE_VIDA and "comissão de vida" in M.FRASE_DA_COMISSAO_DE_VIDA
+    # §9.3 (conserto K2): a frase aponta o lugar que EXISTE (o Agger da corretora), nunca uma tela de Serviços que não tem o campo
+    assert "Agger" in M.FRASE_DA_COMISSAO_DE_VIDA and "comissão de vida" in M.FRASE_DA_COMISSAO_DE_VIDA and "(Serviços)" not in M.FRASE_DA_COMISSAO_DE_VIDA
     fora = [e for e in eventos_mc(fio) if e["tipo"] == K.SEM_ATIVIDADE_COMPATIVEL]
     assert {e["seguradora_codigo"] for e in fora} >= {1, 4, 8}           # as que tinham profissão saíram por comissão
 
@@ -377,6 +383,69 @@ def test_d_a_recusa_gravada_vira_recusa_por_seguradora_e_nenhuma_oferta(fio, mon
     assert calc["status"] == "fechado"
     item = item_vida(fio, c)
     assert item["estado"] == "falhou" and item["motivo"] == "calculo_fechado"
+
+
+# =====================================================================================================================
+# (d2) CONSERTO K5 — a oferta SEM o capital ecoado (📊 canário 16/10, Porto: só `DIT` "Não Contratada" e
+# `isDoencasGravesGrupo` "Selecione") leva o capital que o PEDIDO mandou, marcado; e a RETOMADA também o leva
+# =====================================================================================================================
+class SessaoComOferta(SessaoDoFio):
+    """O Agger responde a oferta da Porto na forma do canário (sem `isAppMorte`), passando pelo filtro REAL da página."""
+
+    async def avaliar(self, fonte, args):
+        if fonte == R.JS_LER_CALCULOS:
+            self.rotas = [r for r in self.rotas if r[0] != "/calculo/cotacao/calculos/"] +                 [["/calculo/cotacao/calculos/", 200, [V1._item_da_porto_do_canario()]]]
+            self.leituras += 1
+            return await V1.SessaoNode.avaliar(self, fonte, args)
+        return await super().avaliar(fonte, args)
+
+
+def _a_oferta_da_porto(m) -> dict:
+    (of,) = m.banco.linhas("multicalculo_ofertas")
+    assert of["seguradora_codigo"] == 8 and of["premio_total"] == 227.16
+    return of
+
+
+def _sem_placeholder(of):
+    texto = json.dumps(of["coberturas"], ensure_ascii=False)
+    assert "Selecione" not in texto and "Não Contratada" not in texto, of["coberturas"]
+
+
+def test_d2_a_oferta_sem_o_capital_ecoado_leva_o_capital_do_pedido(fio, monkeypatch):
+    monkeypatch.setenv(CHAVE, "1")
+    c = montar(fio, monkeypatch)
+    sessoes = noite(fio, c, sessao=SessaoComOferta)
+    (s,) = sessoes.todas
+    assert s.escritas == 1 and s.corpo_enviado["cotacao"]["configuracoes"]["isAppMorte"] == 100000
+    of = _a_oferta_da_porto(fio)
+    assert of["coberturas"].get("capital_pedido") == 100000, of["coberturas"]     # o capital DO PEDIDO, marcado
+    assert "isAppMorte" not in of["coberturas"]                                     # nunca fingido como eco da seguradora
+    _sem_placeholder(of)
+
+
+def test_d2_a_retomada_depois_do_envio_tambem_leva_o_capital_do_pedido(fio, monkeypatch):
+    monkeypatch.setenv(CHAVE, "1")
+    c = montar(fio, monkeypatch)
+    # o processo CAI depois do envio (checkpoint feito), antes de ler: o cálculo fica `calculando`
+    caiu = SimpleNamespace(**vars(ROBO_RAPIDO))
+
+    async def acompanhar_que_cai(*_a, **_k):
+        raise RuntimeError("o processo caiu")
+
+    caiu.acompanhar = acompanhar_que_cai
+    s1 = noite(fio, c, sessao=SessaoComOferta, robo=caiu, dono="motor-1")
+    assert [x.escritas for x in s1.todas] == [1]
+    (calc,) = calculos(fio)
+    assert calc["status"] == "calculando" and fio.banco.linhas("multicalculo_ofertas") == []
+    # outro motor, depois da lease vencida: SÓ lê (nenhum 2º calcularV2) — com o capital do pedido
+    fio.relogio.avancar(MOT.LEASE_VENCE_S + 1)
+    s2 = noite(fio, c, sessao=SessaoComOferta, dono="motor-2", madrugada=False)
+    assert [x.escritas for x in s2.todas] == [0] and s2.todas[0].leituras >= 1
+    (calc,) = calculos(fio)
+    assert calc["status"] == "fechado", (calc["status"], calc["erro"])
+    of = _a_oferta_da_porto(fio)
+    assert of["coberturas"].get("capital_pedido") == 100000, of["coberturas"]
+    _sem_placeholder(of)
 
 
 # =====================================================================================================================

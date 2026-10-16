@@ -38,8 +38,8 @@ from .contrato import (
     FORA_POR_COMISSAO, FORA_POR_PROFISSAO, MOTIVO_DE_FORA_DA_VIDA, RAMO_VIDA, codigo_de_vida, problemas_do_pedido_vida,
 )
 from .leitor_agger import (
-    LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, endpoint_de_calculos, eventos_entre, ler_resposta,
-    ler_rodada,
+    LISTA_BRANCA_POR_ENDPOINT, caminho_permitido, caminhos_de, capital_pedido_do_corpo, endpoint_de_calculos,
+    eventos_entre, ler_resposta, ler_rodada,
 )
 from .presets import (CAPITAL_DA_VIDA, CHAVE_DA_BASICA, CHAVES_DE_COBERTURA, CHAVES_DE_COBERTURA_RE,
                       CHAVES_DO_AJUSTE_RE, configuracoes_de_vida)
@@ -170,6 +170,10 @@ class Disparo:
     # ((código, nome, "profissao"|"comissao"), …) — `acompanhar` as narra uma vez, com o motivo de cada uma.
     # ⚠️ Fora de `sem_atividade` de propósito: o motor grava aquela lista com o motivo da ATIVIDADE (motor._gravar_sem_atividade)
     fora_da_vida: Tuple[Tuple[int, str, str], ...] = ()
+    # SPEC-129-D conserto K5: na vida, o capital da Morte que o corpo LEVOU (`capital_pedido_do_corpo`) — o leitor o põe
+    # na oferta, marcado, quando a seguradora não ecoa o dela (📊 canário 16/10, Porto). None no auto/RE. A retomada o
+    # recupera de `multicalculo_calculos.coberturas["capital_morte"]` (motor._capital_da_retomada).
+    capital_pedido: Optional[float] = None
 
 
 # ======================================================================================================================
@@ -1123,12 +1127,14 @@ async def _disparar_vida(sessao: Any, pedido: Dict[str, Any], coberturas: Dict[s
     # ZERO blocos = a busca não serve → nada sai (falha passageira, a madrugada tenta de novo).
     if not com_bloco:
         raise DisparoRecusado(MOTIVOS_LEGIVEIS["profissao_busca_falhou"])
-    return await _preparar_e_enviar(sessao, {
+    disparo = await _preparar_e_enviar(sessao, {
         "cot": base["cotacao"], "cob": {}, "comissao": base["comissao"], "agenciamento": base["agenciamento"],
         "desconto": None, "seguradoras": base["seguradoras"], "seguradora_anterior": None,
         "negocio_ref": negocio_ref, "versao_base": None, "da_versao": False, "ajuste": None,
         "ramo": RAMO_VIDA, "status": list(SEGURADORAS_DO_RAMO[RAMO_VIDA]), "fora_do_re": list(SEGURADORAS_FORA_DO_RE),
         "profissoes": {str(k): v for k, v in escolhidas.items()}, "com_bloco": list(com_bloco)})
+    # conserto K5: o capital que ESTE corpo levou (`cotacao.configuracoes.isAppMorte`, a mesma cotação enviada)
+    return dataclasses.replace(disparo, capital_pedido=capital_pedido_do_corpo(base["cotacao"]))
 
 
 async def recalcular(sessao: Any, negocio_ref: str, *, versao_base: int, ajuste: Ajuste) -> Disparo:
@@ -1207,7 +1213,7 @@ async def acompanhar(sessao: Any, disparo: Disparo, *, ao_evento: Callable[[Even
                 if chave not in descartadas:
                     descartadas.add(chave)
                     await ao_evento(Evento(ERRO_DE_LEITURA, t, nome or None, cod, ramo=ramo))
-            nova = ler_rodada(limpos, t_s=t, ramo=ramo)
+            nova = ler_rodada(limpos, t_s=t, ramo=ramo, capital_pedido=getattr(disparo, "capital_pedido", None))
             if limpos or not r["corpo"]:
                 for e in eventos_entre(atual, nova):
                     await ao_evento(e)
