@@ -5,7 +5,8 @@ mesclado sobre a base dela por `config.carregar(…, servico=)` — o ÚNICO lei
 Este router é o PRIMEIRO escritor de `multicalculo_config` no produto:
 
     GET  /api/servicos-da-corretora?company_id=            o que a corretora sobrepôs + o efetivo de cada serviço
-    PUT  /api/servicos-da-corretora                        grava SÓ `servicos.*` e as preferências de seguradoras
+    PUT  /api/servicos-da-corretora                        grava SÓ `servicos.*`, as preferências de seguradoras e
+                                                           (SPEC-129-D · K2) a comissão de vida `vida_por_ramo`
     GET  /api/servicos-da-corretora/prontidao?company_id=  os 4 passos da ordem guiada (D-131-0-07) — SÓ LEITURA
 
 🔴 Chave interna (o proxy Next é quem fala com isto); o `company_id` vem da SESSÃO no proxy, nunca do navegador.
@@ -32,7 +33,13 @@ _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4
 #: os ramos que a tela mostra, na ordem da tela (o código é o do Agger, como o jsonb guarda)
 RAMOS_DA_TELA = (("31", "Automóvel"), ("16", "Condomínio"), ("2", "Residencial"), ("18", "Empresarial"))
 #: o que o corpo do PUT pode trazer — qualquer outra chave é recusada
-_CHAVES_DO_PUT = frozenset({"company_id", "atualizado_por", "servicos", "preferencias_de_seguradoras", "versao"})
+_CHAVES_DO_PUT = frozenset({"company_id", "atualizado_por", "servicos", "preferencias_de_seguradoras", "versao",
+                            "vida_por_ramo"})
+#: SPEC-129-D · conserto K2 (red team B2): a VIDA por ramo que o PUT aceita — o ramo 91 e as três regras que `config.py`
+#: lê (`comissao_de_vida`, `agenciamento_de_vida`, `reajuste_do_capital_pct`). ⚠️ Nenhuma tela as edita ainda (pendência):
+#: o caminho de hoje é o suporte gravar a comissão padrão da corretora por este PUT.
+RAMOS_DA_VIDA = ("91",)
+CAMPOS_DA_VIDA = ("comissao_pct", "agenciamento_pct", "reajuste_capital_pct")
 #: conserto 131-0 A (juiz P1 · red P2): a frase do conflito — dois admins salvando ao mesmo tempo
 FRASE_DO_CONFLITO = ("Outra pessoa salvou os serviços antes de você. Recarregue a página para ver o que mudou e salve "
                      "de novo — nada do que você mandou foi gravado.")
@@ -207,7 +214,12 @@ def retrato(db: Any, company_id: str) -> Dict[str, Any]:
         "editaveis": sorted(CFG.EDITAVEL_POR_SERVICO),
         "modos": list(CFG.MODOS),
         "ramos": [{"codigo": c, "nome": n} for c, n in RAMOS_DA_TELA],
-        "comum": {"preferencias_de_seguradoras": cfg_base.get("preferencias_de_seguradoras") or {}},
+        "comum": {"preferencias_de_seguradoras": cfg_base.get("preferencias_de_seguradoras") or {},
+                  # SPEC-129-D · K2: a comissão/agenciamento/reajuste de vida EFETIVOS (null = a do Agger da corretora)
+                  "vida_por_ramo": {r: {"comissao_pct": CFG.comissao_de_vida(cfg_base, r),
+                                        "agenciamento_pct": CFG.agenciamento_de_vida(cfg_base, r),
+                                        "reajuste_capital_pct": CFG.reajuste_do_capital_pct(cfg_base, r)}
+                                    for r in RAMOS_DA_VIDA}},
         "sobreposto": {"servicos": {s: sobreposto[s] for s in servicos if isinstance(sobreposto.get(s), dict)},
                        "preferencias_de_seguradoras": bruto.get("preferencias_de_seguradoras")},
         "efetivo": {s: _efetivo(CFG.mesclar(bruto or None, s), s) for s in servicos},
@@ -245,8 +257,43 @@ async def ler(company_id: str, x_key: Optional[str] = Header(default=None, alias
 # ---------------------------------------------------------------------------------------------------------------------
 # escrita
 # ---------------------------------------------------------------------------------------------------------------------
+def _numero(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v
+
+
+def erros_da_vida(vida_por_ramo: Any, *, teto: float) -> List[str]:
+    """A régua de `config._coerente` para a vida, na ESCRITA (o que ela trocaria pelo padrão, aqui é recusado):
+    comissão (0, teto] — 0 não é comissão (o padrão do Agger que a D-129C-05 evita) — ou null (a do Agger da corretora);
+    agenciamento [0, 100] ou null; reajuste do capital [0, 100]."""
+    if vida_por_ramo is None:
+        return []
+    if not isinstance(vida_por_ramo, dict) or not vida_por_ramo:
+        return ["vida_por_ramo: esperado um objeto por ramo ({\"91\": {...}})"]
+    erros: List[str] = []
+    for ramo, regra in vida_por_ramo.items():
+        onde = f"vida_por_ramo.{ramo}"
+        if str(ramo) not in RAMOS_DA_VIDA:
+            erros.append(f"{onde}: só a vida individual (91) se configura aqui")
+            continue
+        if not isinstance(regra, dict) or not regra or set(regra) - set(CAMPOS_DA_VIDA):
+            erros.append(f"{onde}: só {', '.join(CAMPOS_DA_VIDA)}")
+            continue
+        com = regra.get("comissao_pct")
+        if "comissao_pct" in regra and com is not None and not (_numero(com) and 0 < com <= teto):
+            erros.append(f"{onde}.comissao_pct: um percentual maior que 0 e até {teto:g} (ou vazio: a do Agger)")
+        ag = regra.get("agenciamento_pct")
+        if "agenciamento_pct" in regra and ag is not None and not (_numero(ag) and 0 <= ag <= 100):
+            erros.append(f"{onde}.agenciamento_pct: um percentual de 0 a 100 (ou vazio: o do Agger)")
+        if "reajuste_capital_pct" in regra:
+            rj = regra.get("reajuste_capital_pct")
+            if not (_numero(rj) and 0 <= rj <= 100):
+                erros.append(f"{onde}.reajuste_capital_pct: um percentual de 0 a 100")
+    return erros
+
+
 def gravar(db: Any, company_id: str, *, versao: Optional[str], servicos: Any = None,
-           preferencias_de_seguradoras: Any = None, atualizado_por: Optional[str] = None) -> Dict[str, Any]:
+           preferencias_de_seguradoras: Any = None, atualizado_por: Optional[str] = None,
+           vida_por_ramo: Any = None) -> Dict[str, Any]:
     """Grava SÓ `servicos.<serviço>` (cada serviço enviado substitui o bloco dele; os outros ficam) e as preferências
     comuns. O resto da linha da corretora fica como estava. Recusa (`ValueError`) com a lista de erros.
 
@@ -254,11 +301,12 @@ def gravar(db: Any, company_id: str, *, versao: Optional[str], servicos: Any = N
     ainda está nela — `update … where company_id = … and atualizado_em = versao`; sem linha, um `insert` que o banco
     recusa se outra pessoa criou antes. Mudou no meio → `Conflito` e NADA é gravado (dois admins nunca se apagam)."""
     erros = CFG.erros_da_edicao(servicos, preferencias_de_seguradoras)
-    if servicos is None and preferencias_de_seguradoras is None:
-        erros.append("nada para gravar: envie servicos e/ou preferencias_de_seguradoras")
+    if servicos is None and preferencias_de_seguradoras is None and vida_por_ramo is None:
+        erros.append("nada para gravar: envie servicos, preferencias_de_seguradoras e/ou vida_por_ramo")
+    linha = _linha(db, company_id)
+    erros += erros_da_vida(vida_por_ramo, teto=CFG.teto_da_comissao(CFG.mesclar((linha or {}).get("config") or None)))
     if erros:
         raise ValueError("; ".join(erros))
-    linha = _linha(db, company_id)
     if (str(versao) if versao else None) != _versao(linha):
         raise Conflito(FRASE_DO_CONFLITO)
     nova = dict((linha or {}).get("config") or {})
@@ -271,6 +319,22 @@ def gravar(db: Any, company_id: str, *, versao: Optional[str], servicos: Any = N
         nova["servicos"] = blocos
     if preferencias_de_seguradoras is not None:
         nova["preferencias_de_seguradoras"] = dict(preferencias_de_seguradoras)
+    if vida_por_ramo is not None:
+        # cada ramo enviado completa/corrige o que a corretora já tinha (o campo não enviado fica)
+        atual = dict(nova.get("vida_por_ramo") or {}) if isinstance(nova.get("vida_por_ramo"), dict) else {}
+        for ramo, regra in vida_por_ramo.items():
+            antigo = atual.get(str(ramo)) if isinstance(atual.get(str(ramo)), dict) else {}
+            atual[str(ramo)] = {**antigo, **regra}
+        nova["vida_por_ramo"] = atual
+        # 🔴 o que se grava SOBREVIVE à leitura: o MESMO leitor da porta (`config.comissao_de_vida`…) devolve o enviado
+        efetivo = CFG.mesclar(nova)
+        leitores = {"comissao_pct": CFG.comissao_de_vida, "agenciamento_pct": CFG.agenciamento_de_vida,
+                    "reajuste_capital_pct": CFG.reajuste_do_capital_pct}
+        for ramo, regra in vida_por_ramo.items():
+            for campo, valor in regra.items():
+                lido = leitores[campo](efetivo, str(ramo))
+                if (None if valor is None else float(valor)) != lido:
+                    raise ValueError(f"vida_por_ramo.{ramo}.{campo} não sobreviveu à leitura")
     # 🔴 o que se grava SOBREVIVE à leitura: cada serviço editado, relido pelo único leitor, tem o que a tela mandou
     for s, bloco in (servicos or {}).items():
         efetivo = CFG.mesclar(nova, s)
@@ -317,7 +381,8 @@ async def salvar(request: Request, x_key: Optional[str] = Header(default=None, a
     try:
         return {"ok": True, **gravar(_db(), cid, versao=body.get("versao"), servicos=body.get("servicos"),
                                      preferencias_de_seguradoras=body.get("preferencias_de_seguradoras"),
-                                     atualizado_por=body.get("atualizado_por"))}
+                                     atualizado_por=body.get("atualizado_por"),
+                                     vida_por_ramo=body.get("vida_por_ramo"))}
     except Conflito as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:

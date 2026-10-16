@@ -5,6 +5,8 @@
 import type { StatusTone } from '@/components/patterns/StatusPill';
 import type { ColunaDoQuadro } from '@/components/aplicativos/QuadroOuLista';
 
+import type { RespostasDeVidaDoDetalhe } from './regrasDasRespostas';
+
 export interface CalculoDaOpcao {
   opcao: string;
   rotulo: string;
@@ -51,6 +53,12 @@ export interface DetalheDaRenovacao extends Renovacao {
   eventos: { quando: string | null; para: string | null; frase: string }[];
   proximo_passo: string;
   agger_url: string | null;
+  /** SPEC-129-D · K2 (só numa renovação de VIDA): o que a madrugada perguntou, em português */
+  perguntas?: string[];
+  /** SPEC-129-D · K2: os avisos do pedido de vida (ex.: coberturas da apólice não reconhecidas) */
+  avisos?: string[];
+  /** SPEC-129-D · K2: o formulário das respostas do cliente — null quando não há o que responder */
+  respostas_de_vida?: RespostasDeVidaDoDetalhe | null;
 }
 
 export interface ListaDeRenovacoes {

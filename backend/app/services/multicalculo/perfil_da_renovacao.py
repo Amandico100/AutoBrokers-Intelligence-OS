@@ -445,6 +445,28 @@ def _montar_vida(item: Mapping[str, Any], apolice: Any, fonte: Any, *, hoje: dat
     return ({"segurado": seg} if seg else {}), nao
 
 
+def com_as_respostas_de_vida(perfil: Mapping[str, Mapping[str, Any]], respostas: Mapping[str, Any]) -> PerfilMontado:
+    """SPEC-129-D · conserto K2 (red team B3): o perfil da vida + o que o CLIENTE respondeu na tela (a última resposta do
+    item, `renovacao.ultima_resposta_de_vida`). 🔴 Por que a resposta vence o cadastro: é a declaração DO CLIENTE, de
+    agora (a profissão do cadastro pode ser velha; fumante/renda/esporte o cadastro nem tem). O `False` dito é resposta
+    (`is not None`, nunca "falsy"). Só tipos que o pedido aceita — o resto fica de fora e o pedido aponta a falta.
+    Os `nao_conferidos` do perfil seguem junto. ⛔ Nada é logado."""
+    novo: Dict[str, Dict[str, Any]] = {g: dict(v) for g, v in (perfil or {}).items()}
+    vida = dict(novo.get("vida") or {})
+    for campo in ("fumante", "esporte_radical"):
+        if isinstance(respostas.get(campo), bool):
+            vida[campo] = respostas[campo]
+    renda = respostas.get("renda_mensal")
+    if isinstance(renda, (int, float)) and not isinstance(renda, bool) and renda >= 0:
+        vida["renda_mensal"] = float(renda)
+    if vida:
+        novo["vida"] = vida
+    profissao = respostas.get("profissao_texto")
+    if isinstance(profissao, str) and profissao.strip():
+        novo.setdefault("segurado", {})["profissao_texto"] = profissao.strip()
+    return PerfilMontado(novo, getattr(perfil, "nao_conferidos", None) or {})
+
+
 def nomes_do_catalogo(ramo: int, nomes: Any) -> List[str]:
     """Os "grupo.campo" de `nomes` que existem no catálogo do ramo (o que pode virar `assumido` no pedido)."""
     from app.services.multicalculo import pedido as P

@@ -446,7 +446,9 @@ def test_numero_de_whatsapp_prefere_o_celular_e_recusa_lixo():
 # ⑦ a MUTAÇÃO 4 — arrastar não existe na API
 # ---------------------------------------------------------------------------------------------------------------------
 CONTRATO = {("GET", "/api/renovacoes"), ("GET", "/api/renovacoes/{renovacao_id}"),
-            ("POST", "/api/renovacoes/{renovacao_id}/apresentacao"), ("POST", "/api/renovacoes/{renovacao_id}/envio")}
+            ("POST", "/api/renovacoes/{renovacao_id}/apresentacao"), ("POST", "/api/renovacoes/{renovacao_id}/envio"),
+            # §9.3 (SPEC-129-D): as respostas do cliente para cotar a vida — não muda estado por coluna (recusa `estado`, 400)
+            ("POST", "/api/renovacoes/{renovacao_id}/respostas-de-vida")}
 
 
 def test_nenhuma_rota_muda_estado_por_coluna(mundo):

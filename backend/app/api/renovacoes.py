@@ -9,12 +9,18 @@
          `texto` = a mensagem COMPLETA (≤ 700, a do "Copiar a mensagem") · `texto_curto` = a que vai DENTRO do
          `wa_me_url` (a completa se couber em 500; senão a curta da G4). 🔴 O link enviado é SEMPRE o `proposta_ref`
          gravado (dois cliques ao mesmo tempo mandam o MESMO link).
+    POST /api/renovacoes/{id}/respostas-de-vida {company_id, user_id, fumante?, renda_mensal?, esporte_radical?,
+                                                 profissao_texto?}  → {estado, frase}
+         SPEC-129-D · conserto K2 (red team B3): o que o CLIENTE respondeu (o comercial digita) a uma renovação de VIDA
+         `pendente(falta_dado)` — um evento com `dados.respostas_de_vida` (o ÚNICO lugar com os valores) e `pronta`
+         para a próxima madrugada (que LÊ a última resposta). ⛔ Os valores nunca vão a log nem à linha do tempo.
 
 🔴 Chave interna (o proxy Next é quem fala com isto); `company_id` e `user_id` vêm da SESSÃO no proxy, nunca do
    navegador. TODA leitura passa pelo repositório da 131-A (`RepositorioDeRenovacoes`, filtro `company_id` + a segunda
    trava) e as leituras do multicálculo levam `solicitante_company_id` (CLAUDE.md §7 — o backend é service role).
-🔴 O estado só muda pela MÁQUINA (`RepositorioDeRenovacoes.transicionar`) e só por estas duas ações: publicar a
-   apresentação (`calculada → apresentada`) e abrir o envio (`apresentada → enviada`). Nenhuma rota recebe um estado
+🔴 O estado só muda pela MÁQUINA (`RepositorioDeRenovacoes.transicionar`) e só por estas três ações: publicar a
+   apresentação (`calculada → apresentada`), abrir o envio (`apresentada → enviada`) e registrar as respostas de vida do
+   cliente (`pendente → pronta`). Nenhuma rota recebe um estado
    ou uma coluna de destino — arrastar um card não existe (mutação 4 da SPEC; o corpo com chave desconhecida é 400).
 ⛔ NENHUMA mensagem sai daqui: o envio devolve um `wa.me` que o NAVEGADOR de quem clicou abre (o WhatsApp do aparelho
    dele). O telefone do cliente é lido NA HORA na InfoCap da corretora (`/documento` → `codcli` → `/cliente`, sem
@@ -48,6 +54,31 @@ _DATA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CHAVES_DO_POST = frozenset({"company_id", "user_id", "via"})
 VIAS_DO_ENVIO = ("whatsapp", "copiar")
 ESCOPOS = ("minhas", "todas")
+#: SPEC-129-D · conserto K2 — o corpo das respostas de vida (nenhuma outra chave: nunca um estado, nunca uma coluna)
+CHAVES_DAS_RESPOSTAS = frozenset({"company_id", "user_id", "fumante", "renda_mensal", "esporte_radical",
+                                  "profissao_texto"})
+#: 💭 um teto de sanidade para a renda digitada (um zero a mais não vira declaração ao Agger)
+RENDA_MENSAL_MAXIMA = 10_000_000
+TAMANHO_DA_PROFISSAO = (2, 120)
+#: a pergunta NA TELA por campo que o cliente responde (a voz de quem conversa com o cliente — juiz B1)
+PERGUNTA_NA_TELA: Dict[str, str] = {
+    "vida.fumante": "O cliente fuma?",
+    "vida.renda_mensal": "Qual a renda mensal do cliente?",
+    "vida.esporte_radical": "Pratica esporte radical? Qual?",
+    "segurado.profissao_texto": "Qual a profissão do cliente?",
+}
+FRASE_DO_ESPORTE_NA_TELA = ("O cliente pratica esporte radical e o Agger pede QUAL esporte: o aplicativo ainda não "
+                            "escolhe o esporte — cote esta vida direto no Agger.")
+#: os avisos do pedido de vida (códigos de `pedido.AVISO_*`) em português — o corretor confere antes de cotar
+AVISO_NA_TELA: Dict[str, str] = {
+    "coberturas_de_vida_nao_mapeadas": "Algumas coberturas da apólice não foram reconhecidas — confira antes de cotar.",
+    "capital_de_morte_ambiguo": "A apólice tem dois capitais de morte diferentes — confira qual vale.",
+    "coberturas_do_cadastro": "O capital veio do cadastro da InfoCap, não do PDF da apólice — confira.",
+    "coberturas_nao_conferidas": "A leitura do PDF da apólice não fechou — confira as coberturas.",
+    "documento_nao_e_a_apolice": "O PDF anexado não parece ser a apólice — confira.",
+}
+AVISO_GENERICO_NA_TELA = "Confira a apólice antes de cotar."
+AVISO_DAS_RESPOSTAS = "Estas respostas são do cliente: confirme com ele."
 
 #: B1 do BLOCO 0 (não medido nos aparelhos): o texto que vai DENTRO do link ≤ 500 caracteres; a mensagem inteira vai
 #: no "Copiar a mensagem", que fica SEMPRE ao lado (RT-B2: `texto` = a inteira, `texto_curto` = a do link)
@@ -214,8 +245,9 @@ def resumo_dos_calculos(calculos: Sequence[Mapping[str, Any]], ofertas: Sequence
 
 def item_da_tela(linha: Mapping[str, Any], *, calculos: Sequence[Mapping[str, Any]] = (),
                  ofertas: Sequence[Mapping[str, Any]] = (), nomes: Optional[Mapping[str, str]] = None,
-                 hoje: Optional[date] = None) -> Dict[str, Any]:
-    """Uma linha de `renovacoes` na forma da tela. Só o que a 131-A já grava: nome CURTO, documento MASCARADO."""
+                 hoje: Optional[date] = None, dados_do_motivo: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    """Uma linha de `renovacoes` na forma da tela. Só o que a 131-A já grava: nome CURTO, documento MASCARADO.
+    `dados_do_motivo` (os do evento que deixou o item no estado de agora) refinam a frase de vida (conserto K2)."""
     hoje = hoje or _hoje()
     nomes = nomes or {}
     estado = str(linha.get("estado") or "")
@@ -249,7 +281,7 @@ def item_da_tela(linha: Mapping[str, Any], *, calculos: Sequence[Mapping[str, An
         "coluna": coluna,
         "precisa_de_voce": precisa_de_voce(linha),
         "motivo": motivo or None,
-        "motivo_frase": R.frase_do_motivo(motivo) if motivo else None,
+        "motivo_frase": R.frase_do_motivo(motivo, dados_do_motivo) if motivo else None,
         "calculos": resumo,
         "pode_enviar": estado in ESTADOS_ENVIAVEIS,
         "atualizado_em": linha.get("atualizado_em"),
@@ -266,6 +298,88 @@ def item_da_tela(linha: Mapping[str, Any], *, calculos: Sequence[Mapping[str, An
         atalhos.append("enviadas")
     item["atalhos"] = atalhos
     return item
+
+
+def e_vida(linha: Mapping[str, Any]) -> bool:
+    """A renovação é de VIDA INDIVIDUAL (ramo 91)? Pelo ramo do pedido, ou pela sigla da lista pela MESMA régua da
+    madrugada (`pedido._ramo_do_agger` — com a chave da vida desligada, ela não é vida para o produto)."""
+    from types import SimpleNamespace
+
+    from app.services.multicalculo import pedido as P
+
+    try:
+        if int(linha.get("ramo_agger") or 0) == P.RAMO_VIDA:
+            return True
+    except (TypeError, ValueError):
+        pass
+    sigla = str(linha.get("ramo_sigla") or "").strip()
+    if not sigla:
+        return False
+    try:
+        return P._ramo_do_agger(SimpleNamespace(ramo=sigla)) == P.RAMO_VIDA
+    except Exception:  # noqa: BLE001 — ramo que o produto não cota não é vida aqui
+        return False
+
+
+def dados_do_estado(eventos: Sequence[Mapping[str, Any]], estado: Any) -> Dict[str, Any]:
+    """Os `dados` do evento MAIS RECENTE que levou o item ao estado de agora (eventos em ordem crescente). {} se não há."""
+    for ev in reversed(list(eventos)):
+        if str(ev.get("para") or "") == str(estado or ""):
+            d = ev.get("dados")
+            return dict(d) if isinstance(d, Mapping) else {}
+    return {}
+
+
+def campos_a_responder(linha: Mapping[str, Any], dados: Mapping[str, Any]) -> List[str]:
+    """Os NOMES das respostas que o cliente ainda deve (fumante, renda_mensal, esporte_radical, profissao_texto), na
+    ordem do formulário — só numa renovação de VIDA `pendente(falta_dado)`. [] = não há o que responder."""
+    if str(linha.get("estado")) != "pendente" or str(linha.get("motivo")) != "falta_dado" or not e_vida(linha):
+        return []
+    faltando = {str(f) for f in (dados.get("faltando") or ())}
+    return [nome for campo, nome in R.CAMPOS_DA_RESPOSTA_DE_VIDA.items() if campo in faltando]
+
+
+def contexto_de_vida(linha: Mapping[str, Any], eventos: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """🔴 Juiz B1: o que a madrugada perguntou CHEGA à tela — as perguntas em português, os avisos do pedido de vida e o
+    formulário das respostas. Só numa renovação de VIDA; o auto e o RE não ganham chave nenhuma. ⛔ Nenhum valor de
+    resposta sai daqui (só SE já foi respondido)."""
+    if not e_vida(linha):
+        return {}
+    from app.services.multicalculo import madrugada as M
+    from app.services.multicalculo import pedido as P
+
+    estado = str(linha.get("estado") or "")
+    dados = dados_do_estado(eventos, estado)
+    perguntas: List[str] = []
+
+    def juntar(texto: Any) -> None:
+        t = str(texto or "").strip()
+        if t and t not in perguntas:
+            perguntas.append(t)
+
+    if estado in ("pendente", "falhou"):
+        ditas = [str(p) for p in (dados.get("perguntas") or ())]
+        qual_esporte = M.PERGUNTA_DO_ESPORTE_RADICAL in ditas
+        for f in (str(x) for x in (dados.get("faltando") or ())):
+            if qual_esporte and f == "vida.esporte_radical":
+                juntar(FRASE_DO_ESPORTE_NA_TELA)
+            else:
+                juntar(PERGUNTA_NA_TELA.get(f) or P.PERGUNTA_DE_VIDA.get(f))
+        if any(str(c).startswith("vida_por_ramo.") for c in (dados.get("configurar") or ())):
+            juntar(R.FRASE_DA_COMISSAO_DE_VIDA[:1].upper() + R.FRASE_DA_COMISSAO_DE_VIDA[1:] + ".")
+        conhecidas = set(P.PERGUNTA_DE_VIDA.values()) | {M.PERGUNTA_DO_ESPORTE_RADICAL}
+        for p in ditas:
+            if p not in conhecidas and "comissão de vida" not in p:
+                juntar(p)
+    avisos: List[str] = []
+    for codigo in (dados.get("avisos") or ()):
+        texto = AVISO_NA_TELA.get(str(codigo), AVISO_GENERICO_NA_TELA)
+        if texto not in avisos:
+            avisos.append(texto)
+    campos = campos_a_responder(linha, dados)
+    return {"perguntas": perguntas, "avisos": avisos,
+            "respostas_de_vida": ({"campos": campos, "aviso": AVISO_DAS_RESPOSTAS,
+                                   "ja_respondido": bool(R.ultima_resposta_de_vida(eventos))} if campos else None)}
 
 
 def proximo_passo(item: Mapping[str, Any], linha: Mapping[str, Any]) -> str:
@@ -475,7 +589,13 @@ def montar_lista(db: Any, cid: str, uid: str, *, escopo: str = "minhas", estado:
     itens = []
     for x in linhas:
         pid = str(x.get("pedido_id") or "").lower()
-        itens.append(item_da_tela(x, calculos=calcs.get(pid, []), ofertas=ofs.get(pid, []), nomes=nomes, hoje=hoje))
+        dados = None
+        if x.get("estado") in ("pendente", "falhou") and x.get("motivo") in ("falta_dado", "porta_recusou") \
+                and e_vida(x):
+            # conserto K2: só a vida pendente lê os eventos (poucas) — a frase diz "faltam respostas do cliente"
+            dados = dados_do_estado(repo.eventos(cid, str(x["id"])), x.get("estado"))
+        itens.append(item_da_tela(x, calculos=calcs.get(pid, []), ofertas=ofs.get(pid, []), nomes=nomes, hoje=hoje,
+                                  dados_do_motivo=dados))
     itens.sort(key=lambda i: (i["vence_em"] or "9999", _sem_acento(i["cliente"] or "")))
     ramos: Dict[str, str] = {}
     for x in do_escopo:
@@ -506,6 +626,11 @@ def _por_de_evento(por: Any, nomes: Mapping[str, str]) -> str:
 def _frase_do_evento(ev: Mapping[str, Any], quem: str) -> str:
     para = str(ev.get("para") or "")
     motivo = ev.get("motivo")
+    dados = ev.get("dados") if isinstance(ev.get("dados"), Mapping) else {}
+    if dados.get("evento") == R.EVENTO_RESPOSTAS_DE_VIDA:
+        # ⛔ só QUEM registrou — os valores (fumante, renda) nunca aparecem na linha do tempo (LGPD art. 11)
+        return (f"{quem} registrou as respostas do cliente: vai calcular na próxima madrugada" if para == "pronta"
+                else f"{quem} registrou as respostas do cliente")
     if para == "enviada" or motivo == "aberto_para_envio":
         via = (ev.get("dados") or {}).get("via") if isinstance(ev.get("dados"), Mapping) else None
         return (f"{quem} copiou a mensagem para enviar" if via == "copiar"
@@ -513,7 +638,8 @@ def _frase_do_evento(ev: Mapping[str, Any], quem: str) -> str:
     if para == "apresentada":
         return f"{quem} preparou a apresentação"
     if para in ("pendente", "falhou"):
-        return f"{ROTULO_DO_ESTADO[para]}: {R.frase_do_motivo(motivo)}" if motivo else ROTULO_DO_ESTADO[para]
+        return (f"{ROTULO_DO_ESTADO[para]}: {R.frase_do_motivo(motivo, dados)}" if motivo
+                else ROTULO_DO_ESTADO[para])
     if para == "listada":
         return "Entrou na lista da madrugada"
     return ROTULO_DO_ESTADO.get(para, para.replace("_", " "))
@@ -525,14 +651,16 @@ def montar_detalhe(db: Any, cid: str, uid: str, rid: str) -> Dict[str, Any]:
     pid = str(linha.get("pedido_id") or "").lower()
     calcs, ofs = calculos_e_ofertas(db, cid, [pid] if pid else [])
     nomes = _nomes_da_equipe(db, cid)
-    item = item_da_tela(linha, calculos=calcs.get(pid, []), ofertas=ofs.get(pid, []), nomes=nomes)
+    evs = repo.eventos(cid, rid)
+    item = item_da_tela(linha, calculos=calcs.get(pid, []), ofertas=ofs.get(pid, []), nomes=nomes,
+                        dados_do_motivo=dados_do_estado(evs, linha.get("estado")))
     eventos = []
-    for ev in repo.eventos(cid, rid):
+    for ev in evs:
         quem = _por_de_evento(ev.get("por"), nomes)
         eventos.append({"quando": ev.get("criado_em"), "para": ev.get("para"), "frase": _frase_do_evento(ev, quem)})
     agger = next((c["agger_url"] for c in item["calculos"] if c.get("agger_url")), None)
     return {**item, "eventos": list(reversed(eventos)), "proximo_passo": proximo_passo(item, linha),
-            "agger_url": agger, "eu": uid}
+            "agger_url": agger, "eu": uid, **contexto_de_vida(linha, evs)}
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -787,6 +915,64 @@ def _registrar_envio(db: Any, cid: str, rid: str, uid: str, *, via: str, propost
         return linha
 
 
+def respostas_do_corpo(corpo: Mapping[str, Any]) -> Dict[str, Any]:
+    """As respostas de vida do corpo, conferidas UMA a UMA (tipo e faixa). Nenhuma resposta, ou uma fora do tipo → 400.
+    ⛔ Nunca um valor padrão: o que não veio fica de fora (e o item continua pedindo). ⛔ A mensagem nunca leva valor."""
+    saida: Dict[str, Any] = {}
+    for campo in ("fumante", "esporte_radical"):
+        if campo in corpo and corpo[campo] is not None:
+            if not isinstance(corpo[campo], bool):
+                raise HTTPException(status_code=400, detail=f"{campo}: responda sim ou não")
+            saida[campo] = corpo[campo]
+    if corpo.get("renda_mensal") is not None:
+        renda = corpo["renda_mensal"]
+        if isinstance(renda, bool) or not isinstance(renda, (int, float)) or renda != renda \
+                or not 0 <= renda <= RENDA_MENSAL_MAXIMA:
+            raise HTTPException(status_code=400, detail="renda_mensal: um valor em reais, de 0 até "
+                                                        f"{RENDA_MENSAL_MAXIMA:,}".replace(",", "."))
+        saida["renda_mensal"] = round(float(renda), 2)
+    if corpo.get("profissao_texto") is not None:
+        prof = corpo["profissao_texto"]
+        texto = " ".join(prof.split()) if isinstance(prof, str) else ""
+        if not TAMANHO_DA_PROFISSAO[0] <= len(texto) <= TAMANHO_DA_PROFISSAO[1]:
+            raise HTTPException(status_code=400, detail="profissao_texto: escreva a profissão do cliente "
+                                                        f"(de {TAMANHO_DA_PROFISSAO[0]} a {TAMANHO_DA_PROFISSAO[1]} letras)")
+        saida["profissao_texto"] = texto
+    if not saida:
+        raise HTTPException(status_code=400, detail="nenhuma resposta do cliente veio no pedido")
+    return saida
+
+
+def registrar_respostas_de_vida(db: Any, cid: str, rid: str, uid: str, respostas: Mapping[str, Any]) -> Dict[str, Any]:
+    """🔴 Red team B3: a resposta do CLIENTE a uma renovação de VIDA `pendente(falta_dado)`, pela MÁQUINA (CAS):
+    `pendente → pronta` com o evento `respostas_de_vida` (os valores moram SÓ ali — a madrugada lê a última). O que já
+    tinha sido respondido antes vale junto (a resposta nova só completa/corrige). Esporte radical "sim" → o item FICA
+    pendente com a pergunta "qual esporte" (o Agger exige o esporte; o pedido não tem o campo — nunca um palpite).
+    Outra corretora → `NaoEncontrada` (404). Não é vida / não espera resposta → 409. Falta resposta pedida → 422."""
+    from app.services.multicalculo import madrugada as M
+
+    repo = R.RepositorioDeRenovacoes(db)
+    linha = repo.por_id(cid, rid)                       # 🔴 filtro company_id: o id de outra corretora "não existe"
+    if not e_vida(linha):
+        raise HTTPException(status_code=409, detail="Esta renovação não é de vida individual.")
+    eventos = repo.eventos(cid, rid)
+    campos = campos_a_responder(linha, dados_do_estado(eventos, linha.get("estado")))
+    if not campos:
+        raise HTTPException(status_code=409, detail="Esta renovação não está esperando respostas do cliente. "
+                                                    "Abra de novo para ver como está.")
+    juntas = {**R.ultima_resposta_de_vida(eventos), **dict(respostas)}
+    faltam = [c for c in campos if juntas.get(c) is None]
+    if faltam:
+        nomes = {"fumante": "se fuma", "renda_mensal": "a renda mensal", "esporte_radical": "o esporte radical",
+                 "profissao_texto": "a profissão"}
+        raise HTTPException(status_code=422, detail="Falta responder: " + ", ".join(nomes[c] for c in faltam) + ".")
+    dados = {"evento": R.EVENTO_RESPOSTAS_DE_VIDA, "por_user_id": uid, "respostas_de_vida": juntas}
+    if juntas.get("esporte_radical") is True:
+        return repo.transicionar(cid, rid, "pendente", por=uid, motivo="falta_dado",
+                                 dados={**dados, **M.pendencia_do_esporte_radical()})
+    return repo.transicionar(cid, rid, "pronta", por=uid, dados=dados)
+
+
 async def _corpo(request: Request) -> Dict[str, Any]:
     try:
         corpo = await request.json()
@@ -922,3 +1108,35 @@ async def enviar_renovacao(
     except (R.NaoEncontrada, R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
         raise _erro_da_maquina(exc)
     return {**resposta, "sem_telefone": False if via == "whatsapp" else None, "estado": linha.get("estado")}
+
+
+@router.post("/{renovacao_id}/respostas-de-vida")
+async def responder_vida(
+    renovacao_id: str,
+    request: Request,
+    x_key: Optional[str] = Header(default=None, alias="X-AutoBrokers-Internal-Key"),
+):
+    """SPEC-129-D · conserto K2 (red team B3): as respostas do cliente (fumante, renda mensal, esporte radical e — quando
+    o Agger não achou — a profissão) a uma renovação de VIDA pendente. `company_id`/`user_id` vêm da SESSÃO (o proxy).
+    ⛔ Nenhum valor vai a log; nada é enviado a ninguém; nenhum cálculo começa aqui (a próxima madrugada calcula)."""
+    _require_internal_key(x_key)
+    try:
+        corpo = await request.json()
+    except Exception:  # noqa: BLE001
+        corpo = {}
+    if not isinstance(corpo, dict):
+        raise HTTPException(status_code=400, detail="corpo inválido")
+    estranhas = set(corpo) - CHAVES_DAS_RESPOSTAS
+    if estranhas:
+        raise HTTPException(status_code=400, detail="campos que esta ação não recebe: " + ", ".join(sorted(estranhas)))
+    cid, uid = _uuid(corpo.get("company_id"), "company_id"), _uuid(corpo.get("user_id"), "user_id")
+    rid = _uuid(renovacao_id, "renovacao_id")
+    respostas = respostas_do_corpo(corpo)
+    try:
+        linha = await asyncio.to_thread(registrar_respostas_de_vida, _db(), cid, rid, uid, respostas)
+    except (R.NaoEncontrada, R.ConcorrenciaPerdida, R.TransicaoInvalida) as exc:
+        raise _erro_da_maquina(exc)
+    estado = str(linha.get("estado") or "")
+    frase = ("Respostas registradas. A vida entra no cálculo da próxima madrugada." if estado == "pronta"
+             else FRASE_DO_ESPORTE_NA_TELA)
+    return {"estado": estado, "frase": frase}

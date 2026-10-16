@@ -104,6 +104,19 @@ FRASE_DO_MOTIVO: Dict[str, str] = {
     # primeiro na noite seguinte (o vencimento mais próximo na frente)
     "ficou_para_a_proxima_noite": "o horário da madrugada acabou antes de começar: entra primeiro na próxima noite",
 }
+#: SPEC-129-D (conserto K2 · juiz B1 · red team B3) — os campos de VIDA que só o CLIENTE responde (declaração dele: a
+#: InfoCap não os tem, 📊 BLOCO 0 M2 0/22) → o nome da resposta. O comercial os responde na tela; a resposta mora num
+#: evento `renovacao_eventos` (`dados.respostas_de_vida`) — o ÚNICO lugar com os valores. ⛔ Nunca em log (LGPD art. 11).
+CAMPOS_DA_RESPOSTA_DE_VIDA: Dict[str, str] = {"vida.fumante": "fumante", "vida.renda_mensal": "renda_mensal",
+                                              "vida.esporte_radical": "esporte_radical",
+                                              "segurado.profissao_texto": "profissao_texto"}
+EVENTO_RESPOSTAS_DE_VIDA = "respostas_de_vida"
+#: 🔴 por que não "falta um dado da apólice": fumante/renda/esporte NÃO estão na apólice — é o cliente quem declara
+FRASE_FALTAM_RESPOSTAS_DE_VIDA = "faltam respostas do cliente para cotar a vida"
+#: 🔴 red team B2: a frase aponta o caminho que EXISTE hoje. 📊 a conta medida tem `percComissaoVida 0` nas 8
+#: seguradoras; a tela de Serviços ainda não tem o campo da vida (o PUT aceita `vida_por_ramo` — o suporte grava)
+FRASE_DA_COMISSAO_DE_VIDA = ("a comissão de vida está zerada no Agger da corretora — ajuste a comissão de vida de cada "
+                             "seguradora no Agger (ou peça ao suporte do AutoBrokers para gravar a comissão padrão)")
 #: SPEC-132 — os motivos que uma `pronta` pode CARREGAR (a marca de quem sobrou da noite). Nenhum outro: `pronta` sem
 #: motivo continua sendo o normal, e o CHECK do banco só exige motivo em pendente/falhou/perdida (nada a migrar)
 MOTIVO_FICOU_PARA_A_PROXIMA_NOITE = "ficou_para_a_proxima_noite"
@@ -240,9 +253,28 @@ def motivo_valido(motivo: Any) -> bool:
     return bool(motivo) and bool(_MOTIVO.match(str(motivo)))
 
 
-def frase_do_motivo(motivo: Any) -> str:
+def frase_do_motivo(motivo: Any, dados: Any = None) -> str:
+    """A frase do motivo. `dados` (os do evento que deixou o item no estado de agora) refinam a frase de VIDA: o que
+    falta é resposta do CLIENTE (não dado da apólice) e a recusa da comissão de vida aponta onde se ajusta."""
     m = str(motivo or "")
+    if isinstance(dados, Mapping):
+        faltando = {str(f) for f in (dados.get("faltando") or ())}
+        if m == "falta_dado" and faltando & set(CAMPOS_DA_RESPOSTA_DE_VIDA):
+            return FRASE_FALTAM_RESPOSTAS_DE_VIDA
+        if m == "porta_recusou" and any(str(c).startswith("vida_por_ramo.") for c in (dados.get("configurar") or ())):
+            return FRASE_DA_COMISSAO_DE_VIDA
     return FRASE_DO_MOTIVO.get(m, m.replace("_", " "))
+
+
+def ultima_resposta_de_vida(eventos: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
+    """A ÚLTIMA resposta do cliente (fumante/renda/esporte/profissão) registrada na tela, pelos eventos em ordem
+    crescente. Nenhuma → {} (nada é presumido). O `False` dito é resposta — nunca some."""
+    for ev in reversed(list(eventos or ())):
+        dados = ev.get("dados") if isinstance(ev, Mapping) else None
+        resp = dados.get(EVENTO_RESPOSTAS_DE_VIDA) if isinstance(dados, Mapping) else None
+        if isinstance(resp, Mapping):
+            return {k: v for k, v in resp.items() if k in CAMPOS_DA_RESPOSTA_DE_VIDA.values() and v is not None}
+    return {}
 
 
 def _sem_acento(texto: str) -> str:
@@ -359,6 +391,10 @@ class RepositorioDeRenovacoes:
             return c.order("criado_em")   # só a data, como antes: o "último evento" depende dela (desempate pela inserção)
         return [x for x in _paginado(q, 5000)
                 if str(x.get("company_id", "")).lower() == cid]
+
+    def respostas_de_vida(self, company_id: str, renovacao_id: str) -> Dict[str, Any]:
+        """A última resposta de vida do item (`ultima_resposta_de_vida`) — DESTA corretora (o filtro de `eventos`)."""
+        return ultima_resposta_de_vida(self.eventos(company_id, renovacao_id))
 
     def dia(self, company_id: str, dia: str) -> Optional[Dict[str, Any]]:
         cid = _uuid(company_id)

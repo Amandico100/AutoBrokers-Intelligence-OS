@@ -5,6 +5,8 @@
 //   celular   tela cheia (`100dvh`), com a barra fixa embaixo, acima da área segura do aparelho
 // Barra: [Enviar pelo WhatsApp] [Ver apresentação] + "Copiar a mensagem". "Abrir no Agger" pelo link direto.
 // ⛔ Nenhum telefone aparece aqui: o envio abre o WhatsApp do aparelho de quem clicou, com a mensagem pronta.
+// SPEC-129-D · K2: numa renovação de VIDA pendente, "O que falta para cotar" mostra as perguntas e os avisos que a
+// madrugada deixou, e o formulário "As respostas do cliente" (só quando o backend manda os campos — `mostraFormulario`).
 
 import { useEffect, useState } from 'react';
 import { Copy, ExternalLink, Loader2, MessageCircle, Presentation, TriangleAlert } from 'lucide-react';
@@ -16,6 +18,8 @@ import { BOTAO_PRIMARIO } from '@/components/aplicativos/casca/CardDoAplicativo'
 import { cn } from '@/lib/utils';
 
 import { CalculosLadoALado, SeloPrecisaDeVoce, Variacao } from './PecasDaRenovacao';
+import { RespostasDeVida } from './RespostasDeVida';
+import { mostraFormulario } from './regrasDasRespostas';
 import { dataCurta, horaCurta, reais, tomDoEstado, venceEm, type DetalheDaRenovacao } from './tipos';
 import type { Resultado } from './useAcoesDaRenovacao';
 
@@ -39,6 +43,13 @@ export function DetalheDaRenovacaoGaveta({
 }) {
   const [dado, setDado] = useState<DetalheDaRenovacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // K2: depois das respostas do cliente, o detalhe relê (o item volta a "Vai calcular")
+  const [relida, setRelida] = useState(0);
+  const [registrado, setRegistrado] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRegistrado(null);
+  }, [id]);
 
   useEffect(() => {
     if (!id) {
@@ -62,7 +73,7 @@ export function DetalheDaRenovacaoGaveta({
     return () => {
       vivo = false;
     };
-  }, [id, versao]);
+  }, [id, versao, relida]);
 
   const atual = dado && dado.id === id ? dado : null;
   const ocupada = acoes.ocupado?.id === id ? acoes.ocupado.acao : null;
@@ -97,7 +108,16 @@ export function DetalheDaRenovacaoGaveta({
               <Skeleton className="h-24 w-full" />
             </div>
           )}
-          {!erro && atual && <Conteudo d={atual} />}
+          {!erro && atual && (
+            <Conteudo
+              d={atual}
+              registrado={registrado}
+              onRespondido={(frase) => {
+                setRegistrado(frase);
+                setRelida((n) => n + 1);
+              }}
+            />
+          )}
         </div>
 
         {/* A BARRA FIXA — acima da área segura do celular */}
@@ -172,7 +192,17 @@ export function DetalheDaRenovacaoGaveta({
   );
 }
 
-function Conteudo({ d }: { d: DetalheDaRenovacao }) {
+function Conteudo({
+  d,
+  registrado,
+  onRespondido,
+}: {
+  d: DetalheDaRenovacao;
+  registrado: string | null;
+  onRespondido: (frase: string) => void;
+}) {
+  const perguntas = d.perguntas ?? [];
+  const avisos = d.avisos ?? [];
   return (
     <div className="space-y-6">
       {/* o cabeçalho, com o PRÓXIMO PASSO */}
@@ -199,6 +229,43 @@ function Conteudo({ d }: { d: DetalheDaRenovacao }) {
           {d.proximo_passo}
         </p>
       </header>
+
+      {registrado && (
+        <p role="status" aria-live="polite" className="rounded-lg border border-border bg-surface p-3 text-sm text-foreground">
+          {registrado}
+        </p>
+      )}
+
+      {(perguntas.length > 0 || avisos.length > 0) && (
+        <section aria-labelledby="o-que-falta">
+          <h3 id="o-que-falta" className="text-base font-semibold text-foreground">
+            O que falta para cotar
+          </h3>
+          {perguntas.length > 0 && (
+            <ul className="mt-2 space-y-1.5">
+              {perguntas.map((p) => (
+                <li key={p} className="rounded-lg border border-warning/40 p-3 text-sm text-foreground">
+                  {p}
+                </li>
+              ))}
+            </ul>
+          )}
+          {avisos.length > 0 && (
+            <ul className="mt-2 space-y-1.5">
+              {avisos.map((a) => (
+                <li key={a} className="flex items-start gap-1.5 text-sm text-foreground-2">
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+                  {a}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {mostraFormulario(d) && d.respostas_de_vida && (
+        <RespostasDeVida id={d.id} pedido={d.respostas_de_vida} onRespondido={onRespondido} />
+      )}
 
       <section aria-labelledby="hoje-x-renovacao">
         <h3 id="hoje-x-renovacao" className="text-base font-semibold text-foreground">

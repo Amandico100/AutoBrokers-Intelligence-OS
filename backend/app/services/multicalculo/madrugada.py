@@ -373,8 +373,9 @@ MOTIVO_LICENCA_VENCIDA = "licenca_agger_vencida"
 # ---------------------------------------------------------------------------------------------------------------------
 # SPEC-129-D (costura V3) — as recusas do robô de VIDA → o estado do item (nunca a falha genérica)
 # ---------------------------------------------------------------------------------------------------------------------
-#: a frase da configuração que falta (o comercial não responde isto — a corretora configura, em Serviços)
-FRASE_DA_COMISSAO_DE_VIDA = "configure a comissão de vida da corretora (Serviços)"
+#: a frase da configuração que falta (o comercial não responde isto — a corretora ajusta). 🔴 Conserto K2 (red team B2):
+#: a frase antiga mandava a "Serviços", que não tem o campo — UM lugar só para o texto (`renovacao.py`)
+FRASE_DA_COMISSAO_DE_VIDA = R.FRASE_DA_COMISSAO_DE_VIDA
 #: o Agger pede QUAL esporte (📊 49 esportes na tela, 0 = "Não contratado"): o "sim" do pedido não basta
 PERGUNTA_DO_ESPORTE_RADICAL = "Qual esporte radical o segurado pratica?"
 #: o código que o robô (`agger_robo.MOTIVOS_LEGIVEIS` e a recusa do esporte em `_cotacao_do_pedido_vida`) põe na FRENTE do
@@ -433,7 +434,13 @@ def dados_derivados(calculos: List[Mapping[str, Any]], ofertas: int) -> Optional
 
 
 def _motivo_do_calculo(calc: Mapping[str, Any]) -> str:
+    from portal_worker.multicalculo.motor import PREFIXO_DA_RECUSA
+
     erro = str(calc.get("erro") or "").strip()
+    # 🔴 conserto K2 (D-131-38): o motor grava "o portal recusou o cálculo: veiculo_moto — …" — sem tirar o prefixo, a
+    # 1ª palavra era "o" e a moto caía em `falhou(calculo_falhou)` em vez de `pendente(ramo_nao_cotado)`
+    if erro.startswith(PREFIXO_DA_RECUSA):
+        erro = erro[len(PREFIXO_DA_RECUSA):].lstrip(": ").strip()
     cabeca = erro.split(" ", 1)[0] if erro else ""
     # conserto C1: a recusa de RAMO/VEÍCULO que o motor escrever com o código na frente ("ramo_nao_cotado — …",
     # "veiculo_… — …") passa como está — ela é DEFINITIVA (`falhou_definitivo`) e tem a frase do ramo
@@ -572,6 +579,7 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
         return "pendente", "sem_conexao", None, None
     nao: Dict[str, str] = {}
     infocap_caiu = False
+    de_vida = ramo_da_lista is not None and ramo_da_lista == _ramo_vida()
     try:
         perfil = await _o_perfil(db, company_id, item, fonte, apolice=apolice, ficha=ficha, config=cfg)
     except SemConexao:
@@ -579,13 +587,23 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
     except Exception as exc:  # noqa: BLE001
         estado, motivo = motivo_da_excecao(exc, ficha=ficha)
         return (estado, motivo, None, None) if estado == "pendente" else ("pendente", "falta_dado", None, None)
+    if de_vida:
+        # SPEC-129-D · conserto K2 (red team B3): o que o CLIENTE respondeu na tela (a última resposta do item) entra no
+        # perfil — o "não" dito é resposta. Sem resposta, nada é presumido (o pedido aponta os três em `faltando`)
+        respostas = respostas_de_vida(db, company_id, item)
+        if respostas.get("esporte_radical") is True:
+            # o Agger pede QUAL esporte (o robô recusa o "sim" — `CODIGO_DO_ESPORTE_RADICAL`): não se gasta um login
+            return "pendente", "falta_dado", None, pendencia_do_esporte_radical()
+        if respostas and perfil is not None:
+            from app.services.multicalculo import perfil_da_renovacao as PR
+
+            perfil = PR.com_as_respostas_de_vida(perfil, respostas)
     try:
         nao = dict(getattr(perfil, "nao_conferidos", None) or {})
         # sem o perfil (a InfoCap não respondeu o `/documento`) o pedido não fecha — e a comissão anterior leria o MESMO
         # `/documento` de novo (mais 3 tentativas, ~9 s por item): não se pede o que não muda o resultado
         # SPEC-129-D: a VIDA não usa a comissão do ano anterior (D-129D-08: a da config ou a do Agger da corretora) —
         # não se lê o `/documento` de novo para nada
-        de_vida = ramo_da_lista is not None and ramo_da_lista == _ramo_vida()
         pedido = de_apolice(apolice, ficha=ficha, config=cfg, perfil=perfil,
                             comissao_anterior_pct=(comissao_anterior(fonte, item)
                                                    if perfil is not None and not de_vida else None))
@@ -612,6 +630,25 @@ async def _avaliar(db: Any, company_id: str, item: Mapping[str, Any], fonte: Any
         return "pendente", "falta_dado", None, {"faltando": faltam[:40], **supostos, **_avisos_de_vida(pedido),
                                                  **({"perguntas": perguntas} if perguntas else {})}
     return "pronta", None, pedido, ({**supostos, **_avisos_de_vida(pedido)} or None)
+
+
+def respostas_de_vida(db: Any, company_id: str, item: Mapping[str, Any]) -> Dict[str, Any]:
+    """A última resposta do cliente registrada na tela para ESTE item (`renovacao.ultima_resposta_de_vida`, filtro
+    `company_id`). Ilegível → {} (nada presumido). ⛔ Os valores nunca vão a log."""
+    rid = item.get("id")
+    if not rid:
+        return {}
+    try:
+        return R.RepositorioDeRenovacoes(db).respostas_de_vida(company_id, str(rid))
+    except Exception as exc:  # noqa: BLE001 — o tipo basta
+        logger.info("[RENOV] respostas de vida ilegíveis (%s)", type(exc).__name__)
+        return {}
+
+
+def pendencia_do_esporte_radical() -> Dict[str, Any]:
+    """Os dados do item quando o cliente PRATICA esporte radical: o Agger pede QUAL (📊 49 esportes na tela) e o pedido
+    não tem esse campo — a pergunta fica com a pessoa (nunca um esporte por palpite). Só nomes e a frase."""
+    return {"faltando": ["vida.esporte_radical"], "perguntas": [PERGUNTA_DO_ESPORTE_RADICAL]}
 
 
 def _avisos_de_vida(pedido: Any) -> Dict[str, Any]:
