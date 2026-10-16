@@ -1,3 +1,10 @@
+# 📊 16/10/2026, SPEC-131-0-B3 (branch spec/131-0-B3-um-whatsapp, HEAD 69b2963), worktrees limpos C:/wtb3a·b·c (sem link), TRÊS PARTES em paralelo
+#   (tests + --ignore das outras partes: 348·129·195 arquivos) → 24 failed · 1856 passed · 2 skipped (47:51) · 0 failed · 397 passed (8:06) ·
+#   19 failed · 4775 passed · 7 skipped · 30 xfailed · 1 xpassed (1:15:31). TRIAGEM contra a base (35): 32 iguais · 3 sumiram (não conferidas) ·
+#   11 novas: 5 de ambiente/pré-existentes (neto, roda_no_node e design_k1 falham iguais em 6d3d911; fonte_comercial XPASS(strict) na bateria,
+#   XFAIL isolada; árvore limpa = rubrica.py sob carga) · 6 REGRESSÕES: guardas de literal de modelo (nenhum_modelo_fora_do_catalogo ×5, sonnet_5_proibido)
+#   ← lib/admin/tenant-usage-view.ts (580271c) → consertadas em 61514e2 (20 passed em worktree limpo). ⚠️ lista explícita de arquivos fura o
+#   collect_ignore: use `tests` + --ignore. A lista abaixo não muda.
 # 📊 13/10/2026, SPEC-131-B (branch spec/131-B-o-aplicativo, HEAD 191ecfa), worktree limpo C:/wt131b, TRÊS PARTES em paralelo
 #   (test_[0-9a-o]* · test_[p-r]*+s até spec122 · spec123+ e test_[t-z]*) → 17 failed · 1836 passed · 2 skipped (56:15) · 0 failed · 397 passed (15:39) ·
 #   19 failed · 4363 passed · 7 skipped · 30 xfailed · 1 xpassed (1:17:52). TRIAGEM contra a base (35): 32 iguais · 3 sumiram (as mesmas da 131-A) ·

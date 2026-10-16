@@ -129,7 +129,16 @@ backend: `perfil_do_membro.py` · `multicalculo/proposta.py` · `agents/tools/re
 **O laço:** 1 volta. **Conserto único:** K1 (backend) ‖ K2 (tela) + 2 ajustes do gerente ("Outros usos (sem assistente)"; credencial que não serve diz "conecte").
 
 ## 📊 A BATERIA — quantas rodadas nesta SPEC
-<<BATERIA: o gerente preenche>>
+📊 16/10/2026, HEAD `69b2963`, worktrees limpos `C:/wtb3a·b·c` (sem link), TRÊS PARTES em paralelo (`tests` + `--ignore` das outras partes:
+348·129·195 arquivos): **A** 24 failed · 1856 passed · 2 skipped (47:51) · **B** 0 failed · 397 passed (8:06) · **C** 19 failed · 4775 passed ·
+7 skipped · 30 xfailed · 1 xpassed (1:15:31). TRIAGEM nominal contra a base (35): 32 iguais · 3 sumiram (não conferidas) · 11 novas →
+5 de ambiente/pré-existentes (neto, `roda_no_node`, `design_k1` falham iguais em `6d3d911`; `fonte_comercial` XPASS(strict) só na bateria;
+árvore limpa = `rubrica.py` sob carga) · **6 REGRESSÕES desta SPEC** (os guardas do catálogo de modelos: `test_nenhum_modelo_fora_do_catalogo`
+×5 e `test_o_sonnet_5_esta_proibido::test_nenhum_literal…`) ← o mapa de 12 ids de modelo escrito à mão em `lib/admin/tenant-usage-view.ts`
+(F4, com `claude-sonnet-5`, proibido desde a 121). **Consertadas em `61514e2`**: o rótulo humano passa a ser MONTADO do id (provedor pelo
+prefixo), sem id entre aspas no código; worktree limpo `C:/wtb3g` em `61514e2`: catálogo **20 passed** · o literal do Sonnet passa. Os 3
+testes de formato do pedido do Sonnet 5.5 (`output_config`/`thinking`) falham IGUAIS em `6d3d911` no mesmo worktree (ambiente; na bateria
+passaram) → não são desta SPEC. **Regressões em aberto: 0.** ⚠️ Lição: lista explícita de arquivos fura o `collect_ignore` do conftest.
 
 ## 8. Mudanças além do texto da SPEC (CHANGE-ADDENDA 16/10)
 ESSENCIAL: o Radar pela conexão (F5) entrou na SPEC pelo gerente a partir do "antes de tudo" (licença de autonomia, §9 do protocolo).
