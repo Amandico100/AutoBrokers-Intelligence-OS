@@ -189,7 +189,12 @@ Código: `git revert` dos commits do §2 (nenhuma migration). Radar: `COMERCIAL_
 - **RECOMENDAÇÃO:** T-186/T-187 e o canário (T-188) antes de anunciar; T-185 para o Radar da Amandus; P-1310B3-01 na SPEC-062.
 
 ## Push
-<<PUSH: o gerente cola a saída do git push e do rev-list>>
+```
+$ git push origin HEAD:main
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   6d3d911..34d0e83  HEAD -> main
+$ git rev-list --count origin/main..HEAD   →  0     (o trabalho está no ar; falta o Founder clicar Implantar)
+```
 
 ## §11 A TELEMETRIA
 `backend\.venv\Scripts\python.exe backend/scripts/medir_execucao_claude_code.py --sessao atual`, da raiz, 16/10 ~04:44 UTC
