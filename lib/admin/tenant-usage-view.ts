@@ -62,22 +62,25 @@ export function rotuloDoAssistente(agente: AgentRow | null | undefined): string 
   return nome || 'Assistente';
 }
 
-// Modelos medidos em token_usage_logs (📊 15/10/2026, 90 dias, `select distinct model_name`).
-const MODELOS: Record<string, string> = {
-  'gpt-6-luna': 'OpenAI · GPT-6 Luna',
-  'gpt-6-sol': 'OpenAI · GPT-6 Sol',
-  'gpt-6.1-sol': 'OpenAI · GPT-6.1 Sol',
-  'gpt-6-astra': 'OpenAI · GPT-6 Astra',
-  'gpt-5.6-terra': 'OpenAI · GPT-5.6 Terra',
-  'gpt-4o': 'OpenAI · GPT-4o',
-  'gpt-4o-mini': 'OpenAI · GPT-4o mini',
-  'whisper-1': 'OpenAI · Transcrição de áudio',
-  'claude-opus-5-5': 'Anthropic · Claude Opus 5.5',
-  'claude-opus-5': 'Anthropic · Claude Opus 5',
-  'claude-sonnet-5-5': 'Anthropic · Claude Sonnet 5.5',
-  'claude-sonnet-5': 'Anthropic · Claude Sonnet 5',
-  'claude-haiku-4-5': 'Anthropic · Claude Haiku 4.5',
-};
+// O rótulo humano é MONTADO a partir do id (provedor pelo prefixo; gpt-6.1-sol → GPT-6.1 Sol, claude-opus-5-5 → Claude
+// Opus 5.5). 🔴 Sem mapa de ids escritos à mão: id de modelo entre aspas no código de produto reprova o guarda do catálogo
+// (`test_nenhum_modelo_fora_do_catalogo`, `test_o_sonnet_5_esta_proibido` — bateria da B3, 16/10) — e um modelo novo ganha rótulo sozinho.
+const MINUSCULAS = new Set(["mini", "nano"]); // como o provedor escreve (GPT-4o mini)
+const cap = (t: string) => (!t || MINUSCULAS.has(t) ? t : t[0].toUpperCase() + t.slice(1));
+function nomeDoId(semData: string): string {
+  const partes = semData.split('-').filter(Boolean);
+  const saida: string[] = [];
+  for (const t of partes) {
+    const ant = saida[saida.length - 1];
+    if (/^\d+$/.test(t) && ant && /\d$/.test(ant)) saida[saida.length - 1] = `${ant}.${t}`; // 5 5 → 5.5
+    else saida.push(t);
+  }
+  if (/^gpt$/.test(saida[0] ?? '') && saida.length > 1) {
+    const [, versao, ...resto] = saida;
+    return [`GPT-${versao}`, ...resto.map(cap)].join(' ');
+  }
+  return saida.map(cap).join(' ');
+}
 const BUSCA = 'Busca no conhecimento';
 const OUTRO = 'Outro modelo';
 
@@ -88,10 +91,10 @@ export function rotuloDoModelo(modelo: string | null | undefined): string {
   const m = cru.toLowerCase();
   if (/embed|rerank/.test(m)) return BUSCA;
   const semData = m.replace(/-(\d{8}|\d{4}-\d{2}-\d{2})$/, '');
-  if (MODELOS[semData]) return MODELOS[semData];
-  if (/^(gpt-|o\d|whisper|dall-e|tts-)/.test(m)) return `OpenAI · ${cru}`;
-  if (m.startsWith('claude')) return `Anthropic · ${cru}`;
-  if (m.startsWith('gemini')) return `Google · ${cru}`;
+  if (/^whisper/.test(semData)) return 'OpenAI · Transcrição de áudio';
+  if (/^(gpt-|o\d|dall-e|tts-)/.test(semData)) return `OpenAI · ${nomeDoId(semData)}`;
+  if (/^claude-/.test(semData)) return `Anthropic · ${nomeDoId(semData)}`;
+  if (/^gemini-/.test(semData)) return `Google · ${nomeDoId(semData)}`;
   return OUTRO;
 }
 

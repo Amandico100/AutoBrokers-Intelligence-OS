@@ -181,8 +181,10 @@ const esperado = {
   'whisper-1': 'OpenAI · Transcrição de áudio',
 };
 for (const [m, r] of Object.entries(esperado)) assert(`${m} → "${r}" (deu "${rotuloDoModelo(m)}")`, rotuloDoModelo(m) === r);
-assert('desconhecido da OpenAI → provedor + nome cru', rotuloDoModelo('gpt-9-nova') === 'OpenAI · gpt-9-nova');
-assert('desconhecido da Anthropic → provedor + nome cru', rotuloDoModelo('claude-mythos-1') === 'Anthropic · claude-mythos-1');
+// §9.3 (bateria da B3): o rótulo é MONTADO do id — um modelo novo ganha nome humano sozinho, sem mapa de ids no código
+assert('desconhecido da OpenAI → provedor + nome montado', rotuloDoModelo('gpt-9-nova') === 'OpenAI · GPT-9 Nova');
+assert('desconhecido da Anthropic → provedor + nome montado', rotuloDoModelo('claude-mythos-1') === 'Anthropic · Claude Mythos 1');
+assert('CONTROLE: versão com hífen vira ponto', rotuloDoModelo('claude-opus-5-5') === 'Anthropic · Claude Opus 5.5');
 assert('provedor desconhecido → "Outro modelo"', rotuloDoModelo('foo-model') === 'Outro modelo' && rotuloDoModelo(null) === 'Outro modelo');
 assert('busca no conhecimento agrupa embedding e rerank', comRazao.por_modelo.filter((g) => g.rotulo === 'Busca no conhecimento').length === 1);
 
