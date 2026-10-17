@@ -601,20 +601,36 @@ MIGRATION = os.path.join(os.path.dirname(__file__), "..", "supabase", "migration
                          "20261016_03_spec130c_fotos_e_premios.sql")
 
 
+MIGRATION_CONTRACT = os.path.join(os.path.dirname(__file__), "..", "supabase", "migrations",
+                                  "20261016_04_spec130c_fotos_contract.sql")
+
+
 def test_a_migration_troca_o_indice_na_ordem_certa_e_tem_apply_verify_rollback():
+    """§9.3 (SPEC-130-C, F4): o gerente DIVIDIU a migration (16/10) — a _03 (EXPAND: o índice novo, aplicada) e a _04
+    (CONTRACT: o DROP do antigo, passo do Founder). A lição "o novo nasce ANTES de o antigo sair" migra: a _03 cria e NÃO
+    derruba; a _04 só derruba DEPOIS de conferir que o substituto existe."""
     sql = open(MIGRATION, encoding="utf-8").read()
     for marca in ("APPLY:", "VERIFY", "ROLLBACK", "EXPAND-FIRST:", "DESTRUTIVA:"):
         assert marca in sql, marca
-    corpo = sql.split("set lock_timeout", 1)[1]
-    cria = corpo.index("create unique index if not exists brand_assets_one_current_per_kind_exceto_foto")
-    derruba = corpo.index("drop index if exists public.brand_assets_one_current_per_kind;")
-    assert cria < derruba, "expand-first: o índice novo nasce ANTES de o antigo sair"
+    corpo = "\n".join(l for l in sql.split("set lock_timeout", 1)[1].splitlines() if not l.lstrip().startswith("--"))
+    assert "create unique index if not exists brand_assets_one_current_per_kind_exceto_foto" in corpo
+    assert "drop index" not in corpo, "a _03 é só EXPAND: o DROP do índice antigo mora na _04"
     assert "where is_current and kind <> 'photo'" in corpo
     assert "char_length(caption) <= 80" in corpo
     assert "jsonb_typeof(awards) = 'array'" in corpo
-    assert "comment on column public.brand_assets.storage_ref" in corpo
     # o ROLLBACK tem a guarda das 2+ fotos atuais
     assert "having count(*) > 1" in sql.split("ROLLBACK", 1)[1]
+
+    contrato = open(MIGRATION_CONTRACT, encoding="utf-8").read()
+    for marca in ("APPLY:", "VERIFY:", "ROLLBACK", "EXPAND-FIRST:", "DESTRUTIVA:"):
+        assert marca in contrato, marca
+    corpo4 = "\n".join(l for l in contrato.split("set lock_timeout", 1)[1].splitlines()
+                       if not l.lstrip().startswith("--"))
+    guarda = corpo4.index("indexname = 'brand_assets_one_current_per_kind_exceto_foto'")
+    derruba = corpo4.index("drop index if exists public.brand_assets_one_current_per_kind;")
+    assert guarda < derruba, "a _04 só derruba o antigo depois de conferir que o substituto existe"
+    assert "raise exception" in corpo4[guarda:derruba]
+    assert "comment on column public.brand_assets.storage_ref" in corpo4
 
 
 # ======================================================================================================================

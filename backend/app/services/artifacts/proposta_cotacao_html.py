@@ -573,6 +573,10 @@ def _as_outras(conta: Optional[dict]) -> str:
     d, nr = conta["diferentes"], conta["nr"]
     if d + nr == 1:
         return "A outra " + ("só ofereceu um produto diferente." if d else "não deu preço.")
+    # SPEC-130-C (F4, a leitura das páginas): com UM motivo só, "Das outras 2, 2 não deram preço." repete o número —
+    # vira "As outras 2 não deram preço." (📊 condomínio e vida de exemplo, 16/10)
+    if not (d and nr):
+        return (f"As outras {d} só ofereceram produtos diferentes." if d else f"As outras {nr} não deram preço.")
     partes = []
     if d:
         partes.append(f"{d} só {'ofereceu um produto diferente' if d == 1 else 'ofereceram produtos diferentes'}")

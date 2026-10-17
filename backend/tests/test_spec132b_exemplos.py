@@ -236,7 +236,10 @@ _RE_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 
 
 def corretoras_no_texto(texto: str):
-    achados = [n for n in nomes_que_nao_podem_aparecer() if n.lower() in texto.lower()]
+    # SPEC-130-C (§9.3): PALAVRA inteira — o pedaço casava "vida_resultado.json" (a fixture do Agger) com a 1ª palavra de
+    # uma corretora; o nome colado no script (a linha de controle abaixo) continua vermelho
+    achados = [n for n in nomes_que_nao_podem_aparecer()
+               if re.search(r"(?<![0-9A-Za-zÀ-ÿ])" + re.escape(n.lower()) + r"(?![0-9A-Za-zÀ-ÿ])", texto.lower())]
     achados += [u for u in _RE_UUID.findall(texto) if u != str(EX.ESPACO_DOS_EXEMPLOS)]
     return achados
 

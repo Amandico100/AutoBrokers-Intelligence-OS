@@ -194,6 +194,13 @@ NOME_DA_COBERTURA_VIDA = {
     "isDiariaIncapacidade": "Diária por incapacidade",
     "isFuneral": "Assistência funeral",
 }
+#: SPEC-130-C (F4, a leitura das páginas) — as coberturas de RE que são SIM/NÃO, não valor em R$: o Agger devolve
+#: `valorDeNovo` como 1 ou "Sim" (📊 `tests/fixtures/agger_ramos/gravacao_residencial_3.json`) e a comparação o escreve
+#: "R$ 1" (`comparacao.coberturas_publicas` formata todo número do RE em reais). Na tela: o nome do seguro e "Incluída";
+#: zero/"Não" = não contratada, a linha some. (A comparação não muda — SPEC §1; a tradução é da página.)
+COBERTURAS_SIM_NAO_DO_RE = {"valorDeNovo": "Reposição pelo valor de novo"}
+_SIM_DO_RE = re.compile(r"^\s*(?:R\$\s*)?(?:1|1,00|1\.0|sim|s|true)\s*$", re.I)
+_NAO_DO_RE = re.compile(r"^\s*(?:R\$\s*)?(?:0|0,00|0\.0|n[ãa]o|n|false)?\s*$", re.I)
 _RE_CHAVE_CRUA = re.compile(r"^(?:is)?[a-z]+(?:[A-Z][a-z0-9]*)+$|^is[A-Z]")
 
 
@@ -218,7 +225,13 @@ def coberturas_para_o_cliente(ops: list[dict], modelo: dict) -> list[dict]:
             if not isinstance(c, dict):
                 continue
             chave, nome, valor = str(c.get("chave") or ""), str(c.get("nome") or "").strip(), c.get("valor")
-            if r == RAMO_VIDA and chave in NOME_DA_COBERTURA_VIDA:
+            if r != RAMO_VIDA and chave in COBERTURAS_SIM_NAO_DO_RE:
+                if _NAO_DO_RE.match(str(valor if valor is not None else "")):
+                    continue
+                nome = COBERTURAS_SIM_NAO_DO_RE[chave]
+                if _SIM_DO_RE.match(str(valor)):
+                    valor = "Incluída"
+            elif r == RAMO_VIDA and chave in NOME_DA_COBERTURA_VIDA:
                 nome = NOME_DA_COBERTURA_VIDA[chave]
             elif not nome or nome == chave or _RE_CHAVE_CRUA.match(nome):
                 nome = nome_legivel(chave or nome)

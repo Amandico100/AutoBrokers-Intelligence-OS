@@ -69,6 +69,13 @@ FRASE_ANIMADA = "Essa imagem é animada. Envie uma foto parada, em JPG, PNG, Web
 FRASE_GRANDE_DEMAIS = "Essa foto é grande demais para abrir. Envie uma versão menor (até 10 MB)."
 FRASE_TETO = f"Até {FOTOS_TETO} fotos. Remova uma para adicionar outra."
 FRASE_NAO_ENCONTRADA = "Essa foto não foi encontrada. Recarregue a página e tente de novo."
+#: SPEC-130-C · F4 — enquanto a migration 20261016_04 (o DROP do índice antigo, passo do Founder) não roda, o índice
+#: `brand_assets_one_current_per_kind (company_id, kind) WHERE is_current` ainda existe e recusa a 2ª foto ATUAL com
+#: 23505. A corretora lê ESTA frase (nunca um 500 cru): ela diz o que falta e com quem falar.
+FRASE_FALTA_A_MIGRATION = ("A 2ª foto precisa de um passo de instalação do banco (a migration 20261016_04); "
+                           "fale com o suporte.")
+#: o nome EXATO do índice antigo — o novo (`…_exceto_foto`) começa igual e não pode casar
+_INDICE_ANTIGO = re.compile(r"brand_assets_one_current_per_kind(?![A-Za-z0-9_])")
 
 
 # ======================================================================================================================
@@ -346,6 +353,15 @@ def premios(db: Any, company_id: str) -> list[dict]:
 # escrita — fotos
 # ======================================================================================================================
 
+def bate_no_indice_antigo(exc: BaseException) -> bool:
+    """A exceção é o 23505 (unique_violation) do índice ANTIGO `brand_assets_one_current_per_kind`? O PostgREST
+    (`postgrest.exceptions.APIError`) traz `code`/`message`/`details`; outros clientes, só o texto — confere os dois."""
+    codigo = str(getattr(exc, "code", "") or "")
+    texto = " ".join(str(x or "") for x in (getattr(exc, "message", ""), getattr(exc, "details", ""), exc))
+    return (codigo == "23505" or "23505" in texto or "duplicate key" in texto.lower()) and bool(
+        _INDICE_ANTIGO.search(texto))
+
+
 def adicionar_foto(db: Any, company_id: str, user_id: Optional[str], dados: bytes,
                    legenda: Optional[str] = None) -> dict:
     """Valida os BYTES, reduz, descarta o EXIF e grava a foto como a ÚLTIMA da corretora. Levanta EntradaRecusada."""
@@ -368,7 +384,13 @@ def adicionar_foto(db: Any, company_id: str, user_id: Optional[str], dados: byte
         "is_current": True, "sort_order": proxima, "caption": legenda_limpa,
         "created_by": _uuid_valido(user_id),
     }
-    gravada = _linhas(db.table("brand_assets").insert(linha).execute())
+    try:
+        gravada = _linhas(db.table("brand_assets").insert(linha).execute())
+    except Exception as exc:  # noqa: BLE001 — só a violação do índice ANTIGO vira frase; o resto sobe como era
+        if bate_no_indice_antigo(exc):
+            logger.warning("[brand.fotos] 2a foto recusada pelo indice antigo: falta a migration 20261016_04")
+            raise EntradaRecusada(FRASE_FALTA_A_MIGRATION) from exc
+        raise
     if not gravada:
         raise RuntimeError("foto nao gravada")
     novo_id = gravada[0].get("id")

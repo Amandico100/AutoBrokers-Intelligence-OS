@@ -812,7 +812,9 @@ def faq_da_renovacao(*, ramo: int, opcoes: Sequence[Mapping[str, Any]], vence_em
     tem; a vida com o capital e a declaração de saúde (`reajuste_capital_pct`: o da config da corretora)."""
     auto = int(ramo) == CMP.RAMO_AUTO
     ids = {str(o.get("id")): o for o in opcoes}
-    falar = "Me responda por aqui" if com_whatsapp else "Fale com a corretora"
+    # SPEC-130-C (F4): a página é a VOZ da corretora ("que recalculamos") — "Fale com a corretora" era ela falando de
+    # si na 3ª pessoa, sem nome (📊 a renovação de vida de exemplo, 16/10)
+    falar = "Me responda por aqui" if com_whatsapp else "Fale com a gente"
     saida: List[Dict[str, str]] = []
     if int(ramo) == CMP.RAMO_VIDA:
         saida = _faq_da_renovacao_de_vida(opcoes, vence_em=vence_em, reajuste_capital_pct=reajuste_capital_pct,
@@ -1028,6 +1030,12 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
     return info
 
 
+#: SPEC-130-C (F4) — o motivo de enchimento que a comparação dá ao RE/vida quando a opção tem menos de 2 motivos
+#: (`comparacao._motivos`). Com UMA opção só na página (📊 a renovação de vida de exemplo, 16/10) ele fala de "outras
+#: opções" que o cliente não vê: sai do cartão. A comparação não muda (SPEC §1); com 2+ opções ele continua.
+MOTIVO_DAS_OUTRAS_OPCOES = "Mesma configuração de coberturas das outras opções comparadas"
+
+
 def opcoes_da_pagina(ops: Sequence[Mapping[str, Any]], ofertas_a: Sequence[Mapping[str, Any]],
                      cfg_sol: Mapping[str, Any], *, canal: bool = False
                      ) -> Tuple[List[Dict[str, Any]], List[Mapping[str, Any]]]:
@@ -1040,7 +1048,8 @@ def opcoes_da_pagina(ops: Sequence[Mapping[str, Any]], ofertas_a: Sequence[Mappi
     for o, bruta in zip(ops, brutas):
         sem_juros = _parcelas_sem_juros(bruta)
         item = {k: v for k, v in o.items() if k != "ref"}
-        item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]]
+        item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]
+                           if not (len(ops) == 1 and t == MOTIVO_DAS_OUTRAS_OPCOES)]
         item["o_que_muda"] = [arredondar_texto(t) for t in o["o_que_muda"]]
         if o.get("por_que"):                    # SPEC-131-B: o "por que recomendamos" de cada cartão da renovação
             item["por_que"] = arredondar_texto(o["por_que"])

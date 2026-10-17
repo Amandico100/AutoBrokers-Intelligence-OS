@@ -185,7 +185,8 @@ def test_a_pagina_servida_de_venda_na_ordem(monkeypatch):
         assert (f"Cotamos em {conta['cotadas']} seguradoras para você — {conta['completas']} com a mesma cobertura "
                 "completa. Sem custo e sem compromisso.") in txt
         outras = conta["diferentes"] + conta["nr"]
-        assert (f"Das outras {outras}," in txt) if outras > 1 else ("A outra " in txt)
+        # §9.3 (SPEC-130-C F4): com um motivo só, "As outras N …" (sem repetir o número)
+        assert (f"Das outras {outras}," in txt or f"As outras {outras} " in txt) if outras > 1 else ("A outra " in txt)
     else:
         assert f"Comparamos {conta['cotadas']} seguradoras para você — sem custo e sem compromisso." in txt
     assert "Corretora de seguros" in txt and "SUSEP nº 10.2030405" in txt

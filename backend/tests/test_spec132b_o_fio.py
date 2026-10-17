@@ -292,8 +292,11 @@ def guarda_o_fio(m: Fio) -> dict:
     assert servido and servido.get("html"), "o link não abriu"
     html = servido["html"]
     canal = CFG.PADRAO_DO_PRODUTO["canal"]
-    for proibido in (canal["nome"], canal["selo"]["nome"], "Nível 5"):
+    # SPEC-130-C (D-130C-05, §9.3): o selo Nível 5 passou a ser da CORRETORA nas três páginas; o NOME do canal continua fora
+    for proibido in (canal["nome"],):
         assert proibido.lower() not in html.lower(), f"a página da corretora fala do canal: {proibido}"
+    # a lição migra (§9.3): o selo do programa agora TEM de estar na página da corretora (config padrão: ligado)
+    assert canal["selo"]["nome"] in html, "o selo Nível 5 da corretora não chegou à página de venda (D-130C-05)"
     assert MARCA_A in html and MARCA_B not in html, "a página não tem a marca de quem cotou"
     assert "Fulana" in html and CPF not in html and CPF_PONTUADO not in html
 
