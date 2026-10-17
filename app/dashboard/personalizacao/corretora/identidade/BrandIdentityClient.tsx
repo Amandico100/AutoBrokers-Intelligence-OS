@@ -205,6 +205,7 @@ const ESTADOS: Record<
 const ABAS = [
   { id: 'visual', rotulo: 'Identidade visual' },
   { id: 'sobre', rotulo: 'Sobre a corretora' },
+  { id: 'fotos', rotulo: 'Fotos e prêmios' },
   { id: 'jeito', rotulo: 'Jeito de atender' },
   { id: 'presenca', rotulo: 'Contato e presença' },
   { id: 'origem', rotulo: 'Procedência' },
@@ -612,6 +613,7 @@ export function BrandIdentityClient() {
       {aba === 'sobre' && (
         <AbaSobre rascunho={rascunho} setRascunho={setRascunho} proc={proc} salvar={salvar} salvando={salvando} />
       )}
+      {aba === 'fotos' && <AbaFotosEPremios perfil={perfil} recarregar={carregar} />}
       {aba === 'jeito' && (
         <AbaJeito perfil={perfil} bruto={bruto} recarregar={carregar} />
       )}
@@ -1524,6 +1526,450 @@ function AbaOrigem({ proc }: { proc: Record<string, Proc> }) {
             })}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+// ==========================================================================
+// SPEC-130-C · F1 — FOTOS E PRÊMIOS
+//
+// As fotos vão à página que o CLIENTE abre (cotação, renovação, Quem Cobra
+// Menos): as 4 primeiras, na ordem daqui. Cada foto pertence a esta corretora
+// e só a ela — a rota resolve a corretora pela sessão. O backend reduz a foto,
+// tira a localização (GPS) que o celular grava dentro dela e confere que é
+// mesmo uma foto. A tela ajuda; quem protege é o backend.
+//
+// "Corretora premiada" só aparece com pelo menos UM prêmio cadastrado aqui
+// (CDC art. 37 — nada de selo que a corretora não ganhou).
+// ==========================================================================
+
+type Foto = { id: string; src: string; legenda: string; ordem: number | null };
+type Premio = { nome: string; ano: string };
+
+const FOTOS_TETO = 8;
+const FOTOS_NA_PAGINA = 4;
+const FOTO_TETO_BYTES = 10 * 1024 * 1024;
+const FOTO_TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const FOTO_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif';
+const LEGENDA_TETO = 80;
+const PREMIOS_TETO = 10;
+const PREMIO_ANO_MINIMO = 1950;
+
+/** As mesmas regras do backend (`fotos.py`), ditas cedo. HEIC às vezes chega sem tipo: decide a extensão. */
+export function motivoParaRecusarFoto(arquivo: { size: number; type: string; name?: string }): string | null {
+  const tipo = (arquivo.type || '').toLowerCase();
+  const heicPeloNome = /\.(heic|heif)$/i.test(arquivo.name || '');
+  if (tipo ? !FOTO_TIPOS.includes(tipo) : !heicPeloNome) {
+    return 'Esse arquivo não é uma foto que dê para usar. Envie JPG, PNG, WebP ou HEIC (a do iPhone).';
+  }
+  if (arquivo.size === 0) return 'O arquivo está vazio. Escolha a foto de novo.';
+  if (arquivo.size > FOTO_TETO_BYTES) {
+    return `A foto tem ${(arquivo.size / (1024 * 1024)).toFixed(1)} MB e o limite é 10 MB. Envie uma versão menor.`;
+  }
+  return null;
+}
+
+/** Confere a lista antes de mandar. Devolve a frase do primeiro problema, ou '' se está tudo certo. */
+export function problemaNosPremios(premios: Premio[], anoAtual: number): string {
+  if (premios.length > PREMIOS_TETO) return `Até ${PREMIOS_TETO} prêmios. Fique com os mais importantes.`;
+  for (const p of premios) {
+    const nome = p.nome.trim();
+    if (nome.length < 2 || nome.length > 80) return 'O nome de cada prêmio precisa ter de 2 a 80 caracteres.';
+    if (/[<>]/.test(nome) || /(https?:\/\/|www\.)/i.test(nome)) return 'Escreva só o nome do prêmio, sem link e sem código.';
+    const ano = p.ano.trim();
+    if (ano && (!/^\d{4}$/.test(ano) || Number(ano) < PREMIO_ANO_MINIMO || Number(ano) > anoAtual)) {
+      return `O ano do prêmio precisa ser entre ${PREMIO_ANO_MINIMO} e ${anoAtual} — ou fique em branco.`;
+    }
+  }
+  return '';
+}
+
+const botaoCls =
+  'inline-flex min-h-[44px] items-center justify-center rounded-lg border border-border px-3 text-sm font-medium ' +
+  'text-foreground transition hover:bg-secondary disabled:opacity-40';
+
+function AbaFotosEPremios({ perfil, recarregar }: { perfil: Perfil | null; recarregar: () => Promise<void> }) {
+  return (
+    <div className="space-y-4">
+      <SecaoFotos />
+      <SecaoPremios perfil={perfil} recarregar={recarregar} />
+    </div>
+  );
+}
+
+function SecaoFotos() {
+  const [fotos, setFotos] = useState<Foto[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+  const [ocupada, setOcupada] = useState<string>('');
+  const [confirmar, setConfirmar] = useState<string>('');
+  const [legendas, setLegendas] = useState<Record<string, string>>({});
+  const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
+
+  const aplicar = (lista: Foto[]) => {
+    setFotos(lista);
+    setLegendas(Object.fromEntries(lista.map((f) => [f.id, f.legenda || ''])));
+  };
+
+  const carregar = useCallback(async () => {
+    try {
+      const j = await fetch('/api/dashboard/brand-identity/photos').then((r) => r.json());
+      if (j?.ok) aplicar(Array.isArray(j.fotos) ? j.fotos : []);
+      else setErro(j?.error || 'Não foi possível carregar as fotos.');
+    } catch {
+      setErro('Não foi possível carregar as fotos.');
+    }
+    setCarregando(false);
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const cheia = fotos.length >= FOTOS_TETO;
+
+  const adicionar = async (arquivo: File | undefined) => {
+    setErro(''); setAviso('');
+    if (!arquivo) return;
+    if (cheia) { setErro(`Até ${FOTOS_TETO} fotos. Remova uma para adicionar outra.`); return; }
+    const motivo = motivoParaRecusarFoto(arquivo);
+    if (motivo) { setErro(motivo); return; }
+    setEnviando(true);
+    try {
+      const corpo = new FormData();
+      corpo.append('foto', arquivo);
+      const r = await fetch('/api/dashboard/brand-identity/photos', { method: 'POST', body: corpo });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) {
+        aplicar(Array.isArray(j.fotos) ? j.fotos : fotos);
+        setAviso('Foto adicionada. Se quiser, escreva uma legenda embaixo dela.');
+      } else setErro(j?.error || 'Não foi possível adicionar a foto. Tente de novo.');
+    } catch {
+      setErro('Não foi possível adicionar a foto. Tente de novo.');
+    }
+    setEnviando(false);
+  };
+
+  const salvarLegenda = async (id: string) => {
+    const legenda = (legendas[id] ?? '').trim();
+    const atual = fotos.find((f) => f.id === id);
+    if (!atual || legenda === (atual.legenda || '')) return;
+    if (legenda.length > LEGENDA_TETO) { setErro(`A legenda pode ter até ${LEGENDA_TETO} caracteres.`); return; }
+    setOcupada(id); setErro(''); setAviso('');
+    try {
+      const r = await fetch(`/api/dashboard/brand-identity/photos?id=${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ legenda: legenda || null }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) { aplicar(Array.isArray(j.fotos) ? j.fotos : fotos); setAviso('Legenda salva.'); }
+      else setErro(j?.error || 'Não foi possível salvar a legenda.');
+    } catch {
+      setErro('Não foi possível salvar a legenda.');
+    }
+    setOcupada('');
+  };
+
+  const mover = async (indice: number, passo: -1 | 1) => {
+    const destino = indice + passo;
+    if (destino < 0 || destino >= fotos.length) return;
+    const nova = [...fotos];
+    [nova[indice], nova[destino]] = [nova[destino], nova[indice]];
+    const anterior = fotos;
+    setFotos(nova); setOcupada(nova[destino].id); setErro(''); setAviso('');
+    try {
+      const r = await fetch('/api/dashboard/brand-identity/photos', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: nova.map((f) => f.id) }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) aplicar(Array.isArray(j.fotos) ? j.fotos : nova);
+      else { setFotos(anterior); setErro(j?.error || 'Não foi possível mudar a ordem.'); }
+    } catch {
+      setFotos(anterior); setErro('Não foi possível mudar a ordem.');
+    }
+    setOcupada('');
+  };
+
+  const remover = async (id: string) => {
+    setOcupada(id); setErro(''); setAviso('');
+    try {
+      const r = await fetch(`/api/dashboard/brand-identity/photos?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) { aplicar(Array.isArray(j.fotos) ? j.fotos : fotos.filter((f) => f.id !== id)); setAviso('Foto removida.'); }
+      else setErro(j?.error || 'Não foi possível remover a foto.');
+    } catch {
+      setErro('Não foi possível remover a foto.');
+    }
+    setConfirmar(''); setOcupada('');
+  };
+
+  const botaoAdicionar = (grande: boolean) => (
+    <label
+      className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-border text-center transition hover:border-primary/50 hover:bg-primary/5 ${
+        grande ? 'aspect-[4/3] p-3' : 'min-h-[44px] px-4 py-2'
+      } ${enviando || cheia ? 'pointer-events-none opacity-50' : ''}`}
+    >
+      <span className="text-sm font-semibold text-foreground">{enviando ? 'Enviando…' : '+ Adicionar foto'}</span>
+      {grande && <span className="text-[11px] text-muted-foreground">da câmera ou da galeria</span>}
+      <input
+        type="file"
+        accept={FOTO_ACCEPT}
+        className="sr-only"
+        disabled={enviando || cheia}
+        onChange={(e) => { adicionar(e.target.files?.[0]); e.target.value = ''; }}
+      />
+    </label>
+  );
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Fotos da corretora</h3>
+        <span className="text-xs font-medium tabular-nums text-muted-foreground">
+          {fotos.length} de {FOTOS_TETO}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Mostre quem cuida do cliente: a equipe, o escritório, eventos e premiações. As {FOTOS_NA_PAGINA} primeiras
+        aparecem nas páginas de cotação e de renovação.
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        JPG, PNG, WebP ou HEIC · até 10 MB. A foto é reduzida e a localização gravada pelo celular é apagada.
+      </p>
+
+      {aviso && <p className="mt-3 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-foreground">{aviso}</p>}
+      {erro && <p role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-foreground">{erro}</p>}
+
+      {carregando ? (
+        <p className="mt-4 text-xs text-muted-foreground">Carregando fotos…</p>
+      ) : fotos.length === 0 ? (
+        <div className="mt-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {botaoAdicionar(true)}
+            {[1, 2, 3].map((i) => (
+              <div key={i} aria-hidden className="aspect-[4/3] rounded-xl border-2 border-dashed border-border/60 bg-secondary/30" />
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Ainda sem fotos. Uma foto da equipe já faz o cliente ver que do outro lado tem gente de verdade.
+          </p>
+        </div>
+      ) : (
+        <ol className="mt-4 grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 lg:grid-cols-4">
+          {fotos.map((f, i) => {
+            const naPagina = i < FOTOS_NA_PAGINA;
+            const travada = ocupada === f.id || enviando;
+            return (
+              <li key={f.id} className="flex flex-col overflow-hidden rounded-xl border border-border bg-background">
+                <div className="relative aspect-[4/3] bg-secondary">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={f.src} alt={f.legenda || `Foto ${i + 1} da corretora`} className="h-full w-full object-cover" />
+                  <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-0.5 text-[11px] font-semibold text-foreground">
+                    {i + 1}
+                  </span>
+                  {naPagina && (
+                    <span className="absolute right-2 top-2 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground">
+                      Na página
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-1 flex-col gap-2 p-3">
+                  <label className="block">
+                    <span className="sr-only">Legenda da foto {i + 1}</span>
+                    <input
+                      className={campoCls}
+                      maxLength={LEGENDA_TETO}
+                      placeholder="Legenda (ex.: Nossa equipe)"
+                      value={legendas[f.id] ?? ''}
+                      onChange={(e) => setLegendas({ ...legendas, [f.id]: e.target.value })}
+                      onBlur={() => salvarLegenda(f.id)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      disabled={travada}
+                    />
+                  </label>
+                  <span className="text-right text-[11px] tabular-nums text-muted-foreground">
+                    {(legendas[f.id] ?? '').length}/{LEGENDA_TETO}
+                  </span>
+                  {confirmar === f.id ? (
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs font-medium text-foreground">Remover esta foto? Ela sai das próximas páginas.</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => remover(f.id)}
+                          disabled={travada}
+                          className="min-h-[44px] rounded-lg bg-destructive px-3 text-sm font-semibold text-destructive-foreground transition hover:opacity-90 disabled:opacity-40"
+                        >
+                          Sim, remover
+                        </button>
+                        <button onClick={() => setConfirmar('')} disabled={travada} className={botaoCls}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-auto grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => mover(i, -1)}
+                        disabled={travada || i === 0}
+                        aria-label={`Mover a foto ${i + 1} para antes`}
+                        className={botaoCls}
+                      >
+                        ←
+                      </button>
+                      <button
+                        onClick={() => mover(i, 1)}
+                        disabled={travada || i === fotos.length - 1}
+                        aria-label={`Mover a foto ${i + 1} para depois`}
+                        className={botaoCls}
+                      >
+                        →
+                      </button>
+                      <button
+                        onClick={() => setConfirmar(f.id)}
+                        disabled={travada}
+                        aria-label={`Remover a foto ${i + 1}`}
+                        className={`${botaoCls} text-destructive`}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+          {!cheia && <li className="list-none">{botaoAdicionar(true)}</li>}
+        </ol>
+      )}
+      {cheia && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          Chegou a {FOTOS_TETO} fotos. Para adicionar outra, remova uma.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SecaoPremios({ perfil, recarregar }: { perfil: Perfil | null; recarregar: () => Promise<void> }) {
+  const doPerfil = (): Premio[] =>
+    (Array.isArray(perfil?.awards) ? perfil!.awards : [])
+      .filter((p: any) => p && typeof p.nome === 'string')
+      .map((p: any) => ({ nome: p.nome, ano: p.ano == null ? '' : String(p.ano) }));
+  const [premios, setPremios] = useState<Premio[]>(doPerfil);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
+  const anoAtual = new Date().getFullYear();
+
+  useEffect(() => { setPremios(doPerfil()); }, [perfil?.awards]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const mudar = (i: number, campo: keyof Premio, valor: string) => {
+    setAviso(''); setErro('');
+    setPremios(premios.map((p, j) => (j === i ? { ...p, [campo]: valor } : p)));
+  };
+
+  const salvar = async () => {
+    const limpos = premios.filter((p) => p.nome.trim() || p.ano.trim());
+    const problema = problemaNosPremios(limpos, anoAtual);
+    if (problema) { setErro(problema); return; }
+    setSalvando(true); setErro(''); setAviso('');
+    try {
+      const r = await fetch('/api/dashboard/brand-identity', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          awards: limpos.map((p) => ({ nome: p.nome.trim(), ano: p.ano.trim() ? Number(p.ano.trim()) : null })),
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j?.ok) {
+        setAviso(limpos.length
+          ? 'Prêmios salvos. As suas próximas páginas mostram o selo Corretora premiada.'
+          : 'Prêmios salvos. Sem prêmio cadastrado, as páginas não mostram o selo.');
+        await recarregar();
+      } else setErro(j?.error || 'Não foi possível salvar os prêmios.');
+    } catch {
+      setErro('Não foi possível salvar os prêmios.');
+    }
+    setSalvando(false);
+  };
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-foreground">Prêmios</h3>
+        <span className="text-xs font-medium tabular-nums text-muted-foreground">{premios.length} de {PREMIOS_TETO}</span>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Com pelo menos um prêmio, as suas páginas mostram o selo Corretora premiada. Cadastre só o que a corretora
+        recebeu de fato — o cliente vê exatamente o que estiver aqui.
+      </p>
+
+      {premios.length === 0 ? (
+        <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-5 text-center text-xs text-muted-foreground">
+          Nenhum prêmio cadastrado ainda.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {premios.map((p, i) => (
+            <li key={i} className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
+              <label className="col-span-2 block sm:col-span-1">
+                <span className="text-xs font-medium text-foreground-2">Nome do prêmio</span>
+                <input
+                  className={`mt-1 ${campoCls} min-h-[44px]`}
+                  maxLength={80}
+                  placeholder="Ex.: Melhor corretora do ano"
+                  value={p.nome}
+                  onChange={(e) => mudar(i, 'nome', e.target.value)}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-foreground-2">Ano (opcional)</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={PREMIO_ANO_MINIMO}
+                  max={anoAtual}
+                  step={1}
+                  className={`mt-1 ${campoCls} min-h-[44px]`}
+                  placeholder={String(anoAtual)}
+                  value={p.ano}
+                  onChange={(e) => mudar(i, 'ano', e.target.value)}
+                />
+              </label>
+              <button
+                onClick={() => { setAviso(''); setErro(''); setPremios(premios.filter((_, j) => j !== i)); }}
+                aria-label={`Remover o prêmio ${p.nome || i + 1}`}
+                className={`${botaoCls} self-end text-destructive`}
+              >
+                Remover
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {erro && <p role="alert" className="mt-3 text-xs text-destructive">{erro}</p>}
+      {aviso && <p className="mt-3 text-xs text-foreground">{aviso}</p>}
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
+        <button
+          onClick={() => { setAviso(''); setErro(''); setPremios([...premios, { nome: '', ano: '' }]); }}
+          disabled={premios.length >= PREMIOS_TETO}
+          className={botaoCls}
+        >
+          + Adicionar prêmio
+        </button>
+        <button
+          onClick={salvar}
+          disabled={salvando}
+          className="min-h-[44px] w-full rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:opacity-40 sm:w-auto"
+        >
+          {salvando ? 'Salvando…' : 'Salvar prêmios'}
+        </button>
       </div>
     </section>
   );

@@ -112,6 +112,28 @@ export async function PATCH(req: NextRequest) {
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const corpo = await req.json().catch(() => ({}));
+
+  // SPEC-130-C · F1 — os PRÊMIOS têm porta própria no backend (`PUT /api/brand/awards`, que valida ≤ 10, nome sem
+  // link, ano 1950..hoje). `awards` não é um campo livre do perfil: dele depende o selo "Corretora premiada".
+  if (Array.isArray(corpo?.awards)) {
+    if (corpo.awards.length > 10) {
+      return NextResponse.json(
+        { ok: false, error: 'Até 10 prêmios. Fique com os mais importantes.' },
+        { status: 400 },
+      );
+    }
+    const r = await chamar('/api/brand/awards', {
+      method: 'PUT',
+      timeoutMs: 20_000,
+      body: JSON.stringify({
+        company_id: auth.ctx.companyId,
+        user_id: auth.ctx.userId ?? null,
+        awards: corpo.awards,
+      }),
+    });
+    return NextResponse.json(r.body, { status: r.status });
+  }
+
   const r = await chamar('/api/brand/profile', {
     method: 'PATCH',
     timeoutMs: 20_000,

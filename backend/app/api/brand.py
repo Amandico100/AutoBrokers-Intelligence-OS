@@ -19,12 +19,14 @@ import base64
 import binascii
 import logging
 import os
+import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from app.services.brand import fotos as fotos_svc
 from app.services.brand.capture import LOGO_TETO_BYTES, BrandCaptureService, EntradaRecusada
 from app.core.database import get_supabase_client
 
@@ -91,10 +93,14 @@ async def obter(company_id: str, x_internal_key: Optional[str] = Header(None)):
               .select("kind, url, status, http_status, fetched_at, duration_ms, error")
               .eq("brand_profile_id", pid).order("created_at", desc=True)
               .limit(12).execute()).data or []
+    # SPEC-130-C · F1 — as FOTOS não vêm aqui: têm rota própria (`/photos`). Sem o `neq`, até 8 × 90 KB de `data:`
+    # viajariam em toda abertura da Identidade, e a tela (`assets[0]` como logo de reserva) poderia exibir uma
+    # foto da equipe no lugar do logo.
     assets = (db.client.table("brand_assets")
               .select("id, kind, storage_ref, width, height, has_transparency, "
                       "ink_colors, source_url, confidence")
-              .eq("company_id", company_id).eq("is_current", True).execute()).data or []
+              .eq("company_id", company_id).eq("is_current", True)
+              .neq("kind", "photo").execute()).data or []
 
     # 🔴 D21/U1.4 — A PROCEDENCIA NAO AFIRMA ORIGEM DE CAMPO VAZIO.
     # 📊 06/09/2026: duas das 14 procedencias da unica marca publicada
@@ -197,6 +203,132 @@ async def trocar_logo(payload: LogoIn, x_internal_key: Optional[str] = Header(No
         logger.exception("[brand] troca de logo falhou")
         raise HTTPException(500, f"falha ao gravar o logo: {type(exc).__name__}") from exc
     return {"ok": True, **r}
+
+
+# ======================================================================================================================
+# SPEC-130-C · F1 — as FOTOS e os PRÊMIOS da corretora
+#
+# Mesmo padrão de poder do resto deste router: o Next resolve a corretora pela SESSÃO (`requireCompanyMember`) e manda
+# o `company_id`; aqui se confere a chave interna. Toda leitura/escrita passa por `services/brand/fotos.py`, que filtra
+# `company_id` em CADA consulta — um id de foto de outra corretora volta 404, nunca é tocado.
+# ======================================================================================================================
+
+
+def _corretora(company_id: Optional[str]) -> str:
+    try:
+        return str(uuid.UUID(str(company_id)))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(400, "company_id invalido") from None
+
+
+def _recusa(exc: Exception) -> JSONResponse:
+    """A frase de `EntradaRecusada` vai em `error` (o contrato da tela, E14). "não encontrada" é 404."""
+    frase = str(exc)
+    return JSONResponse({"ok": False, "error": frase},
+                        status_code=404 if frase == fotos_svc.FRASE_NAO_ENCONTRADA else 400)
+
+
+@router.get("/photos")
+async def listar_fotos(company_id: str, x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    cid = _corretora(company_id)
+    db = get_supabase_client().client
+    return {"ok": True, "fotos": fotos_svc.listar_fotos(db, cid), "teto": fotos_svc.FOTOS_TETO,
+            "na_pagina": fotos_svc.FOTOS_NA_PAGINA}
+
+
+@router.post("/photos")
+async def adicionar_foto(company_id: str = Form(...), user_id: Optional[str] = Form(None),
+                         legenda: Optional[str] = Form(None), foto: UploadFile = File(...),
+                         x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    cid = _corretora(company_id)
+    # lê no máximo 1 byte além do teto: um upload de 500 MB não entra inteiro na memória para ser recusado depois
+    dados = await foto.read(fotos_svc.ENTRADA_TETO_BYTES + 1)
+    if len(dados) > fotos_svc.ENTRADA_TETO_BYTES:
+        return JSONResponse({"ok": False, "error": "A foto passa de 10 MB. Envie uma versão menor."}, status_code=400)
+    db = get_supabase_client().client
+    try:
+        nova = fotos_svc.adicionar_foto(db, cid, user_id, dados, legenda)
+    except EntradaRecusada as exc:
+        return _recusa(exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("[brand] foto nao gravada")
+        raise HTTPException(500, f"falha ao gravar a foto: {type(exc).__name__}") from exc
+    return {"ok": True, "foto": nova, "fotos": fotos_svc.listar_fotos(db, cid)}
+
+
+class FotoEdicaoIn(BaseModel):
+    company_id: str
+    legenda: Optional[str] = None
+    #: só se a chave veio no corpo — `None` explícito apaga a legenda; ausente, não mexe
+    sort_order: Optional[int] = None
+
+
+@router.patch("/photos/{foto_id}")
+async def editar_foto(foto_id: str, payload: FotoEdicaoIn, x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    cid = _corretora(payload.company_id)
+    enviados = payload.model_fields_set
+    kw: dict[str, Any] = {}
+    if "legenda" in enviados:
+        kw["legenda"] = payload.legenda
+    if "sort_order" in enviados and payload.sort_order is not None:
+        kw["sort_order"] = payload.sort_order
+    db = get_supabase_client().client
+    try:
+        r = fotos_svc.atualizar_foto(db, cid, foto_id, **kw)
+    except EntradaRecusada as exc:
+        return _recusa(exc)
+    return {"ok": True, "foto": r, "fotos": fotos_svc.listar_fotos(db, cid)}
+
+
+@router.delete("/photos/{foto_id}")
+async def remover_foto(foto_id: str, company_id: str, x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    cid = _corretora(company_id)
+    db = get_supabase_client().client
+    try:
+        fotos_svc.remover_foto(db, cid, foto_id)
+    except EntradaRecusada as exc:
+        return _recusa(exc)
+    return {"ok": True, "fotos": fotos_svc.listar_fotos(db, cid)}
+
+
+class OrdemIn(BaseModel):
+    company_id: str
+    ids: list[str] = Field(default_factory=list)
+
+
+@router.put("/photos/order")
+async def reordenar_fotos(payload: OrdemIn, x_internal_key: Optional[str] = Header(None)):
+    _autorizar(x_internal_key)
+    cid = _corretora(payload.company_id)
+    db = get_supabase_client().client
+    try:
+        fotos = fotos_svc.reordenar(db, cid, payload.ids)
+    except EntradaRecusada as exc:
+        return _recusa(exc)
+    return {"ok": True, "fotos": fotos}
+
+
+class PremiosIn(BaseModel):
+    company_id: str
+    user_id: Optional[str] = None
+    awards: list[Any] = Field(default_factory=list)
+
+
+@router.put("/awards")
+async def salvar_premios(payload: PremiosIn, x_internal_key: Optional[str] = Header(None)):
+    """Os prêmios saem do PATCH /profile de propósito: `awards` NÃO está em CAMPOS_EDITAVEIS — a única porta é esta,
+    que valida (≤ 10, nome 2–80 sem link, ano 1950..hoje). O selo "Corretora premiada" depende deles (CDC art. 37)."""
+    _autorizar(x_internal_key)
+    cid = _corretora(payload.company_id)
+    try:
+        premios = fotos_svc.salvar_premios(get_supabase_client().client, cid, payload.user_id, payload.awards)
+    except EntradaRecusada as exc:
+        return _recusa(exc)
+    return {"ok": True, "awards": premios}
 
 
 class ProporJeitoIn(BaseModel):
