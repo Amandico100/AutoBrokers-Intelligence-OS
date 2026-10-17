@@ -577,6 +577,8 @@ def _comparar(ops: list[dict]) -> str:
 def render_proposta_do_canal(modelo: dict) -> str:
     """O documento inteiro da página do canal. Só dado do modelo; linha sem dado some; todo texto escapado."""
     modelo = modelo if isinstance(modelo, dict) else {}
+    # SPEC-130-C · conserto KA: fora do auto, franquia 0 ou ausente = SEM franquia (o mesmo da venda e da renovação)
+    modelo = AP.sem_franquia_que_nao_existe(modelo)
     M = _msg()
     nome_canal = _nome_do_canal(modelo)
     previa = previa_do_canal(modelo)
@@ -668,7 +670,8 @@ def render_proposta_do_canal(modelo: dict) -> str:
                       f'<button type="button" id="next" aria-label="Próxima opção">{PH.ICO["right"]}</button></div></div>')
         opcoes = (f'<section class="s" aria-labelledby="h-ops" style="--n:{n}"><h2 id="h-ops">'
                   f'{"As opções que separamos" if n > 1 else "A opção que separamos"}</h2>'
-                  f'<p class="sub">A mesma comparação, lado a lado. A nota vai de 0 a 100 e pesa preço, franquia e coberturas.</p>'
+                  f'<p class="sub">A mesma comparação, lado a lado. A nota vai de 0 a 100 e pesa '
+                  f'{PH._e(AP.o_que_a_nota_pesa(modelo, ops))}.</p>'
                   + navrow
                   + f'<div class="ops{" um" if n == 1 else ""}" id="track" tabindex="0" role="region" '
                   f'aria-roledescription="carrossel" aria-label="{PH._e(f"As {n} opções. Use as setas do teclado para trocar." if n > 1 else "A opção")}">'
@@ -736,7 +739,9 @@ def render_proposta_do_canal(modelo: dict) -> str:
     faq_html = (f'<section class="s" aria-labelledby="h-faq"><h2 id="h-faq">Perguntas que todo mundo faz</h2>'
                 f'<div class="faq">{faq}</div></section>') if faq else ""
     sinistro_l = modelo.get("sinistro") if isinstance(modelo.get("sinistro"), list) else []
-    passos = [s for s in sinistro_l if isinstance(s, str) and s.strip()]
+    # conserto KA (laudo de design B1): o NOME da corretora no lugar de "a sua corretora"/"A corretora" (o título já
+    # diz "Quem cuida é a <Nome>") — o mesmo da venda (`proposta_cotacao_html`)
+    passos = [PH._frase_do_cliente(s, nome_anf) for s in sinistro_l if isinstance(s, str) and s.strip()]
     sinistro = ""
     if passos:
         titulo = f"Se bater o {PH._e(bem['rotulo'] or 'carro')}" if bem["e_veiculo"] else "Se acontecer alguma coisa"
@@ -757,11 +762,11 @@ def render_proposta_do_canal(modelo: dict) -> str:
                f'</small></span></a><a class="ask" href="{PH._e(wa(duvida))}" rel="noopener">Tirar uma dúvida</a></section>')
 
     validade_longa = AP.data_br(modelo.get("validade_ate"))
-    aviso = AP.aviso_legal(modelo.get("aviso_legal"), _susep(anf))
+    aviso = AP.aviso_do_ramo(modelo.get("aviso_legal"), _susep(anf), modelo)
     legal = ('<footer class="legal">' + (f'<p class="valid">Preços válidos até {PH._e(validade_longa)}.</p>' if validade_longa else "")
              + (f"<p>{PH._e(aviso)}</p>" if aviso else "")
              + f'<p>Comparamos só as ofertas com a mesma cobertura completa; as que cobrem menos aparecem à parte. '
-               f'{PH._e(AP.voz(modelo)["nota_longa"])} pesa preço, franquia e coberturas.</p>'
+               f'{PH._e(AP.voz(modelo)["nota_longa"])} pesa {PH._e(AP.o_que_a_nota_pesa(modelo, ops))}.</p>'
              + f'<p>Comparação independente · {PH._e(nome_canal)}</p></footer>')
 
     def sub_do_dock(o: dict) -> str:

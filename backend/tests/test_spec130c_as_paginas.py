@@ -180,8 +180,11 @@ def test_o_bloco_na_ordem_nas_tres_paginas(pagina):
     assert vis.startswith(_TITULO[pagina]), vis[:80]
     assert f"{NOME}, corretora premiada Nível 5" in vis
     assert "Corretora Nível 5" in vis and "Corretora premiada" in vis and "Prêmio Corretor Destaque · 2025" in vis
-    assert all(a in vis for a, _b in BC.CRITERIOS_DO_NIVEL_5) and "versão 1" in vis
-    assert vis.count("Foto ") == 0 and len(re.findall(r'<figure class="bc-foto"', bloco)) == 4
+    # §9.3 (conserto KA, D-130C-11): os itens viraram COMPROMISSOS (versão 2 da lista) e cada foto diz "Foto N de 4"
+    # (laudo de design, pendência 5) — antes: "versão 1" e nenhum "Foto " visível
+    assert all(a in vis for a, _b in BC.CRITERIOS_DO_NIVEL_5) and "versão 2" in vis
+    assert re.findall(r"Foto \d de 4", vis) == [f"Foto {i} de 4" for i in range(1, 5)]
+    assert len(re.findall(r'<figure class="bc-foto"', bloco)) == 4
     assert 'aria-label="Foto 1 de 4"' in bloco and 'alt="A equipe no escritório"' in bloco
     assert f'alt="Foto da {NOME}"' in bloco                                          # a foto sem legenda
     # o bloco vem DEPOIS das opções e ANTES de "quem cuida de você" (venda/renovação)
@@ -421,3 +424,256 @@ def test_o_css_do_bloco_cabe_nas_regras_da_pagina():
     assert "scroll-snap-type:x mandatory" in css and "@media print" in css
     assert "prefers-color-scheme:dark" in css and 'data-theme="dark"' in css
     assert "transform:" not in re.sub(r"rotate\([^)]*\)", "", css)          # nenhum 3D no bloco
+
+
+# =====================================================================================================================
+# 8. CONSERTO KA — os laudos da 130-C (design B1–B4 + pendências 2/4/5, juiz B1, red team B1/B2). Cada guarda nasceu
+#    VERMELHO no código de 15bb812 e tem a sua mutação ou linha de controle (CLAUDE.md §9.3/§9.5)
+# =====================================================================================================================
+#: 🔴 D-130C-11 (gerente, nota 88): o selo Nível 5 FICA em toda cotação e renovação (ordem do Founder), mas ninguém
+#: confere os itens por corretora — o bloco não pode afirmar conferência, prova, certificado ou garantia (CDC art. 37)
+_AFIRMA_CONFERENCIA = re.compile(r"conferid|comprovad|certificad|garantid", re.I)
+
+
+def selo_afirma_o_que_ninguem_confere(doc: str) -> list:
+    return sorted({x.lower() for x in _AFIRMA_CONFERENCIA.findall(texto_visivel(_bloco(doc)))})
+
+
+def _paginas_com_selo():
+    yield "venda", PV.render_cotacao(venda())
+    yield "renovacao", PH.render_proposta(renovacao())
+    yield "canal", PC.render_proposta_do_canal(canal())
+    for ramo in (16, 91):
+        for renova in (False, True):
+            yield f"{ramo}-{'renovacao' if renova else 'venda'}", PH.render_proposta(do_ramo(ramo, renova=renova))
+
+
+def test_ka1_o_selo_diz_compromissos_e_nunca_que_alguem_confere():
+    for nome, doc in _paginas_com_selo():
+        vis = texto_visivel(_bloco(doc))
+        assert selo_afirma_o_que_ninguem_confere(doc) == [], (nome, selo_afirma_o_que_ninguem_confere(doc))
+        assert "cinco compromissos" in vis and "5 compromissos" in vis, (nome, vis[:600])
+        assert "cumpre os" not in vis and "o multicálculo prova" not in vis and "24 horas" not in vis, nome
+    # cada compromisso diz como o CLIENTE vê: a SUSEP está no topo desta página (o número não se repete no bloco)
+    v = texto_visivel(_bloco(PV.render_cotacao(venda())))
+    assert "o número está no topo desta página" in v and "202031234" not in v
+    sem = texto_visivel(_bloco(PV.render_cotacao(venda(susep=None))))
+    assert "o número está" not in sem and f"peça o número à {NOME}" in sem
+    # a nota do Google só é "a desta página" quando a página a mostra (a renovação nunca mostra Google)
+    assert "a nota do Google aparece no cartão acima" in v
+    r = texto_visivel(_bloco(PH.render_proposta(renovacao())))
+    assert "no cartão acima" not in r and "nunca escolhida a dedo" in r
+    # o WhatsApp só é prometido onde a página tem o botão (o canal volta à conversa DELE, não à da corretora)
+    assert "o botão de WhatsApp desta página" in v
+    c = texto_visivel(_bloco(PC.render_proposta_do_canal(canal())))
+    assert "o botão de WhatsApp desta página" not in c and "Só cotamos com Corretoras Nível 5" in c
+    # a lista da config continua vencendo (e o número por extenso acompanha)
+    m = venda()
+    m["anfitria"]["selo_criterios"] = [["Compromisso fictício A", "detalhe"], ["Compromisso fictício B", "detalhe"]]
+    vm = texto_visivel(_bloco(PV.render_cotacao(m)))
+    assert "Compromisso fictício A" in vm and "dois compromissos" in vm and BC.CRITERIOS_DO_NIVEL_5[0][0] not in vm
+    # MUTAÇÃO: a frase antiga de volta → o guarda fica VERMELHO
+    doc = PV.render_cotacao(venda())
+    antiga = doc.replace('<p class="bc-sub">', '<p class="bc-sub">a Vega cumpre os 5 itens — e cada um é conferido. ', 1)
+    assert selo_afirma_o_que_ninguem_confere(antiga) == ["conferid"]
+
+
+#: 📊 o leitor de RE grava franquia 0 quando a seguradora NÃO informou (`leitor_agger.py:585`: 0 em 38 resultados,
+#: ausente em 22 — laudo de design 130-C B2) — "Franquia R$ 0" é afirmação sem dado
+_FRANQUIA_NA_TELA = re.compile(r"[Ff]ranquia:?\s+R\$|pesa preço, franquia")
+
+
+def franquia_sem_dado(doc: str) -> list:
+    return _FRANQUIA_NA_TELA.findall(texto_visivel(doc))
+
+
+def _re_com_franquia(valores, renova=False, ramo=16):
+    m = do_ramo(ramo, renova=renova)
+    for o, v in zip(m["opcoes"], valores):
+        if v is not None:
+            o["franquia"] = {"valor": v, "tipo": ""}
+    m["ranking"] = [{"seguradora": o["seguradora"], "premio_anual": o["premio_anual"],
+                     "franquia": (o.get("franquia") or {}).get("valor")} for o in m["opcoes"]]
+    m["faq"] = []
+    return m
+
+
+@pytest.mark.parametrize("renova", [False, True], ids=["cotacao", "renovacao"])
+def test_ka2_fora_do_auto_franquia_zero_e_sem_franquia(renova):
+    for valores in ((0, 0.0), (0, None), (None, None)):
+        m = _re_com_franquia(valores, renova=renova)
+        doc = PH.render_proposta(m)
+        assert franquia_sem_dado(doc) == [], (valores, franquia_sem_dado(doc))
+        previa = PH._previa_da_renovacao(m) if renova else PV.previa_da_cotacao(m)
+        assert previa["franquia"] == "", previa["franquia"]
+        if not renova:
+            assert "pesa preço e coberturas" in texto_visivel(doc)
+    # CONTROLE: com uma franquia DE VERDADE ela aparece (e a régua volta a pesar a franquia); o auto não muda
+    doc = PH.render_proposta(_re_com_franquia((5000, 0), renova=renova))
+    assert "Franquia R$ 5.000" in texto_visivel(doc) and "Franquia R$ 0" not in texto_visivel(doc)
+    if not renova:
+        assert "pesa preço, franquia e coberturas" in texto_visivel(doc)
+        assert "pesa preço, franquia e coberturas" in texto_visivel(PV.render_cotacao(venda()))
+
+
+@pytest.mark.parametrize("renova", [False, True], ids=["cotacao", "renovacao"])
+def test_ka2_vida_sem_vistoria_nem_franquia_no_rodape(renova):
+    doc = PH.render_proposta(do_ramo(AP.RAMO_VIDA, renova=renova))
+    legal = texto_visivel(re.search(r'<footer class="legal">(.*?)</footer>', doc, re.S).group(1))
+    assert "vistoria" not in legal and "franquia" not in legal.lower(), legal
+    assert "O preço final depende da aceitação da seguradora." in legal
+    # CONTROLE: no condomínio a vistoria do imóvel é real — a frase fica
+    doc_re = PH.render_proposta(do_ramo(16, renova=renova))
+    assert "vistoria" in texto_visivel(re.search(r'<footer class="legal">(.*?)</footer>', doc_re, re.S).group(1))
+
+
+#: o FAQ e o "se acontecer" da config trazem `{corretora}`/`{validade}` e "a sua corretora" — as três páginas trocam
+_CHAVE_CRUA = re.compile(r"\{[a-z_]+\}")
+
+
+def chaves_cruas(doc: str) -> list:
+    return _CHAVE_CRUA.findall(texto_visivel(doc))
+
+
+def _faq_da_config(ramo: int = AP.RAMO_AUTO) -> list:
+    from app.services.multicalculo.config import PADRAO_DO_PRODUTO
+    pag = PADRAO_DO_PRODUTO["servicos"]["cotacao"]["pagina"]
+    lista = pag["faq"] if ramo == AP.RAMO_AUTO else pag["por_ramo"]["vida" if ramo == AP.RAMO_VIDA else "re"]["faq"]
+    return [{"p": f["pergunta"], "r": f["resposta"]} for f in lista]
+
+
+_SINISTRO_DA_CONFIG = ["Avise a sua corretora assim que puder", "Ela orienta o que fazer e abre o aviso de sinistro",
+                       "A corretora acompanha com a seguradora até o fim"]
+
+
+def _paginas_com_os_textos_da_config():
+    for ramo in (31, 16, 91):
+        for nome, fabrica, render in (("venda", venda, PV.render_cotacao), ("renovacao", renovacao, PH.render_proposta),
+                                      ("canal", canal, PC.render_proposta_do_canal)):
+            if nome == "canal" and ramo != 31:
+                continue
+            m = fabrica() if ramo == 31 else do_ramo(ramo, renova=(nome == "renovacao"))
+            m.update(faq=_faq_da_config(ramo), sinistro=list(_SINISTRO_DA_CONFIG), validade_ate="2026-11-13")
+            yield f"{nome}-{ramo}", render(m)
+
+
+def test_ka3_nenhuma_pagina_mostra_chave_crua_e_o_qcm_diz_o_nome():
+    paginas = dict(_paginas_com_os_textos_da_config())
+    assert len(paginas) == 7
+    for nome, doc in paginas.items():
+        assert chaves_cruas(doc) == [], (nome, chaves_cruas(doc))
+    qcm = paginas["canal-31"]
+    vis = texto_visivel(qcm)
+    assert f"Você avisa a {NOME}. A {NOME} orienta o que fazer" in vis
+    assert "valem até 13/11/2026" in vis
+    sin = texto_visivel(re.search(r'<section class="s" aria-labelledby="h-sin">(.*?)</section>', qcm, re.S).group(1))
+    assert f"Avise a {NOME} assim que puder." in sin and f"A {NOME} acompanha" in sin and "sua corretora" not in sin
+    # MUTAÇÃO: a chave crua de volta → VERMELHO
+    assert chaves_cruas(qcm.replace("</main>", "<p>Você avisa a {corretora}.</p></main>")) == ["{corretora}"]
+
+
+@pytest.mark.parametrize("ramo", [16, 91])
+def test_ka4_o_sinistro_diz_com_quem(ramo):
+    vis = texto_visivel(PV.render_cotacao(do_ramo(ramo)))
+    assert f"Quem cuida do seu caso com a seguradora é a {NOME}, não um 0800." in vis
+    assert "com ela" not in vis
+    # CONTROLE: no auto com assistência, "ela" tem a quem se referir (a seguradora do guincho)
+    auto = texto_visivel(PV.render_cotacao(venda()))
+    assert "O guincho e a assistência 24 h são da seguradora. Quem cuida do seu caso com ela" in auto
+
+
+def _vida_com_capital(n=2, origem="pedido", renova=False):
+    m = do_ramo(AP.RAMO_VIDA, renova=renova)
+    m["opcoes"] = m["opcoes"][:n]
+    for o in m["opcoes"]:
+        o["capital_segurado"] = {"valor": 100000, "origem": origem}
+    return m
+
+
+def _cartoes(doc: str) -> list:
+    return re.findall(r'<article class="pass op".*?</article>', doc, re.S)
+
+
+@pytest.mark.parametrize("renova", [False, True], ids=["cotacao", "renovacao"])
+def test_ka5_a_vida_diz_o_capital(renova):
+    doc = PH.render_proposta(_vida_com_capital(renova=renova))
+    hero = texto_visivel(re.search(r'<article class="oferta".*?</article>', doc, re.S).group(0))
+    assert "Capital segurado R$ 100.000" in hero and ("o valor pedido na renovação" if renova
+                                                      else "o valor que você pediu") in hero, hero
+    assert _cartoes(doc) and all("Capital segurado R$ 100.000" in texto_visivel(c) for c in _cartoes(doc))
+    # a seguradora devolveu o capital: sem "pediu"
+    seg = texto_visivel(PH.render_proposta(_vida_com_capital(origem="seguradora", renova=renova)))
+    assert "Capital segurado R$ 100.000" in seg and "pediu" not in seg and "valor pedido" not in seg
+    # CONTROLE: sem o campo, nada (nunca um capital inventado)
+    assert "Capital segurado" not in texto_visivel(PH.render_proposta(do_ramo(AP.RAMO_VIDA, renova=renova)))
+
+
+def test_ka5_uma_opcao_so_o_cartao_nao_repete_o_hero():
+    doc = PV.render_cotacao(_vida_com_capital(n=1))
+    cart = _cartoes(doc)
+    assert len(cart) == 1 and 'class="preco"' not in cart[0] and "Capital segurado" not in texto_visivel(cart[0])
+    assert "Morte" in texto_visivel(cart[0])                               # o que se compra, sem repetir o preço
+    assert re.search(r'<h2 id="h-op">O que está coberto</h2>', doc) and 'id="track"' in doc   # o script segue igual
+    # sem cobertura nenhuma (o robô real devolve assim): a frase honesta no lugar da lista
+    m = _vida_com_capital(n=1)
+    m["opcoes"][0]["coberturas"] = []
+    assert f"a {NOME} confirma cada cobertura com você antes de fechar" in texto_visivel(PV.render_cotacao(m))
+    # CONTROLE: com 2 opções, os cartões têm o preço (o carrossel de sempre)
+    assert all('class="preco"' in c for c in _cartoes(PV.render_cotacao(_vida_com_capital(n=2))))
+
+
+def _renovacao_com_as_franquias(tipos=("Reduzida", "Reduzida", "Reduzida")):
+    m = renovacao()
+    m["opcoes"][0].update(franquia={"valor": 5170.54, "tipo": tipos[0]},
+                          motivos=["Franquia: R$ 5.170,54", "Carro reserva por 15 dias"])
+    m["opcoes"][1].update(franquia={"valor": 2585.27, "tipo": tipos[1]},
+                          o_que_muda=["R$ 239,21 a mais por ano que a opção “Sua renovação”", "Franquia: R$ 2.585,27"])
+    m["opcoes"][2].update(franquia={"valor": 5170.54, "tipo": tipos[2]})
+    return m
+
+
+def _linha_da_franquia(doc: str) -> str:
+    m = re.search(r'<div class="row"><h4>Franquia</h4>(.*?)</div></div>', doc, re.S)
+    assert m, "a linha da franquia sumiu do comparar"
+    return texto_visivel(m.group(1))
+
+
+def test_ka6_a_franquia_uma_vez_por_cartao_e_o_tipo_so_quando_muda():
+    doc = PH.render_proposta(_renovacao_com_as_franquias())
+    for c in _cartoes(doc):
+        assert len(re.findall(r"[Ff]ranquia:?\s+R\$", texto_visivel(c))) == 1, texto_visivel(c)[:300]
+    vis = _linha_da_franquia(doc)
+    assert "reduzida" not in vis.lower() and "R$ 5.171" in vis and "5.170,54" not in vis, vis
+    # CONTROLE: tipos diferentes → o tipo aparece (é a diferença)
+    vis2 = _linha_da_franquia(PH.render_proposta(_renovacao_com_as_franquias(("Reduzida", "Normal", "Reduzida"))))
+    assert "normal" in vis2.lower() and "reduzida" in vis2.lower(), vis2
+
+
+def test_ka7_cada_foto_diz_a_sua_posicao_e_a_moldura_nao_corta_a_etiqueta():
+    vis = texto_visivel(_bloco(PV.render_cotacao(venda())))
+    assert all(f"Foto {i} de 4" in vis for i in range(1, 5)), vis[-400:]
+    um = texto_visivel(_bloco(PV.render_cotacao(venda(fotos=FOTOS[:1]))))
+    assert "Foto 1 de 1" not in um                                         # uma foto só não precisa de contador
+    css = BC.CSS_DO_BLOCO_DA_CORRETORA
+    # as ilustrações do exemplo são 960×640 (3:2): numa moldura 4:3 o `cover` cortava 53 px de cada lado e empurrava a
+    # etiqueta "EXEMPLO" para o canto arredondado — a moldura é 3:2
+    assert re.search(r"\.bc-foto img\{[^}]*aspect-ratio:3/2", css), "a moldura voltou a cortar as laterais"
+
+
+def test_ka8_a_capa_e_da_cor_da_marca_e_o_cartao_magro_tem_um_fato():
+    css = BC.CSS_DO_BLOCO_DA_CORRETORA
+    capa = re.search(r"\.bc-capa\{[^}]*\}", css).group(0)
+    assert "--bc-acento" not in capa and "var(--bc-marca)" in capa, capa   # marca + acento virava marrom/oliva
+    # o cartão magro (sem cidade, sem ano, sem Google, sem diferenciais) ganha um fato de verdade: a SUSEP
+    m = venda(rica=False, desde=None, google=None, cidade=None, selo="Corretora Nível 5")
+    m["venda"] = {}
+    vis = texto_visivel(_bloco(PV.render_cotacao(m)))
+    assert "202031234 registro na SUSEP" in vis, vis[:400]
+    m["anfitria"]["susep"] = None
+    assert "site da corretora" in texto_visivel(_bloco(PV.render_cotacao(m)))
+    # CONTROLE: com cidade, o cartão de antes (a SUSEP mora no topo — laudo 132-B D6)
+    com_cidade = venda(rica=False, desde=None, google=None)
+    com_cidade["venda"] = {}
+    assert "registro na SUSEP" not in texto_visivel(_bloco(PV.render_cotacao(com_cidade)))
+    # o site do canal ocupa a linha inteira (não quebra deixando um buraco)
+    assert re.search(r'<li class="bc-largo"><a href="https://', _bloco(PC.render_proposta_do_canal(canal())))

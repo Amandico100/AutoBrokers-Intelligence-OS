@@ -212,6 +212,16 @@ def guarda_o_fio(m) -> dict:
     ren = pags["renovacao_a"][2]
     assert not AS.cartao_com_3d(ren), "a renovação voltou ao cartão 3D da carteira"
     assert re.search(r'<body class="[^"]*\bvenda\b', ren) and 'id="count"' in ren
+
+    # ⑥ CONSERTO KA (laudos 130-C), no HTML SERVIDO das 6 páginas: o selo diz compromissos e NUNCA que alguém confere
+    #    (D-130C-11); nenhuma chave crua (`{corretora}`); fora do auto nenhuma "Franquia R$ 0" (a gravação REAL de RE)
+    for nome, (_cid, _momento, doc) in pags.items():
+        assert AS.selo_afirma_o_que_ninguem_confere(doc) == [], f"{nome}: o selo afirma conferência que ninguém faz"
+        assert "compromisso" in texto_visivel(bloco(doc)), f"{nome}: o selo sem os compromissos"
+        assert AS.chaves_cruas(doc) == [], f"{nome}: chave crua na página: {AS.chaves_cruas(doc)}"
+    for nome in ("re_a", "re_b"):
+        assert not re.search(r"[Ff]ranquia:?\s+R\$\s*0(?![\d.,]*[1-9])", texto_visivel(pags[nome][2])), \
+            f"{nome}: 'Franquia R$ 0' numa página de condomínio"
     return {"pags": pags, "foto_a": foto_a, "foto_b": foto_b}
 
 

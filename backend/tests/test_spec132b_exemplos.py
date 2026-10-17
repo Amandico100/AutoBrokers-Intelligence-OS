@@ -107,7 +107,9 @@ def test_a_faixa_aparece_no_html_local_e_no_servido(monkeypatch, tmp_path, pagin
         assert "a renovação do seu Onix está pronta" in txt
         # a copy da renovação (D-131-42, nunca cruzada): nenhum ranking — o motivo da cotação NÃO pode vir junto
         assert "Menor preço entre as" not in txt and "a melhor das" not in txt.lower()
-        assert "Franquia: R$" in txt and "a mais por ano que a opção “Sua renovação”" in txt
+        # §9.3 (SPEC-130-C, conserto KA): a franquia é a linha do cartão ("Franquia R$ …"); o motivo "Franquia: R$ …" com
+        # o mesmo número não se repete logo abaixo (laudo de design 130-C, pendência 2)
+        assert "Franquia R$" in txt and "a mais por ano que a opção “Sua renovação”" in txt
     else:
         assert '<body class="venda">' in servido and "Onix" in texto_visivel(servido)
     assert pub["url"] == f"{BASE}/r/{pub['token']}"

@@ -225,6 +225,10 @@ def coberturas_para_o_cliente(ops: list[dict], modelo: dict) -> list[dict]:
             if not isinstance(c, dict):
                 continue
             chave, nome, valor = str(c.get("chave") or ""), str(c.get("nome") or "").strip(), c.get("valor")
+            # conserto KA: o "capital_pedido" (o marcador do leitor quando a seguradora não ecoou o capital) não é uma
+            # cobertura — com o `capital_segurado` na opção, o hero e o cartão já dizem "Capital segurado R$ X"
+            if r == RAMO_VIDA and chave == "capital_pedido" and capital_da_opcao(o):
+                continue
             if r != RAMO_VIDA and chave in COBERTURAS_SIM_NAO_DO_RE:
                 if _NAO_DO_RE.match(str(valor if valor is not None else "")):
                     continue
@@ -760,3 +764,65 @@ def aviso_legal(texto: Any, susep: Any) -> str:
     if s:
         return t.replace("registrada na SUSEP", f"registrada na SUSEP sob o nº {s}")
     return re.sub(r",\s*registrada na SUSEP", "", t)
+
+
+# =====================================================================================================================
+# SPEC-130-C · conserto KA — o que só existe em ALGUNS ramos (laudo de design B2/B4, red team B2)
+# =====================================================================================================================
+def _positivo(valor: Any) -> bool:
+    d = dec(valor)
+    return d is not None and d > 0
+
+
+def sem_franquia_que_nao_existe(modelo: Any) -> Any:
+    """Fora do AUTO, franquia 0 ou ausente = SEM franquia: o leitor de RE grava 0 quando a seguradora NÃO informou
+    (📊 `leitor_agger.py:585` — 0 em 38 resultados, ausente em 22) e "Franquia R$ 0" afirmaria o que ninguém disse
+    (num condomínio que quase sempre tem franquia de vendaval e danos elétricos). As opções perdem a chave `franquia` e
+    o ranking fica com `franquia=None` — assim somem o hero, o cartão, o comparar e a lista de seguradoras de uma vez.
+    Cópia rasa: o modelo de quem chama não muda; o AUTO volta o MESMO objeto (a página dele não muda um byte)."""
+    if not isinstance(modelo, dict) or e_do_auto(modelo):
+        return modelo
+    m = dict(modelo)
+    if isinstance(modelo.get("opcoes"), list):
+        m["opcoes"] = [({k: v for k, v in o.items() if k != "franquia"}
+                        if isinstance(o, dict) and "franquia" in o
+                        and not (isinstance(o.get("franquia"), dict) and _positivo(o["franquia"].get("valor")))
+                        else o) for o in modelo["opcoes"]]
+    if isinstance(modelo.get("ranking"), list):
+        m["ranking"] = [(dict(x, franquia=None) if isinstance(x, dict) and x.get("franquia") is not None
+                         and not _positivo(x.get("franquia")) else x) for x in modelo["ranking"]]
+    return m
+
+
+def tem_franquia(modelo: Any, ops: Optional[list] = None) -> bool:
+    """A régua pode dizer que "pesa a franquia"? No AUTO sempre (a frase de sempre); fora dele, só quando alguma opção
+    TEM franquia (> 0)."""
+    if e_do_auto(modelo):
+        return True
+    lista = ops if ops is not None else (modelo.get("opcoes") if isinstance(modelo, dict) else None) or []
+    return any(isinstance(o, dict) and isinstance(o.get("franquia"), dict) and _positivo(o["franquia"].get("valor"))
+               for o in lista)
+
+
+def o_que_a_nota_pesa(modelo: Any, ops: Optional[list] = None) -> str:
+    """ "preço, franquia e coberturas" (LEGENDA_DA_NOTA) — ou "preço e coberturas" quando nenhuma opção tem franquia."""
+    return LEGENDA_DA_NOTA if tem_franquia(modelo, ops) else "preço e coberturas"
+
+
+def aviso_do_ramo(texto: Any, susep: Any, modelo: Any) -> str:
+    """O aviso legal (`aviso_legal`) com o que vale para o RAMO: na VIDA não há vistoria (a seguradora pede a declaração
+    de saúde) — "e da vistoria, se houver" sai. O RE fica com a vistoria (do imóvel, real); o auto, como sempre."""
+    t = aviso_legal(texto, susep)
+    if ramo_do_modelo(modelo) == RAMO_VIDA:
+        t = re.sub(r"\s+e da vistoria(?:,\s*se houver)?", "", t)
+    return t
+
+
+def capital_da_opcao(o: Any) -> Optional[dict]:
+    """{valor (R$ inteiro, texto), pedido (bool)} do capital segurado da opção de VIDA — `o["capital_segurado"] = {valor,
+    origem: "pedido"|"seguradora"}` (gravado por `multicalculo/proposta.py`). Sem o campo ou sem valor > 0 → None (a
+    página nunca inventa um capital)."""
+    c = o.get("capital_segurado") if isinstance(o, dict) else None
+    if not isinstance(c, dict) or not _positivo(c.get("valor")):
+        return None
+    return {"valor": brl(c["valor"], False), "pedido": str(c.get("origem") or "").strip().lower() == "pedido"}

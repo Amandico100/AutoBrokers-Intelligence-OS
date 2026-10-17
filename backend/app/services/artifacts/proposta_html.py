@@ -352,6 +352,7 @@ def e_renovacao(modelo: Any) -> bool:
 def _previa_da_renovacao(modelo: dict) -> dict:
     """A prévia do link da renovação — as MESMAS chaves de `previa_do_modelo` (o PNG lê estas), sem dado pessoal
     (nem o vencimento) e sem ranking: a 1ª opção do modelo, a marca e a validade."""
+    modelo = AP.sem_franquia_que_nao_existe(modelo)       # conserto KA: fora do auto, franquia 0 = sem franquia
     ops = _opcoes(modelo)
     rec = ops[0] if ops else {}
     anfitria = _anfitria(modelo)
@@ -394,7 +395,8 @@ def previa_do_modelo(modelo: dict) -> dict:
     FORA — a prévia aparece na conversa para qualquer um que olhe a tela, e é copiada
     por quem encaminha a mensagem.
     """
-    modelo = modelo or {}
+    # SPEC-130-C · conserto KA: fora do auto, franquia 0 = sem franquia também no PNG da prévia (o auto: o mesmo objeto)
+    modelo = AP.sem_franquia_que_nao_existe(modelo or {})
     if e_renovacao(modelo):                     # SPEC-131-B: a prévia da renovação não fala de ranking
         return _previa_da_renovacao(modelo)
     from .proposta_cotacao_html import e_venda, previa_da_cotacao
@@ -869,8 +871,17 @@ def _comparar(ops: list[dict], cliente: bool = False, icones: Optional[dict] = N
     if any(parc(o) for o in ops):
         linha("Parcelas", [parc(o) for o in ops])
     if any(fq(o)[0] is not None for o in ops):
-        linha("Franquia", [(f'<b>{_e(AP.brl(fq(o)[0]))}</b><span class="sub">{_e(fq(o)[1])}</span>{delta_franquia(o)}'
-                            if fq(o)[0] is not None else "") for o in ops])
+        if cliente:
+            # SPEC-130-C · conserto KA (laudo de design, pendência 2): para o CLIENTE, o MESMO arredondamento dos cartões
+            # ("R$ 5.171", nunca "R$ 5.170,54" ao lado) e o tipo ("reduzida") só quando ele MUDA entre as colunas — o
+            # mesmo tipo em todas não diz nada (o laudo 132-B R4 já o tirara do cartão). A carteira segue como era.
+            tipos_mudam = len({fq(o)[1] for o in ops if fq(o)[0] is not None}) > 1
+            linha("Franquia", [(f'<b>{_e(AP.brl(fq(o)[0], False))}</b>'
+                                + (f'<span class="sub">{_e(fq(o)[1])}</span>' if tipos_mudam and fq(o)[1] else "")
+                                + delta_franquia(o) if fq(o)[0] is not None else "") for o in ops])
+        else:
+            linha("Franquia", [(f'<b>{_e(AP.brl(fq(o)[0]))}</b><span class="sub">{_e(fq(o)[1])}</span>{delta_franquia(o)}'
+                                if fq(o)[0] is not None else "") for o in ops])
     if any(AP.numero_inteiro(o.get("nota")) is not None for o in ops):
         linha("Nota, de 0 a 100", [f'<b>{AP.numero_inteiro(o.get("nota"))}</b>' if AP.numero_inteiro(o.get("nota")) is not None
                                    else "" for o in ops])
@@ -923,10 +934,24 @@ def _faq(modelo: dict, ops: list[dict]) -> str:
         menor = next((o for o in ops[1:] if isinstance(o.get("franquia"), dict)
                       and AP.dec(o["franquia"].get("valor")) is not None
                       and AP.reais(AP.dec(fr) - AP.dec(o["franquia"]["valor"])) >= 1), None)
+    # SPEC-130-C · conserto KA (laudo de design B1): o FAQ do produto traz `{corretora}`/`{validade}` — trocados AQUI,
+    # para todo consumidor (o QCM mostrava as chaves cruas ao segurado). No CANAL, "a gente" seria o comparador: quem
+    # orienta, atualiza e cuida é a corretora — o nome dela
+    nome = str(_anfitria(modelo).get("nome") or "").strip()
+    validade = AP.data_br(modelo.get("validade_ate"))
+
+    def trocar(t: str) -> str:
+        t = (t.replace("{corretora}", nome or "corretora")
+             .replace("{validade}", validade or "a data de validade desta cotação"))
+        if modelo.get("origem") == "canal" and nome:
+            t = re.sub(r"\b([Aa]) gente\b", lambda m: f"{m.group(1)} {nome}", t)
+        return t
+
     out = []
     for f in modelo.get("faq") or []:
         if not isinstance(f, dict) or not str(f.get("p") or "").strip() or not str(f.get("r") or "").strip():
             continue
+        f = {"p": trocar(str(f["p"])), "r": trocar(str(f["r"]))}
         r = str(f["r"])
         if str(f["p"]).startswith("Dá para reduzir a franquia") and menor and AP.dec(menor.get("premio_anual")) is not None \
                 and AP.dec(rec.get("premio_anual")) is not None:

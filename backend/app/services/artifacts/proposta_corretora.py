@@ -32,19 +32,32 @@ from typing import Any, Optional
 
 from . import proposta_apresentacao as AP
 
-#: 💭 Os 5 itens do "Corretora Nível 5" — o RASCUNHO do programa (PRONTIDAO-DA-133-A §8, para o Founder lapidar;
-#: D-130A1-04: a lista tem de estar escrita e pública antes de abrir ao público). O modelo pode trazer a própria lista
-#: (`anfitria.selo_criterios` ou `canal.selo_criterios`: [[título, detalhe], …]) — vence esta. (Veio da página do canal
-#: na SPEC-130-C: agora as TRÊS páginas a mostram.)
+#: 💭 Os 5 COMPROMISSOS do "Corretora Nível 5" — o RASCUNHO do programa (PRONTIDAO-DA-133-A §8, para o Founder
+#: lapidar; D-130A1-04: a lista tem de estar escrita e pública antes de abrir ao público). O modelo pode trazer a própria
+#: lista (`anfitria.selo_criterios` ou `canal.selo_criterios`: [[título, detalhe], …]) — vence esta. (Veio da página do
+#: canal na SPEC-130-C: agora as TRÊS páginas a mostram.)
+#: 🔴 D-130C-11 (conserto KA; juiz B1, red team B1, CDC art. 37): o selo vai a TODA cotação e renovação (ordem do Founder)
+#: e NINGUÉM confere os itens corretora a corretora — então cada item é um COMPROMISSO que o próprio cliente consegue ver
+#: nesta página, nunca "conferido", "comprovado", "certificado" ou "garantido". O detalhe abaixo é o GENÉRICO (vale sem
+#: contexto); a página troca pelo da situação dela (`_compromissos`: com SUSEP ou sem, com botão de WhatsApp ou sem, com a
+#: nota do Google à vista ou não) — o TÍTULO é o mesmo sempre (os guardas o leem).
 CRITERIOS_DO_NIVEL_5 = (
-    ("Registro ativo na SUSEP", "conferido no cadastro e na consulta pública."),
-    ("Cota em todas as seguradoras que aceitam o seu perfil", "o multicálculo prova, a cada pedido."),
-    ("Responde na hora, 24 horas", "o agente da corretora atende; a pessoa da corretora assume no horário dela."),
-    ("Acompanha o sinistro do aviso ao fim", "cada passo fica registrado."),
-    ("Reputação pública conferida", "Google e Reclame Aqui lidos e respondidos — a nota aparece como está, sem filtro."),
+    ("Registro na SUSEP", "toda corretora precisa ter; a consulta é pública, no site da SUSEP."),
+    ("Cota em várias seguradoras", "esta página mostra as que responderam ao seu pedido."),
+    ("Atendimento direto, sem central", "quem cuida do seu seguro é a corretora."),
+    ("Acompanha o sinistro do aviso ao fim", "você avisa a corretora, e ela fica do seu lado com a seguradora até o "
+                                             "caso fechar."),
+    ("Reputação sem filtro", "quando a nota pública da corretora aparece, ela vem como está — nunca escolhida a dedo."),
 )
-#: a versão da lista acima (sobe quando o texto muda — o consumidor vê qual lista valia)
-VERSAO_DOS_CRITERIOS = 1
+#: a versão da lista acima (sobe quando o texto muda — o consumidor vê qual lista valia). 2: os itens viraram
+#: compromissos (D-130C-11)
+VERSAO_DOS_CRITERIOS = 2
+#: o número de compromissos por extenso ("cinco compromissos"); fora daqui, o algarismo
+_POR_EXTENSO = {1: "um", 2: "dois", 3: "três", 4: "quatro", 5: "cinco", 6: "seis", 7: "sete", 8: "oito", 9: "nove",
+                10: "dez"}
+#: as palavras que o bloco do selo NUNCA diz (ninguém confere — D-130C-11); o guarda de `test_spec130c_as_paginas` lê a
+#: página com o mesmo critério, escrito lá de novo
+PALAVRAS_QUE_O_SELO_NAO_DIZ = re.compile(r"conferid|comprovad|certificad|garantid", re.I)
 
 #: Quantas fotos a página mostra (a marca guarda até 8 — §4 da SPEC; a página, as 4 primeiras) e quantos prêmios o bloco
 #: lê. São do DESENHO da página (D-130C-03), não número comercial.
@@ -125,6 +138,40 @@ def criterios(modelo: dict) -> tuple[list[tuple[str, str]], Optional[str]]:
                 versao = str(dono.get("selo_versao") or canal.get("selo_versao") or "").strip()
                 return lista, (versao or "do modelo")
     return list(CRITERIOS_DO_NIVEL_5), str(VERSAO_DOS_CRITERIOS)
+
+
+def _quantos(n: int) -> str:
+    """"cinco compromissos" · "um compromisso" · "12 compromissos"."""
+    return f"{_POR_EXTENSO.get(n, str(n))} compromisso{'' if n == 1 else 's'}"
+
+
+def _compromissos(modelo: dict, momento: str, nome: str) -> list[tuple[str, str]]:
+    """A lista do PROGRAMA com o detalhe da situação DESTA página (D-130C-11): cada compromisso diz onde o cliente o vê —
+    nunca que alguém o conferiu. Uma lista do modelo (`criterios`) vem como veio (é dela)."""
+    lista, versao = criterios(modelo)
+    if versao != str(VERSAO_DOS_CRITERIOS):
+        return lista
+    anf = _anf(modelo)
+    titulos = [t for t, _d in CRITERIOS_DO_NIVEL_5]
+    detalhe = dict(CRITERIOS_DO_NIVEL_5)
+    if _susep(anf):
+        detalhe[titulos[0]] = ("o número está no cartão da corretora, acima; a consulta é pública, no site da SUSEP."
+                               if momento == "canal" else
+                               "o número está no topo desta página; a consulta é pública, no site da SUSEP.")
+    else:
+        detalhe[titulos[0]] = f"toda corretora precisa ter: peça o número à {nome} e consulte no site da SUSEP."
+    from .proposta_html import _digitos_do_whatsapp
+    # o canal volta à conversa DELE (D-133A-13), nunca à da corretora — lá o botão não é dela
+    if momento != "canal" and _digitos_do_whatsapp(modelo):
+        detalhe[titulos[2]] = "o botão de WhatsApp desta página abre a conversa com quem cuida de você."
+    else:
+        detalhe[titulos[2]] = f"quem cuida do seu seguro é a {nome}."
+    detalhe[titulos[3]] = f"você avisa a {nome}, e ela fica do seu lado com a seguradora até o caso fechar."
+    if momento != "renovacao" and _google(anf):     # a renovação nunca mostra o Google (`_fatos`)
+        detalhe[titulos[4]] = "a nota do Google aparece no cartão acima, como está — sem filtro."
+    else:
+        detalhe[titulos[4]] = (f"quando a nota pública da {nome} aparece, ela vem como está — nunca escolhida a dedo.")
+    return [(t, detalhe[t]) for t in titulos]
 
 
 def anos_de_mercado(anf: dict, modelo: dict) -> Optional[tuple[int, int]]:
@@ -273,8 +320,20 @@ def _fatos(momento: str, anf: dict, modelo: dict) -> tuple[list[str], str]:
         if parceiras and parceiras > 1:
             fatos.append(f'<li><b>{parceiras} seguradoras</b> <span>parceiras da corretora</span></li>')
     site = str(anf.get("site") or "").strip()
-    if momento == "canal" and re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/[A-Za-z0-9._~/-]*)?", site or ""):
-        fatos.append(f'<li><a href="https://{_e(site)}" rel="noopener">{_e(site)}</a> <span>site da corretora</span></li>')
+    site_ok = re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/[A-Za-z0-9._~/-]*)?", site or "") is not None
+    # o site ocupa a linha inteira (em meia largura um domínio longo quebrava no ponto e deixava um buraco — laudo de
+    # design 130-C, pendência 4c)
+    li_site = (f'<li class="bc-largo"><a href="https://{_e(site)}" rel="noopener">{_e(site)}</a> '
+               "<span>site da corretora</span></li>")
+    if momento == "canal" and site_ok:
+        fatos.append(li_site)
+    # conserto KA (pendência 4b): o cartão MAGRO (sem fato nenhum e sem cidade) era logo + parágrafo — ganha UM fato de
+    # verdade que o modelo já tem: a SUSEP; sem ela, o site. Com cidade o cartão já diz onde a corretora está.
+    if not fatos and not str(anf.get("cidade") or "").strip():
+        if _susep(anf):
+            fatos.append(f'<li><b>{_e(_susep(anf))}</b> <span>registro na SUSEP</span></li>')
+        elif site_ok:
+            fatos.append(li_site)
     return fatos, fonte
 
 
@@ -320,9 +379,11 @@ def bloco_da_corretora(modelo: dict, momento: str, *, nome_canal: str = "", sobr
     n5 = ""
     if selo:
         nivel = nivel_do_selo(selo)
-        lista, versao = criterios(modelo)
+        _lista, versao = criterios(modelo)
+        lista = _compromissos(modelo, momento, nome)
+        # 🔴 D-130C-11: COMPROMISSOS, nunca "itens conferidos" (ninguém confere corretora a corretora — CDC art. 37)
         tiles = [f'<li class="bc-selo">{selo_do_programa(nivel)}<p><b>{_e(selo)}</b> '
-                 f'<span>{len(lista)} itens conferidos</span></p></li>']
+                 f'<span>{len(lista)} compromisso{"" if len(lista) == 1 else "s"}</span></p></li>']
         if premios:                                    # 🔴 D-130C-04 / CDC art. 37: "premiada" SÓ com prêmio cadastrado
             mais = len(premios) - 1
             tiles.append(f'<li class="bc-selo bc-ouro">{selo_premiada(premios[0]["ano"])}<p><b>Corretora premiada</b> '
@@ -331,11 +392,9 @@ def bloco_da_corretora(modelo: dict, momento: str, *, nome_canal: str = "", sobr
         titulo_n5 = f"{nome}, corretora {'premiada ' if premios else ''}{nivel}"
         if momento == "canal":
             sub = (f"Só cotamos com Corretoras {_e(nivel)}. O selo é do programa {_e(nome_canal)}, não do tamanho da "
-                   f"corretora: qualquer corretora pode ser {_e(nivel)}, desde que cumpra os {len(lista)} itens — e "
-                   "cada um é conferido.")
+                   f"corretora: o {_e(nivel)} reúne {_quantos(len(lista))} da {_e(nome)} com quem ela atende:")
         else:
-            sub = (f"{_e(nivel)} é um selo de conduta, não de tamanho: a {_e(nome)} cumpre os {len(lista)} itens "
-                   "abaixo — e cada um é conferido.")
+            sub = f"O {_e(nivel)} reúne {_quantos(len(lista))} da {_e(nome)} com quem ela atende:"
         itens = "".join(f'<li><span class="bc-ck">{_ICO["check"]}</span><span><b>{_e(a)}</b>: {_e(b)}</span></li>'
                         for a, b in lista)
         n5 = (f'<div class="bc-n5"><ul class="bc-selos{" um" if len(tiles) == 1 else ""}" aria-label="Selos da '
@@ -348,9 +407,12 @@ def bloco_da_corretora(modelo: dict, momento: str, *, nome_canal: str = "", sobr
     fotos_html = ""
     if fotos:
         n = len(fotos)
+        # conserto KA (laudo de design, pendência 5): "Foto N de M" ESCRITO em cada foto (CSS puro, sem script novo —
+        # o leitor de tela já ouve o `aria-label` do grupo, então o selinho é `aria-hidden`); uma foto só, sem contador
         figs = "".join(
             f'<figure class="bc-foto" role="group" aria-roledescription="slide" aria-label="Foto {i + 1} de {n}">'
-            f'<img src="{_e(f["src"])}" alt="{_e(f["legenda"] or "Foto da " + nome)}">'
+            f'<span class="bc-quadro"><img src="{_e(f["src"])}" alt="{_e(f["legenda"] or "Foto da " + nome)}">'
+            + (f'<span class="bc-n" aria-hidden="true">Foto {i + 1} de {n}</span>' if n > 1 else "") + "</span>"
             + (f'<figcaption>{_e(f["legenda"])}</figcaption>' if f["legenda"] else "") + "</figure>"
             for i, f in enumerate(fotos))
         fotos_html = (f'<div class="bc-galeria"><h3 class="bc-fotos-t">A {_e(nome)} de perto</h3>'
@@ -381,8 +443,10 @@ CSS_DO_BLOCO_DA_CORRETORA = r"""
 /* o cartão: a capa na cor da marca, o logo numa placa branca sobre a borda dela */
 .bc-card{position:relative;border-radius:24px;background:var(--surface);border:1px solid var(--line);overflow:hidden;
   box-shadow:0 18px 40px -30px rgb(0 0 0 / .45)}
+/* conserto KA (laudo de design, pendência 4a): a capa é SÓ a cor da marca, clara → escura (marca + acento virava marrom
+   ou oliva conforme a dupla de cores); decorativa, sem texto em cima — o logo fica na placa branca */
 .bc-capa{position:relative;height:86px;overflow:hidden;
-  background:linear-gradient(128deg,var(--bc-marca) 0%,var(--bc-marca) 46%,color-mix(in srgb,var(--bc-marca) 58%,var(--bc-acento)) 100%)}
+  background:linear-gradient(128deg,color-mix(in srgb,var(--bc-marca) 80%,#FFFFFF) 0%,var(--bc-marca) 52%,color-mix(in srgb,var(--bc-marca) 72%,#000000) 100%)}
 .bc-capa::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 150% at 0% 0%,rgb(255 255 255 / .24),rgb(255 255 255 / 0) 56%)}
 .bc-capa::after{content:"";position:absolute;right:-46px;top:-74px;width:210px;height:210px;border-radius:50%;
   border:26px solid rgb(255 255 255 / .09);box-shadow:0 0 0 30px rgb(255 255 255 / .05)}
@@ -401,6 +465,7 @@ CSS_DO_BLOCO_DA_CORRETORA = r"""
 .bc-voz b{display:block;font-size:16.5px;font-weight:650;color:var(--ink-strong);margin-bottom:2px}
 .bc-fatos{list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px}
 .bc-fatos li{display:grid;gap:2px;align-content:start;padding:11px 13px;border-radius:14px;background:var(--surface-2);min-width:0}
+.bc-fatos li.bc-largo{grid-column:1/-1}
 .bc-fatos b{display:flex;align-items:center;gap:5px;font-size:19px;line-height:1.15;font-weight:650;color:var(--ink-strong);overflow-wrap:anywhere}
 .bc-fatos b svg{width:16px;height:16px;flex:none;color:#C98A00}
 .bc-fatos span{font-size:13px;line-height:1.3;color:var(--ink-muted)}
@@ -458,8 +523,13 @@ CSS_DO_BLOCO_DA_CORRETORA = r"""
 .bc-foto{flex:0 0 min(300px,calc(100% - 64px));margin:0;scroll-snap-align:start}
 .bc-foto:last-child{scroll-snap-align:end}
 .bc-fotos.n1 .bc-foto{flex-basis:100%}
-.bc-foto img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:18px;background:var(--surface-2);
+/* conserto KA (pendência 5): a moldura 3:2 — as ilustrações do exemplo são 960×640 e o `cover` numa moldura 4:3 cortava
+   53 px de cada lado, empurrando a etiqueta "EXEMPLO" para o canto arredondado; foto de celular deitada também é 3:2/4:3 */
+.bc-quadro{position:relative;display:block}
+.bc-foto img{display:block;width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:16px;background:var(--surface-2);
   box-shadow:0 14px 28px -22px rgb(0 0 0 / .55)}
+.bc-n{position:absolute;right:10px;bottom:10px;padding:3px 9px;border-radius:999px;background:rgb(0 0 0 / .62);color:#FFFFFF;
+  font-size:12.5px;line-height:1.3;font-weight:600;letter-spacing:.01em}
 .bc-foto figcaption{margin:8px 2px 0;font-size:13.5px;line-height:1.35;color:var(--ink-muted)}
 @media (min-width:760px){
   .bc-fotos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;margin:12px 0 0;padding:0;gap:16px}
@@ -475,7 +545,7 @@ CSS_DO_BLOCO_DA_CORRETORA = r"""
 }
 @media (max-width:359px){.bc-selos{grid-template-columns:1fr}.bc .s5{width:80px;height:80px}}
 @media print{
-  .bc-capa,.bc-dica{display:none}
+  .bc-capa,.bc-dica,.bc-n{display:none}
   .bc-id{margin-top:12px}
   .bc-card,.bc-selo{box-shadow:none;border:1px solid #888}
   .bc .s5{filter:none}

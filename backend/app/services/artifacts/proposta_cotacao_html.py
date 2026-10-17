@@ -227,6 +227,27 @@ def _motivos(o: dict) -> list[str]:
     return [m.strip() for m in o.get("motivos") or [] if isinstance(m, str) and m.strip() and not _RE_PARCELA.search(m)]
 
 
+#: "Franquia: R$ 5.170,54" / "Franquia reduzida: R$ 2.585,27" — SÓ o valor, sem nada a mais. O cartão que já mostra a
+#: linha "Franquia R$ 5.171" não repete o número com outra cara (laudo de design 130-C, pendência 2). Uma frase que diz
+#: MAIS que o valor ("(o dobro)", "se precisar consertar", "R$ 376 menor") fica.
+_RE_SO_A_FRANQUIA = re.compile(r"^\s*franquia(?:\s+\w+)?\s*:\s*R\$\s*[\d.,]+\s*\.?\s*$", re.I)
+
+
+def _sem_o_valor_da_franquia(itens: list[str], o: dict) -> list[str]:
+    return [x for x in itens if not (_franquia(o) and _RE_SO_A_FRANQUIA.match(x))]
+
+
+def _capital(o: dict, *, renova: bool) -> str:
+    """VIDA (conserto KA, laudo de design B4): "Capital segurado R$ 100.000" — com "o valor que você pediu" quando o
+    capital é o do PEDIDO (a seguradora não o ecoou). Sem o campo, "" (nunca um capital inventado)."""
+    c = AP.capital_da_opcao(o)
+    if not c:
+        return ""
+    nota = ("o valor pedido na renovação" if renova else "o valor que você pediu") if c["pedido"] else ""
+    return (f'<p class="op-fq op-cap"><span>Capital segurado</span> <b>{_e(c["valor"])}</b>'
+            + (f'<small>{_e(nota)}</small>' if nota else "") + "</p>")
+
+
 def _conta(modelo: dict) -> Optional[dict]:
     return PH._conta_do_resumo(modelo)
 
@@ -284,6 +305,7 @@ def _substituir(texto: str, *, corretora: str, validade: str) -> str:
 # =====================================================================================================================
 def previa_da_cotacao(modelo: dict) -> dict:
     """As MESMAS chaves de `previa_do_modelo` (o PNG lê estas). Sem o primeiro nome, o carro, CPF ou placa."""
+    modelo = AP.sem_franquia_que_nao_existe(modelo)       # conserto KA: fora do auto, franquia 0 = sem franquia
     ops = opcoes_da_venda(modelo)
     rec = ops[0] if ops else {}
     anf = PH._anfitria(modelo)
@@ -406,6 +428,11 @@ body.venda{background:var(--canvas)}
 .op-fq{margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--line-strong);display:flex;justify-content:space-between;
   align-items:baseline;gap:10px;font-size:14px;color:var(--ink-muted)}
 .op-fq b{font-size:17px;font-weight:600;color:var(--ink-strong)}
+/* conserto KA: o capital da vida (com "o valor que você pediu" numa linha própria) e o cartão único sem cobertura */
+.op-cap{flex-wrap:wrap;row-gap:2px}
+.op-cap small{flex-basis:100%;text-align:right;font-size:13px;line-height:1.3;color:var(--ink-muted)}
+.of-fatos .of-nota{font-size:13px;font-weight:500;line-height:1.3}
+.op-semcob{margin:12px 0 0;font-size:14.5px;line-height:1.45;color:var(--ink)}
 .op-pq{margin:12px 0 0}
 .op-pq h3{margin:0 0 6px;font-size:14px;font-weight:600;color:var(--ink-strong)}
 .op .covs{margin-top:12px}
@@ -697,6 +724,9 @@ def render_renovacao(modelo: dict) -> str:
 
 def _pagina(modelo: dict, *, renova: bool) -> str:
     modelo = modelo if isinstance(modelo, dict) else {}
+    # conserto KA (laudo de design B2, red team B2): fora do auto, franquia 0 ou ausente = SEM franquia — some do hero,
+    # dos cartões, do comparar e da lista de seguradoras (o leitor de RE grava 0 quando a seguradora não informou)
+    modelo = AP.sem_franquia_que_nao_existe(modelo)
     venda = {} if renova else _venda(modelo)
     ren = modelo.get("renovacao") if renova and isinstance(modelo.get("renovacao"), dict) else {}
     pagina_pad = {} if renova else _pagina_padrao()
@@ -812,9 +842,16 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
             pq = (f'<p class="of-pq"><b>{"Por que recomendamos" if melhor else "Sobre esta opção"}:</b> '
                   f'{_e(AP.nbsp(motivos[0].rstrip(".")))}.</p>')
         fq = _franquia(rec)
+        # VIDA (conserto KA, laudo de design B4): o hero diz O QUE se compra — o capital segurado, quando o modelo o tem
+        cap = AP.capital_da_opcao(rec)
+        cap_html = ""
+        if cap:
+            nota_cap = (("o valor pedido na renovação" if renova else "o valor que você pediu") if cap["pedido"] else "")
+            cap_html = (f'<div><dt>Capital segurado</dt> <dd>{_e(cap["valor"])}</dd>'
+                        + (f' <dd class="of-nota">{_e(nota_cap)}</dd>' if nota_cap else "") + "</div> ")
         fatos = ""
-        if fq or validade_curta:
-            fatos = ('<dl class="of-fatos">'
+        if fq or validade_curta or cap_html:
+            fatos = ('<dl class="of-fatos">' + cap_html
                      + (f'<div><dt>Franquia</dt> <dd>{_e(fq)}</dd></div> ' if fq else "")
                      + (f'<div><dt>Validade</dt> <dd class="valid">Preço válido até {_e(validade_curta)}</dd></div>'
                         if validade_curta else "")
@@ -852,6 +889,7 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     # R6/(e): "iguais nas três" só com as opções iguais em TUDO o que o modelo sabe
     resto_iguais = resto_iguais and AP.iguais_em_tudo(ops)
     n = len(ops)
+    so_cobertura = n == 1 and not auto          # conserto KA: o cartão único não repete o hero (o auto, como sempre)
     cartoes = []
     for i, o in enumerate(ops):
         if renova:
@@ -861,18 +899,19 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
             blk = (f'<h3>{"Por que recomendamos" if i == 0 else "Por que considerar"}</h3>'
                    f'<p class="expl">{_e(AP.nbsp(ptxt))}</p>' if ptxt else "")
             if i == 0:
-                mot = _motivos(o)[:3]
+                mot = _sem_o_valor_da_franquia(_motivos(o), o)[:3]
                 blk += ('<ul class="why">' + "".join(f'<li>{PH.ICO["check"]}<span>{_e(AP.nbsp(m))}</span></li>'
                                                      for m in mot) + "</ul>") if mot else ""
             else:
-                itens = [_e(AP.nbsp(x)) for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()]
+                itens = [_e(AP.nbsp(x)) for x in _sem_o_valor_da_franquia(
+                    [x for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()], o)]
                 itens += [_e(AP.nbsp(f'{c["nome"]}: {AP.valor_para_o_cliente(c.get("chave"), AP.valor_da_cobertura(c))}'))
                           + PH._pill("up", "a mais") for c in PH.so_nas_outras(ops, o)]
                 blk += (f'<h3>O que muda em relação {_e(PH._a_referencia(rec))}</h3><ul class="diffs">'
                         + "".join(f"<li>{x}</li>" for x in itens) + "</ul>") if itens else ""
             pq = f'<div class="op-pq">{blk}</div>' if blk else ""
         elif i == 0:
-            mot = _motivos(o)[:3]
+            mot = _sem_o_valor_da_franquia(_motivos(o), o)[:3]
             titulo = "Por que recomendamos" if PH.e_a_melhor_do_ranking(modelo, o) else "Sobre esta opção"
             pq = (f'<div class="op-pq"><h3>{titulo}</h3><ul class="why">'
                   + "".join(f'<li>{PH.ICO["check"]}<span>{_e(AP.nbsp(m))}</span></li>' for m in mot)
@@ -881,7 +920,8 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
             pq = (f'<div class="op-pq"><h3>Por que custa menos</h3><p class="expl">'
                   f'{_e(AP.nbsp(o["por_que_mais_barata"].strip()))}</p></div>')
         else:
-            muda = [x for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()]
+            muda = _sem_o_valor_da_franquia([x for x in o.get("o_que_muda") or [] if isinstance(x, str) and x.strip()],
+                                            o)
             fala_franquia = any("franquia" in x.lower() for x in muda)
             itens = [_e(AP.nbsp(x)) for x in muda + [m for m in _motivos(o)
                                                      if not (fala_franquia and "franquia" in m.lower())]][:4]
@@ -904,16 +944,26 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
         aria = f"Opção {i + 1} de {n}: {rotulo(o)}, {o.get('seguradora') or ''}, {parcela_em_texto(o)}"
         pe = (f'<div class="op-pe"><a class="want" href="{_e(href_fechar(o))}" rel="nofollow">{PH.ICO["wa"]}'
               f'Quero esta</a></div>' if digitos else "")
+        if so_cobertura:
+            # conserto KA (laudo de design B4): UMA opção fora do auto — o hero já tem o preço, a franquia/capital e o
+            # porquê; o cartão diz só O QUE está coberto (o `#track` fica: o script e o "preço vencido" seguem iguais)
+            sem_cob = ("" if covs or mais else
+                       f'<p class="op-semcob">A seguradora não detalhou as coberturas no cálculo: a '
+                       f'{_e(nome_anf or "corretora")} confirma cada cobertura com você antes de fechar.</p>')
+            miolo = (f'<ul class="covs">{covs}</ul>' if covs else "") + mais + sem_cob
+        else:
+            miolo = (_bloco_do_preco(o, "preco", a_vista=a_vista)
+                     + (f'<p class="op-inv">{_e(AP.nbsp(inversao))}</p>' if inversao else "")
+                     + _capital(o, renova=renova)
+                     + (f'<p class="op-fq"><span>Franquia</span> <b>{_e(fq)}</b></p>' if fq else "")
+                     + pq + (f'<ul class="covs">{covs}</ul>' if covs else "") + mais)
         cartoes.append(
             f'<div class="slot" id="opt-{i}" data-i="{i}" role="tabpanel" aria-labelledby="tab-{i}">'
             f'<article class="pass op" data-v="{i + 1}" aria-label="{_e(aria)}">'
             f'<span class="op-tag">{_e(rotulo(o))}</span> '
             f'<p class="op-seg">{_e(o.get("seguradora") or "")}'
             + (f' <span class="prod">{_e(produto)}</span>' if produto else "") + "</p>"
-            + _bloco_do_preco(o, "preco", a_vista=a_vista)
-            + (f'<p class="op-inv">{_e(AP.nbsp(inversao))}</p>' if inversao else "")
-            + (f'<p class="op-fq"><span>Franquia</span> <b>{_e(fq)}</b></p>' if fq else "")
-            + pq + (f'<ul class="covs">{covs}</ul>' if covs else "") + mais + pe + "</article></div>")
+            + miolo + pe + "</article></div>")
     abas = "".join(f'<a class="tab" href="#opt-{i}" role="tab" id="tab-{i}" aria-controls="opt-{i}" '
                    f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else " tabindex=" + chr(34) + "-1" + chr(34)}>'
                    f'{_e(rotulo(o))}</a>' for i, o in enumerate(ops))
@@ -926,7 +976,13 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
                   f'<button type="button" id="next" aria-label="Próxima opção">{PH.ICO["right"]}</button></div></div>')
     # item 7 / D6: o topo já diz quantas cotamos e quantas são completas; aqui só as OUTRAS (as partes somam o total)
     frase_conta = _as_outras(conta) if (not renova and conta and lede.startswith("Cotamos em")) else ""
-    if renova:
+    if so_cobertura and frase_conta:
+        # com UMA opção a seção vira "O que está coberto": a conta das outras sobe para junto do "Cotamos em N" do topo
+        # (as partes continuam somando o total — J-B3)
+        lede, frase_conta = f"{lede} {frase_conta}", ""
+    if so_cobertura:
+        titulo_ops = "O que a sua renovação cobre" if renova else "O que está coberto"
+    elif renova:
         titulo_ops = {1: "A sua renovação", 2: "As duas opções da sua renovação"}.get(n, f"As {n} opções da sua renovação")
     else:
         titulo_ops = {1: "A opção que separamos", 2: "As duas opções que separamos"}.get(n, f"As {n} opções que separamos")
@@ -1028,8 +1084,10 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     sinistro = ""
     if passos_s:
         guincho = "O guincho e a assistência 24 h são da seguradora. " if tem_assistencia else ""
+        # conserto KA (laudo de design B3): "com ela" só quando a frase do guincho diz quem é "ela" (a seguradora)
         quem = (f"Quem cuida é a {_e(nome_anf)}, não um 0800." if renova
-                else f"Quem cuida do seu caso com ela é a {_e(nome_anf)}, não um 0800.")
+                else f"Quem cuida do seu caso {'com ela' if guincho else 'com a seguradora'} é a {_e(nome_anf)}, "
+                     "não um 0800.")
         sinistro = (f'<section class="s" aria-labelledby="h-sin"><h2 id="h-sin">Se acontecer alguma coisa</h2>'
                     + (f'<p class="sub">{guincho}{quem}</p>' if nome_anf else "")
                     + f'<div class="sin">{PH.ICO["casco"]}<ul>'
@@ -1090,13 +1148,14 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     todas = _todas_as_seguradoras(modelo, ops) if renova else ""
 
     # ---- 11. rodapé legal (o critério da economia mora aqui — D1)
-    aviso = AP.aviso_legal(modelo.get("aviso_legal"), susep)
+    # conserto KA: na vida não há vistoria; a nota só "pesa a franquia" quando alguma opção tem franquia
+    aviso = AP.aviso_do_ramo(modelo.get("aviso_legal"), susep, modelo)
     if renova:
         legal = ('<footer class="legal">' + (f'<p class="valid">{_e(valido)}</p>' if valido else "")
                  + (f"<p>{_e(aviso)}</p>" if aviso else "") + "</footer>")
     else:
         metodo = ("Como comparamos: só entram lado a lado as ofertas com a mesma cobertura completa; as que cobrem menos "
-                  "dizem o que deixam de cobrir. A nossa nota, de 0 a 100, pesa preço, franquia e coberturas.")
+                  f"dizem o que deixam de cobrir. A nossa nota, de 0 a 100, pesa {AP.o_que_a_nota_pesa(modelo, ops)}.")
         if eco:
             metodo += (f" A economia compara o prêmio líquido da sua apólice atual ({AP.brl(eco['hoje'], False)} por "
                        f"ano, lido no documento que você enviou, sem o IOF) com o preço {A_VISTA} da opção "

@@ -270,10 +270,12 @@ def test_a_lista_do_nivel_5_e_a_do_programa_e_o_modelo_pode_trocar():
     m.update(origem="canal", canal={"nome": "Comparador Ficticio"})
     m["anfitria"]["selo"] = "Corretora Nível 5"
     vis = texto_visivel(PC.render_proposta_do_canal(m))
-    assert all(a in vis for a, _b in PC.CRITERIOS_DO_NIVEL_5) and "versão 1" in vis
+    # §9.3 (SPEC-130-C, conserto KA — D-130C-11): os itens viraram COMPROMISSOS (versão 2 da lista; "os 2 itens … cada um
+    # é conferido" afirmava uma conferência que ninguém faz) — a lição migra: a lista do modelo continua vencendo
+    assert all(a in vis for a, _b in PC.CRITERIOS_DO_NIVEL_5) and "versão 2" in vis
     m["canal"]["selo_criterios"] = [["Critério fictício A", "detalhe"], ["Critério fictício B", "detalhe"]]
     vis2 = texto_visivel(PC.render_proposta_do_canal(m))
-    assert "Critério fictício A" in vis2 and PC.CRITERIOS_DO_NIVEL_5[0][0] not in vis2 and "os 2 itens" in vis2
+    assert "Critério fictício A" in vis2 and PC.CRITERIOS_DO_NIVEL_5[0][0] not in vis2 and "dois compromissos" in vis2
 
 
 def test_o_nome_do_canal_vem_da_config_e_nao_e_constante_do_renderizador():

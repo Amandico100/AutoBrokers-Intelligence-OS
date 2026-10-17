@@ -503,7 +503,10 @@ def test_design_o_aumento_nunca_e_vantagem_a_franquia_e_uma_palavra_e_o_vencimen
     assert "Franquia reduzida de" not in txt and not re.search(r"Franquia reduzida R\$", txt)
     assert not re.search(r'<span class="lbl">Franquia [^<]', doc)
     assert not re.search(r"Franquia de R\$ [\d.,]+ \(R\$ [\d.,]+ (menor|maior)\)", txt)
-    assert re.search(r"Franquia: R\$ [\d.,]+", txt)
+    # §9.3 (SPEC-130-C, conserto KA — laudo de design 130-C, pendência 2): o cartão que mostra a linha "Franquia R$ 5.171"
+    # não repete o motivo "Franquia: R$ 5.170,54" (o mesmo número com duas caras) — a lição (uma palavra só, "Franquia",
+    # nunca "Franquia reduzida R$") migra para a linha do cartão
+    assert re.search(r"Franquia R\$ [\d.,]+", txt) and not re.search(r"Franquia: R\$ [\d.,]+", txt)
     sep = re.search(r"\d %", txt)                                       # "7%" e "100%", nunca "7 %"
     assert not sep, txt[max(0, sep.start() - 80):sep.end() + 30]
     assert '"Sua renovação"' not in txt and "“Sua renovação”" in txt     # aspas tipográficas

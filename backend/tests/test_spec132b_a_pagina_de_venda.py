@@ -68,10 +68,15 @@ APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "docume
 #: D-130C-02/07: o bloco da corretora "Mais um ano em boas mãos") e o CANAL por decisão DELE (D-130C-02/09: o bloco da
 #: corretora no lugar do cartão + "Só cotamos…", o carrossel com abas da venda) — retirados com o mesmo cálculo
 #: (`scratchpad/f2/jobs/job_03_retrato.py`). A CARTEIRA: o MESMO hash de antes (esta SPEC não a toca).
+#: §9.3 (17/10, SPEC-130-C conserto KA — laudos de design/juiz/red team): a RENOVAÇÃO mudou por decisão DELA (o motivo
+#: "Franquia: R$ 5.170,54" não repete a linha "Franquia R$ 5.171" do cartão; no comparar, o mesmo arredondamento e o tipo
+#: só quando muda) e o CANAL por decisão DELE (o FAQ e o "se acontecer" com o NOME da corretora — "a gente"/"a sua
+#: corretora" eram o comparador ou ninguém). Retirados com o mesmo cálculo (`scratchpad/k/retrato.py`); a CARTEIRA: o
+#: MESMO hash de antes.
 RETRATO_ANTES = {
     "carteira": "56d8c9e5469dc837fa11cf95379f2e1237818f3ab7293cce73f86166d2aeac96",
-    "renovacao": "39a9543fc88d0cae2b52a8faba10e2dedd1fb4f44f42003d19faf75c2db14b5b",
-    "canal": "aa0e440cd717e54adf959de7102d915e26c6c9d574dd11c08e01ce729467b6a7",
+    "renovacao": "d8b4aea6c893b2592f5c9c8aa55e5ceb9cbd24d50c0aaaf7c056d0dadb4db2d0",
+    "canal": "6b5ab39b58600ac29324804f48e738e9b177a8ac352e50a993475e4ff9e2762a",
 }
 
 
