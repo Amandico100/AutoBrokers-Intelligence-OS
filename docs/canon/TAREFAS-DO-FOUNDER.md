@@ -265,6 +265,9 @@
 > 16. **16/10 (SPEC-129-D construída, vida DESLIGADA):** **T-190** (a sessão presa da Resulta, hoje) · **T-193** (licença da AutoFleet até
 >    27/10) · **T-192** (comissão de vida no Agger) + **T-195** (Implantar os 3 juntos; o `smith-web` depois da T-174) → **T-196** (LIGAR a vida,
 >    só depois das duas) · **T-191** (Bradesco) e **T-194** (apagar os testes) quando puder.
+> 17. **17/10 (SPEC-130-C construída — a página de todos os ramos):** **T-197** (a migration `_04`, 2 min) → **T-198** (Implantar `smith-api` →
+>    `smith-worker` → `smith-web`) → **T-200** (SUSEP e WhatsApp de atendimento na marca) → **T-199** (fotos e prêmios) → **T-201** (ver um
+>    exemplo de cada ramo) · **T-202** (os links antigos do QCM) quando quiser.
 
 - [ ] **T-156** ⏳ 🧑 **antes da T-141 — conversa com cada comercial** · **O aceite NOVO da madrugada** (D-131-03, revê a D-131-0-05; o
       texto antigo da T-141 prometia "nunca derruba a sessão dela" e deixa de valer). Combine com cada comercial, com estas palavras:
@@ -661,6 +664,69 @@
       vocês responderem. **Se der errado:** "esse ramo ainda não" → a variável não pegou em algum serviço (confira os três); todas as
       seguradoras fora pela comissão → T-192. **Para desligar:** apague a linha dos três serviços e Implante. **Bloqueia?** É a decisão.
       · *de:* S129-D §11 · D-129D-09
+      ↪ **17/10 (SPEC-130-C, D-130C-08):** depois do Implantar da 130-C (T-198), a cotação de vida pelo chat responde com o LINK da página
+      do cliente, como o carro e o RE (não mais "sem página"). A página mostra "Capital de R$ 100.000 para quem você indicar · o valor que
+      você pediu" e nunca diz "cobertura completa" quando a seguradora não detalhou as coberturas.
+
+> **17/10 (SPEC-130-C — a página do cliente para todos os ramos, o bloco da corretora e as fotos da marca; branch
+> `spec/130-C-a-pagina-dos-ramos`):** a página de RENOVAÇÃO passa a ter a mesma cara da de cotação (o carrossel que travava não trava mais);
+> condomínio, residencial, empresarial e vida ganham página; toda página (cotação, renovação, Quem Cobra Menos) ganha o bloco "Por que fechar
+> com a <corretora>" / "Mais um ano em boas mãos" / "Quem é a corretora que cobra menos?", com os selos **Nível 5** (só com o Código SUSEP
+> preenchido) e **Corretora premiada** (só com prêmio cadastrado) e as FOTOS da própria corretora. 📊 Montar a página custa **US$ 0,00** de
+> modelo. **Uma migration aplicada** (a `_03`); a `_04` é sua (T-197). Nasceram a T-197 a T-202. 📊 17/10: Resulta e AutoFleet têm SUSEP;
+> nenhuma corretora tem foto nem prêmio ainda.
+
+- [ ] **T-197** ⏳ 🧑 **antes de subir a 2ª foto, 2 min** · **Aplicar a migration `_04` no SQL Editor do Supabase** (a ferramenta do gerente
+      recusou o passo que apaga um índice) — supabase.com → projeto do AutoBrokers → **SQL Editor** → **New query** → cole o conteúdo INTEIRO do
+      arquivo `backend/supabase/migrations/20261016_04_spec130c_fotos_contract.sql` (no GitHub, `main`, depois do push da 130-C) → **Run**.
+      **Esperado:** "Success" e, na aba de mensagens, a linha `VERIFY 20261016_03 OK: duas_fotos_entram;dois_atuais_do_mesmo_papel_recusados;
+      legenda_81_recusada;ordem_fora_de_foto_recusada;…` (o bloco testa e DESFAZ tudo o que escreveu). Depois, numa query nova:
+      `select (select count(*) from pg_indexes where tablename='brand_assets' and indexname='brand_assets_one_current_per_kind') as antigo,
+      (select count(*) from pg_indexes where tablename='brand_assets' and indexname='brand_assets_one_current_per_kind_exceto_foto') as novo;`
+      → **antigo 0 · novo 1**. **Se der errado:** "20261016_04 recusada: aplique a 20261016_03 primeiro" → não deveria acontecer (a `_03` está
+      aplicada, 📊 versão `20261017004656`); print no chat. "VERIFY … FALHOU" → nada ficou gravado; print no chat. **Custa esquecer:** cada
+      corretora fica com UMA foto (a 2ª recebe "A 2ª foto precisa de um passo de instalação do banco"). **Bloqueia?** Só a 2ª foto. · *de:*
+      S130-C §4 · D-130C-20 · P-130C-01
+- [ ] **T-198** ⏳ 🧑 **quando quiser, 15 min, fora do horário de atendimento** · **Implantar `smith-api` → `smith-worker` → `smith-web`** — EasyPanel
+      → `smith-api` → **Implantar**; `smith-worker` → **Implantar**; depois `smith-web` → **Implantar** (a tela "Fotos e prêmios"; depois da T-174,
+      pode ser o MESMO Implantar da T-180/T-183/T-187/T-195). O `portal-worker` não muda nesta SPEC. Nenhuma variável nova.
+      **Esperado:** os três "running"; abra `https://autobrokers-intelligence-os-autobrokers-smith-web.golhpm.easypanel.host/api/versao` →
+      `commit` do push da SPEC-130-C (o gerente diz qual). **Se der errado:** "unhealthy" → print do log do contêiner e a hora no chat.
+      **Custa esquecer:** nada da 130-C chega ao segurado. **Bloqueia?** Sim, para T-199…T-202. · *de:* S130-C §9
+- [ ] **T-199** ⏳ 🧑 **depois da T-198 (e da T-197 para mais de 1 foto), 10 min por corretora** · **Subir as fotos e os prêmios da Resulta e da
+      AutoFleet** — logado em CADA corretora no painel → **Personalização → Corretora → Identidade → aba "Fotos e prêmios"** → **Adicionar foto**
+      (JPG, PNG, WebP ou HEIC, até 10 MB; até 8 fotos; a página mostra as 4 primeiras, na ordem da tela; legenda até 80 letras) e **Prêmios**
+      (nome e ano, até 10). Só fotos que a corretora autoriza mostrar (a equipe, o escritório); o servidor tira a localização (GPS) da foto.
+      **Esperado:** a foto aparece na lista em segundos; ao salvar um prêmio, a tela diz que o selo "Corretora premiada" aparece junto do Nível 5.
+      **Se der errado:** "não é uma foto que dê para usar" → é outro formato (PDF, GIF, SVG); "Uma foto da galeria não pode ser o logo" → o logo
+      tem a área própria; "A 2ª foto precisa de um passo…" → falta a T-197. **Custa esquecer:** o bloco da corretora sai sem fotos e sem
+      "premiada" (ele some sem dado — nada é inventado). **Bloqueia?** Não. · *de:* S130-C §4 · D-130C-03/04
+- [ ] **T-200** ⏳ 🧑 **depois da T-198, 5 min** · **SUSEP e WhatsApp de atendimento na marca de cada corretora** — mesma tela da Identidade:
+      **Código SUSEP** (sem ele, a página sai SEM o selo Nível 5 — D-130C-11) e o **WhatsApp de atendimento** da corretora (sem ele, a página sai
+      sem o botão "Quero fechar"/"Quero renovar" e diz "responda a mensagem em que recebeu este link"). Depois, **Publicar** a marca. 📊 17/10:
+      Resulta e AutoFleet COM SUSEP; a AMANDUS sem SUSEP (sai sem selo, o certo). **Esperado:** no exemplo da T-201, o topo mostra "SUSEP nº …"
+      e a barra "Quero fechar" aparece. **Custa esquecer:** a página sem selo e sem o botão de fechar. **Bloqueia?** Não. · *de:* S130-C §11 ·
+      P-130A-02
+- [ ] **T-201** ⏳ 🧑 **depois da T-198, 10 min** · **Ver um exemplo de cada ramo** (marca real, dados fictícios, faixa "Exemplo" no topo, fotos
+      ILUSTRATIVAS se a corretora não tiver nenhuma) — EasyPanel → serviço **`smith-api`** → **Console**, um comando por linha (Resulta; para a
+      AutoFleet troque o id por `6c9c55e2-2f30-4ca2-a1ef-4ef464ed1b4a`):
+      `python -m scripts.publicar_exemplo_da_pagina --company-id 04b5cdbc-04cd-4ddf-8e4b-f43efb062fab --pagina venda --ramo 31 --com-whatsapp-da-corretora --confirmar`
+      `python -m scripts.publicar_exemplo_da_pagina --company-id 04b5cdbc-04cd-4ddf-8e4b-f43efb062fab --pagina renovacao --ramo 31 --com-whatsapp-da-corretora --confirmar`
+      `python -m scripts.publicar_exemplo_da_pagina --company-id 04b5cdbc-04cd-4ddf-8e4b-f43efb062fab --pagina venda --ramo 16 --com-whatsapp-da-corretora --confirmar`
+      `python -m scripts.publicar_exemplo_da_pagina --company-id 04b5cdbc-04cd-4ddf-8e4b-f43efb062fab --pagina venda --ramo 2 --com-whatsapp-da-corretora --confirmar`
+      `python -m scripts.publicar_exemplo_da_pagina --company-id 04b5cdbc-04cd-4ddf-8e4b-f43efb062fab --pagina venda --ramo 18 --com-whatsapp-da-corretora --confirmar`
+      `python -m scripts.publicar_exemplo_da_pagina --company-id 04b5cdbc-04cd-4ddf-8e4b-f43efb062fab --pagina venda --ramo 91 --com-whatsapp-da-corretora --confirmar`
+      (31 carro · 16 condomínio · 2 residencial · 18 empresarial · 91 vida; troque `venda` por `renovacao` para ver a renovação do ramo).
+      **Esperado:** cada comando imprime um link `…/r/…` e o tamanho do HTML; abra no celular: o carrossel com abas e "1 de N" desliza sem
+      travar; o bloco "Por que fechar com a Resulta" com o selo Nível 5; nenhuma palavra de carro no condomínio/residencial/empresarial/vida.
+      Sem `--com-whatsapp-da-corretora`, a página sai sem o botão de fechar. **Se der errado:** "variável … ausente" → falta o endereço público do
+      painel no `smith-api` (PUBLIC_APP_URL) — print no chat; "No module named scripts" → o Console não abriu na pasta do backend: rode
+      `cd /app` (a pasta do backend na imagem, `backend/Dockerfile` `WORKDIR /app`) e repita. ⚠️ Este comando com `--confirmar` NÃO foi provado dentro do contêiner nesta
+      SPEC (só sem `--confirmar`, local). **Custa esquecer:** você não vê a página nova antes de um cliente. **Bloqueia?** Não. · *de:* S130-C §9
+- [ ] **T-202** ⏳ 🧑 **quando quiser** · **Os links antigos do Quem Cobra Menos ficam com o layout antigo** — a página é GUARDADA no momento em
+      que é publicada; o link que você viu "empilhado" foi publicado antes de 10/10 (o código já era carrossel desde a 133-A.1). Para ver o
+      novo: peça uma cotação nova no canal (ou republique) DEPOIS da T-198. **Esperado:** o link novo abre com as abas, "1 de N" e o bloco "Quem
+      é a corretora que cobra menos?". **Custa esquecer:** julgar a página nova por um link velho. **Bloqueia?** Não. · *de:* S130-C §9 · P-130C-11
 
 ### ① Implantar e conferir — não depende de nada
 

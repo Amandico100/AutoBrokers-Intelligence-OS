@@ -284,6 +284,10 @@ advisors antes e depois, e canário Amandus → Resulta → AutoFleet.
 | `20261015_01_spec1310b2_linha_do_usuario.sql` | `20261015053220` | `1c2fa38abb6f040f` | 15/10/2026, pelo gerente | 131-0-B2 |
 | `20261016_01_spec139_conteudo_dos_aplicativos.sql` | `20261015122333` | `d78f271281279019` | 15/10/2026, pelo gerente | 139 |
 | `20261016_02_spec139_a_duvida_da_cobranca.sql` | `20261015142645` | `e227e37a8d36a7d9` | 15/10/2026, pelo gerente | 139 |
+| `20261016_03_spec130c_fotos_e_premios.sql` | `20261017004656` (nome no banco `20261016_03a_spec130c_fotos_e_premios_expand`) | `0e858ab1f1f1a662` | 17/10/2026 (UTC), pelo gerente via MCP — só a parte EXPAND; o apply do arquivo inteiro foi recusado pela ferramenta (`DROP INDEX`) e o DROP foi para a `_04` | 130-C |
+| `20261016_04_spec130c_fotos_contract.sql` | ⏳ não aplicada — 🧑 do Founder, SQL Editor (T-197) | `a67b24d600424070` | — | 130-C |
 
 📊 sha conferido em 15/10 (`Get-FileHash -Algorithm SHA256` no HEAD `dbd6da1`); versões lidas no banco pelo juiz e pela confirmação da 139
 e pelo relatório da 131-0-B2. APPLY / VERIFY / ROLLBACK de cada uma: no próprio arquivo e no relatório da SPEC.
+📊 130-C: sha conferido em 17/10 (`Get-FileHash -Algorithm SHA256`, HEAD `7e1647e`; o cabeçalho da `_03` foi corrigido no conserto KB, só
+comentário — o sha é o do arquivo ATUAL); versão lida no banco pelo juiz (`20261017004656:20261016_03a_spec130c_fotos_e_premios_expand`).

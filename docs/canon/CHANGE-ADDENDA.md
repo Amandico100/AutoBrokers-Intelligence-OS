@@ -4266,3 +4266,32 @@ cliente; o auto segue igual (confirmação item 4). **Autorização:** aceito pe
 login), não só vida. **Consequência:** `asyncio.wait(timeout=5)` + log "licença: N leitura(s) sem resposta em 5s — segue sem ela"; o login
 segue. 📊 No canário (16/10 12:11 UTC) o prazo disparou e o login entrou em 23,9 s. Sem prova no contêiner Linux (P-129D-12). **Autorização:**
 licença de autonomia (protocolo §9: muda o que o robô faz, sem decisão de produto); D-129D-12, nota 92 × sem prazo 0.
+
+## 17/10/2026 · SPEC-130-C · a carteira de RE mudou (passa a mostrar as coberturas reais) — ESSENCIAL · ✅ EXECUTADA (`04b1dfe`)
+**Problema:** o contrato da SPEC (§1) dizia "a carteira antiga (`render_proposta` sem `situacao` de venda/renovação) byte a byte"; o guarda
+byte a byte cobre só o AUTO. **Evidência:** juiz P1 — `proposta_apresentacao.escolher_coberturas` (ramo sem casco/terceiros → as 4 primeiras
+coberturas no cartão) é usado também pela carteira; 📊 17/10 (`compara.py`, módulos de `40f66de` × HEAD, mesmo modelo RE sintético): carteira RE
+sha256 `f73d5bf118850b34` → `c963a6dcfb60211d`, `--rows:6` → `--rows:10`. A carteira de AUTO segue 📊 `56d8c9e5469dc837` (igual) e o
+`HASH_DO_SCRIPT` não mudou. **Consequência:** a carteira de RE mostra as coberturas de RE em vez de cartões vazios de carro (benigno, chega ao
+segurado). Falta um guarda byte a byte do RE (P-130C-14, valor marginal). **Autorização:** licença de autonomia (protocolo §9: melhora o que o
+segurado lê, sem decisão de produto); declarada aqui por exigência do juiz.
+
+## 17/10/2026 · SPEC-130-C · a vida publica página (revê a D-129D-16) — ESSENCIAL · ✅ EXECUTADA (`0654fd0`)
+**Problema:** a 129-D deixou a cotação nova de vida respondendo só no chat, "sem página ao cliente" (D-129D-16), à espera da 130-C. **Evidência:**
+`cotacao/workflow.py` (📊 `git diff 40f66de..HEAD`): sai `_opcoes_de_vida_sem_pagina` e a `NOTA_DA_VIDA`; a vida segue o MESMO `publicar_cotacao`.
+**Consequência:** a vida manda o link da página como os outros ramos; o que a 129-D garante continua ANTES (perguntas de saúde/renda nunca
+presumidas; chave `MULTICALCULO_VIDA_LIGADO`); nada de fumante/renda/esporte na página (📊 red team: 0 em 14 páginas). **Autorização:** SPEC §7
+D-130C-08 (85 × só no chat 50); era o escopo da SPEC (D-129D-10), registrado aqui porque revê uma decisão anterior.
+
+## 17/10/2026 · SPEC-130-C · a migration dividida em `_03` (aplicada) e `_04` (do Founder) — ESSENCIAL · ✅ `_03` EXECUTADA · ⏳ `_04` (T-197)
+**Problema:** o desenho era UMA migration trocando o índice único de `brand_assets`. **Evidência:** o `apply_migration` RECUSOU o arquivo inteiro
+por ter `DROP INDEX` (16/10); a parte expand foi aplicada como 📊 versão `20261017004656` (`…_03a_…_expand`), VERIFY: índice novo 1 · antigo 1 ·
+colunas 2 · checks 3 · awards 1 · checks awards 2 · policies 0. **Consequência:** até a `_04`, 1 foto por corretora (a 2ª recebe uma frase clara,
+testada); o VERIFY comportamental mora na `_04`; o cabeçalho da `_03` foi corrigido no KB (só comentário). **Autorização:** decisão do gerente
+(D-130C-20, 💭 85 × forçar o DROP por outra via 20); o passo destrutivo fica com o Founder (CLAUDE.md §8).
+
+## 17/10/2026 · SPEC-130-C · os polimentos do K2 (pedidos pelo design R2) — VALIOSA · ✅ EXECUTADA (`34953d8`, `2110dc7`)
+**Problema:** o design R2 (91) deixou o blocker de vida e 5 polimentos. **Evidência:** laudo `130c-design-r2.md` §3 P1–P5. **Consequência:** as
+datas da renovação sem briga (D-130C-16) · a Nota some quando igual (17) · Básica primeiro no RE (18) · SUSEP com rótulo e uma regra só (19) · o
+sinistro numerado 1–4 nas 9 páginas. 📊 confirmação 2: `86 passed`, CONFIRMADO 90; a carteira de auto `56d8c9e5469dc837` igual. **Autorização:**
+decisão do gerente no conserto (texto ao segurado melhorado, sem decisão de produto; protocolo §9).

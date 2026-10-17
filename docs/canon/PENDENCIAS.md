@@ -13677,6 +13677,10 @@ pedem credencial própria para RE e corrigir a HDI (T-136). **Custa esquecer:** 
 ## P-129C-05 · 🤖 A página/proposta dos outros ramos (130-C)
 A página de hoje é de carro; o ranking de RE (com `avisos`) ainda não chega ao cliente nem ao chat. **Destrava:** a 130-C (D-129C-08).
 ↪ **16/10 · 🟡 CONTINUA.** A 130-C passa a incluir a página de VIDA (D-129D-10/16): a cotação nova de vida responde só no chat.
+↪ **17/10 · ✅ FECHADA pela SPEC-130-C** ([relatório](reports/SPEC-130-C-EXECUTION-REPORT.md)): condomínio, residencial, empresarial e vida
+têm página na cotação nova e na renovação, no MESMO gerador (D-130C-01/08). 📊 o fio publica RE de 2 corretoras pelo caminho do produto e lê o
+HTML servido; 📊 design R2: RE **91**, 0 palavra de carro em 8/8 páginas de RE e vida; a vida publica página (revê a D-129D-16). O QCM de RE e
+vida segue com a 133-B (o canal só calcula auto).
 
 ## P-129C-06 · 🤖 A atividade do empresarial: a busca do Agger exige 3 letras e casa por trecho (inferido de 1 amostra)
 A classe `imovel_desocupado` e o radical de busca não foram medidos ao vivo além do canário. **Destrava:** o próximo cálculo real de
@@ -14740,5 +14744,93 @@ nos gravados" (juiz §9.5). **De quem:** 🤖.
 | P-131A-02 | 🟡 PARCIAL — a licença foi lida AO VIVO pelo robô (📊 canário 16/10: `licenca_agger` com `dataLimiteCalculo` 27/10/2026) e o prazo de 5 s disparou; o Prosseguir segue sem prova; o servidor, P-129D-12 |
 | P-131A-05 | 🟡 CONTINUA — o rótulo de moto da InfoCap segue sem medição; mas a moto pega pela placa agora vira `pendente(ramo_nao_cotado)` "renove manualmente" (antes caía em `falhou(calculo_falhou)` pelo prefixo do motor — conserto K2) |
 | P-131A-16 | 🟡 PARCIAL — `test_spec129d_conserto_app::test_v3_…` usa o texto REAL que o motor grava (`motor._motivo_recusado`), com controle; o `JS_PREPARAR` ainda não roda num motor JS |
-| P-129C-05 | 🟡 CONTINUA — a 130-C passa a incluir a página de vida (D-129D-10/16) |
+| P-129C-05 | 🟡 CONTINUA — a 130-C passa a incluir a página de vida (D-129D-10/16) · ↪ ✅ FECHADA 17/10 pela 130-C |
 | P-130A-18 | 🟡 CONTINUA — a sessão fantasma pode ser a da Resulta em 16/10 (P-129D-17) |
+
+### 130-C · A página do cliente para todos os ramos, o bloco da corretora e as fotos da marca — 17/10/2026 · [relatório](reports/SPEC-130-C-EXECUTION-REPORT.md)
+
+> Fonte: os laudos (juiz 84, red team 80 QUEBREI, design 83 → R2 91, confirmação 90, confirmação 2 90) e os commits `02d4e1b`…`7e1647e`.
+> Já fechados no conserto (não entram aqui): o selo "cada um é conferido" (D-130C-11), "Franquia R$ 0" no RE, `{corretora}` cru no QCM,
+> "com ela" sem referente, a vida sem capital e com "cobertura completa", o cabeçalho da `_03`, o Pillow no laço de eventos, a frase da bomba de
+> pixels, a foto como logo, o aviso falso de "premiada" na tela, `_susep` em duas regras, "SUSEP: nº N".
+
+## P-130C-01..14 · as fotos, os ramos e o bloco da corretora
+
+## P-130C-01 · 🧑 A migration `_04` (o DROP do índice antigo) não rodou — hoje, 1 foto por corretora
+📊 17/10: `brand_assets_one_current_per_kind` ainda existe (`indice_antigo 1`); a 2ª foto recebe "A 2ª foto precisa de um passo de instalação
+do banco". **Destrava:** T-197. **De quem:** 🧑. **Custa esquecer:** o carrossel de fotos nunca passa de 1.
+
+## P-130C-02 · 🤖 O peso das fotos na página e no modelo gravado
+📊 as 4 fotos ilustrativas do exemplo: 30–48 KB em WEBP (40–64 KB em base64); fotos reais até 💭 90 KB → até ~480 KB a mais por página, e o
+modelo gravado no Hub carrega as fotos também na carteira, que não as mostra (juiz P8). **Destrava:** medir a página no 4G depois da 1ª foto
+real; tirar as fotos do modelo da carteira. **De quem:** 🤖. **Custa esquecer:** a página abre mais devagar no celular do segurado.
+
+## P-130C-03 · 🤖 "Perto de você" (a corretora pela região do cliente) não existe
+📊 0 ocorrências em `services/canal`, `services/multicalculo` e `programa-multicalculo/` (BLOCO 0 M8, D-130C-10). **Destrava:** SPEC própria
+quando houver corretoras fora da mesma cidade. **De quem:** 🤖. **Custa esquecer:** o QCM não diz por que aquela corretora.
+
+## P-130C-04 · 🤖 A vida com várias ofertas reais nunca passou pela página; a vida não está no fio
+O exemplo de vida usa o canário de 16/10 (1 oferta, Porto); o fio (F4) cobre auto, condomínio, renovação de auto e QCM — a vida pelo
+`publicar_cotacao` real não (juiz P10; o workflow usa dublê da publicação). **Destrava:** o 1º cálculo de vida com 2+ preços (depois da T-192)
+e um caso de vida no fio. **De quem:** 🤖. **Custa esquecer:** o carrossel de vida com várias opções sai sem prova.
+
+## P-130C-05 · 🤖 O vão antes do "Quero esta" no cartão
+O carrossel iguala a altura pela maior opção; o cartão menor fica com ~120–150 px vazios antes do botão (design R2 P2). **Destrava:** o botão
+logo após o conteúdo. **De quem:** 🤖. **Custa esquecer:** parece conteúdo faltando (valor marginal).
+
+## P-130C-06 · 🤖 `bonus_classe` sem escritor
+A renovação lê `renovacao.bonus_classe` (`proposta_cotacao_html.py:849`); 📊 `git grep bonus_classe -- backend/app` → só essa leitura.
+**Destrava:** o perfil da renovação gravar a classe de bônus da apólice (ficha 130-B ou InfoCap). **De quem:** 🤖. **Custa esquecer:** o
+"hoje × renovação" nunca mostra a classe de bônus.
+
+## P-130C-07 · 🤖 FAQ e sinistro por ramo não são editáveis pela corretora em RE e vida
+As dúvidas e os passos do sinistro de RE e vida saem do produto (`manual_de_negociacao`/`proposta.py`, F3), sem campo da corretora (registro
+do gerente; 💭 a extensão exata do que o auto já permite editar não foi reconferida pelo atualizador). **Destrava:** os campos por ramo no
+Configurar. **De quem:** 🤖. **Custa esquecer:** a corretora não ajusta o que diz ao síndico ou ao segurado de vida.
+
+## P-130C-08 · 🤖 A descrição do bem de RE sai vazia
+O modelo tem `bem.descricao` (sem PII, SPEC §5 contrato F3↔F2), mas para condomínio/residencial/empresarial ela sai vazia (registro do
+gerente); a página fica com o rótulo do ramo. **Destrava:** uma
+descrição sem dado pessoal (tipo de imóvel, atividade). **De quem:** 🤖. **Custa esquecer:** valor marginal.
+
+## P-130C-09 · 🤖 Os 3 menores da confirmação 2
+(a) `_cobertura_que_conta`: valor "0,00" (com vírgula) conta como cobertura detalhada → a vida voltaria a dizer "cobertura completa" (o leitor
+grava número; hoje não acontece) · (b) `o_que_a_nota_pesa` num RE sem cobertura alguma diz "preço" · (c) `frase_da_vida_sem_detalhe` casa por
+string exata (uma frase nova CAI — o desenho seguro). E da confirmação 1 (O2): "esta página mostra as que responderam" na vida com 1 opção.
+**De quem:** 🤖. **Custa esquecer:** valor marginal.
+
+## P-130C-10 · 🤖 O teto de 8 fotos só no código; a corrida das duas últimas
+`FOTOS_TETO = 8` mora em `fotos.py`, sem CHECK no banco. Duas fotos simultâneas com 7 gravadas → as duas recontam 9, as duas se apagam, ficam 7
+e as duas recebem "Outra foto acabou de ser enviada; tente de novo" (juiz P4 · red team P1). `atualizar_foto` aceita `sort_order` repetido
+(red team P3; o Next não envia). **De quem:** 🤖. **Custa esquecer:** valor marginal (nada vaza).
+
+## P-130C-11 · 🤖 Republicar não puxa foto nova enquanto o link vigente vale
+O HTML é guardado no publicar; `link_que_ainda_vale` devolve o link antigo (juiz P9). Vale para foto cadastrada depois e para os links do QCM
+anteriores à 130-C (empilhados até 10/10). **Destrava:** "republicar" que força versão nova quando a marca mudou. **De quem:** 🤖. **Custa
+esquecer:** a corretora sobe as fotos e o cliente com link antigo não as vê.
+
+## P-130C-12 · 🤖 PNG enorme bem comprimido custa memória por requisição
+📊 PNG de 49 Mpx com 159 KB passa no teto de bytes e decodifica ~150–200 MB (1,5 s) — só admin/dono envia (red team P2). **Destrava:** baixar
+o teto de pixels ou decodificar reduzido. **De quem:** 🤖. **Custa esquecer:** um pico de memória no `smith-api`.
+
+## P-130C-13 · 🤖 O cartão da corretora magro
+A Resulta (sem cidade, ano, diferenciais) tem só o logo, a SUSEP e um parágrafo genérico; o subtítulo é a frase da marca (design R1 P4b, R2
+P5). **Destrava:** um fato de pessoa ("quem atende") e os dados da marca (T-199/T-200). **De quem:** 🤖 + 🧑. **Custa esquecer:** o bloco
+convence pouco.
+
+## P-130C-14 · 🤖 Menores do design
+A ordem das abas difere (venda "Recomendada · Mais em conta · Mais completa"; QCM "… · Mais completa · Mais em conta") · "Validade / Preço
+válido até" repete a ideia · aspas retas nos cartões de RE · "Mesma configuração de coberturas das outras opções comparadas" é frase de
+sistema · "o valor pedido na renovação" → "o mesmo capital de hoje" quando igual · QCM "economizar até R$ X" usa a "Mais em conta" (copy do
+Founder — registrar, não mexer) · a carteira de RE mudou (📊 `f73d5bf118850b34` → `c963a6dcfb60211d`, CHANGE-ADDENDA 17/10) e não tem guarda
+byte a byte (só o auto tem). **De quem:** 🤖. **Custa esquecer:** valor marginal.
+
+## A drenagem das pendências que a SPEC-130-C tocou
+| P | estado |
+|---|---|
+| P-129C-05 | ✅ FECHADA — RE e vida com página na cotação nova e na renovação (📊 fio + design R2 RE 91; D-130C-01/08) |
+| P-130A1-02 | 🟡 CONTINUA — os 5 itens viraram COMPROMISSOS visíveis, sem "conferido" (D-130C-11, "versão 2" do gerente) e já aparecem nas 3 páginas; a lista pública do Founder segue pendente |
+| P-130A-02 | 🟡 CONTINUA — agora sem SUSEP a página sai SEM o selo Nível 5 (D-130C-11); 📊 17/10 Resulta e AutoFleet COM SUSEP, AMANDUS sem (T-200) |
+| P-130A1-09 | ✅ FECHADA — 📊 BLOCO 0 M9 (16/10): a marca da AutoFleet está publicada, com ano; o topo mostra "SUSEP nº …" (confirmação 1) |
+| P-129D-01 | 🟡 CONTINUA — a página de vida mostra o capital PEDIDO marcado ("o valor que você pediu"), nunca como o da seguradora |
+| P-133A-08 | 🟡 CONTINUA — a Identidade ganhou "Fotos e prêmios"; o botão "Publicar" e o logo SVG na proposta seguem como estavam |
