@@ -187,7 +187,13 @@ def test_J_B1_sem_whatsapp_nenhuma_frase_do_html_servido_promete_whatsapp(monkey
     assert "whatsapp" not in json.dumps(re.search(r'id="ab-dados">(.*?)</script>', doc, re.S).group(1)).lower()
     sem_script = re.sub(r"<script\b.*?</script>", "", doc, flags=re.S)
     assert "?fechar=" not in sem_script and "wa.me" not in doc and 'class="dock"' not in doc
-    assert "Avise a sua corretora assim que puder" in texto_visivel(doc)
+    # SPEC-130-C (laudo de design B1, §9.3): no canal o passo do sinistro diz o NOME da corretora ("Avise a <Nome>…");
+    # a lição continua — sem WhatsApp o passo existe e não promete WhatsApp (as afirmações acima)
+    visivel = texto_visivel(doc)
+    if solicitante == "canal":
+        assert re.search(r"Avise a (?!sua corretora)[^.]{2,80} assim que puder", visivel), "o passo não diz o nome"
+    else:
+        assert "Avise a sua corretora assim que puder" in visivel
 
 
 # =====================================================================================================================

@@ -105,7 +105,9 @@ def test_a_anfitria_vencedora_veste_a_marca_publicada_e_o_google_confirmado(monk
 def test_sem_marca_publicada_fica_neutra_e_o_whatsapp_e_o_de_atendimento(monkeypatch):
     m = M.montar_mundo(monkeypatch, solicitante="beta")
     a = _montar(m)["anfitria"]
-    assert a == {"nome": M.NOME_BETA, "marca_cadastrada": False, "whatsapp": "5548999990002"}
+    # SPEC-130-C (§9.3): a anfitriã ganhou `fotos` e `premios` (o bloco da corretora); sem marca publicada elas vêm VAZIAS —
+    # a lição continua: nada da marca é inventado, nenhum selo, só o nome e o WhatsApp de atendimento
+    assert a == {"nome": M.NOME_BETA, "marca_cadastrada": False, "whatsapp": "5548999990002", "fotos": [], "premios": []}
 
 
 def test_o_numero_do_observador_nunca_vira_o_quero_fechar(monkeypatch):

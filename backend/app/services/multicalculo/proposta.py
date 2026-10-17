@@ -602,8 +602,9 @@ async def montar_anfitria(db: Any, company_id: str, cfg: Mapping[str, Any], *,
 # =====================================================================================================================
 #: quantas fotos a página mostra (D-130C-03: 8 guardadas, 4 na página) e quantos prêmios o modelo leva (§4: ≤ 10)
 TETO_DE_FOTOS_NA_PAGINA = 4
-TETO_DE_PREMIOS = 10
 TETO_DA_LEGENDA = 80
+# o teto de prêmios NÃO mora aqui: é o do escritor (`brand.fotos.PREMIOS_TETO`) e o CHECK do banco — o guarda G8 da 130-A
+# (nenhum número comercial nos arquivos da proposta) pediu que não houvesse um segundo número igual neste arquivo
 _RE_DATA_URL_DE_FOTO = re.compile(r"data:image/(?:webp|jpeg|png);base64,([A-Za-z0-9+/=]+)")
 
 
@@ -647,6 +648,10 @@ async def fotos_da_anfitria(db: Any, company_id: str) -> List[Dict[str, str]]:
 
 async def premios_da_anfitria(db: Any, company_id: str) -> List[Dict[str, Any]]:
     """Os prêmios cadastrados pela corretora: [{nome, ano|None}] (D-130C-04: "premiada" só com ≥ 1 — CDC art. 37)."""
+    try:
+        from app.services.brand.fotos import PREMIOS_TETO as teto
+    except Exception:  # noqa: BLE001 — sem a F1 não há prêmio nenhum (a leitura abaixo devolve [])
+        teto = 0
     saida: List[Dict[str, Any]] = []
     for p in await _ler_da_marca("premios", db, company_id):
         if not isinstance(p, Mapping):
@@ -657,7 +662,7 @@ async def premios_da_anfitria(db: Any, company_id: str) -> List[Dict[str, Any]]:
         ano = p.get("ano")
         saida.append({"nome": nome, "ano": ano if isinstance(ano, int) and not isinstance(ano, bool) and ano > 0
                       else None})
-        if len(saida) >= TETO_DE_PREMIOS:
+        if len(saida) >= teto:
             break
     return saida
 
