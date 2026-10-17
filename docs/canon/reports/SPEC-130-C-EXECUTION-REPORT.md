@@ -195,7 +195,13 @@ o da `_04`. Páginas publicadas depois do Implantar guardam o HTML novo (republi
 Pendências → `PENDENCIAS.md` P-130C-01…14 · drenadas: P-129C-05 ✅ FECHADA · P-130A1-02/P-130A-02 🟡 · P-130A1-09 ✅ · P-129D-01 🟡.
 
 ## Push
-{{PUSH}}
+Push do código, da migration, dos testes e dos documentos (17/10/2026):
+```
+To https://github.com/Amandico100/AutoBrokers-Intelligence-OS.git
+   40f66de..3d27262  HEAD -> main
+ * [new branch]      HEAD -> spec/130-C-a-pagina-dos-ramos
+```
+`git rev-list --count origin/main..HEAD` → 0. Depois o Founder clica Implantar (T-198).
 
 ## §11 A TELEMETRIA
 `PYTHONIOENCODING=utf-8 backend/.venv/Scripts/python.exe backend/scripts/medir_execucao_claude_code.py --sessao atual`, da raiz, 17/10 ~10:57 UTC
