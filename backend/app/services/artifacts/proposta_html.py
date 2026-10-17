@@ -882,7 +882,10 @@ def _comparar(ops: list[dict], cliente: bool = False, icones: Optional[dict] = N
         else:
             linha("Franquia", [(f'<b>{_e(AP.brl(fq(o)[0]))}</b><span class="sub">{_e(fq(o)[1])}</span>{delta_franquia(o)}'
                                 if fq(o)[0] is not None else "") for o in ops])
-    if any(AP.numero_inteiro(o.get("nota")) is not None for o in ops):
+    notas = {AP.numero_inteiro(o.get("nota")) for o in ops}
+    # conserto K2 (laudo de design R2, pendência 3): para o CLIENTE, "Nota 91 · 91 · 91" não diz nada — a linha só
+    # aparece quando as notas DIFEREM. A carteira segue como era.
+    if any(AP.numero_inteiro(o.get("nota")) is not None for o in ops) and not (cliente and len(notas) == 1):
         linha("Nota, de 0 a 100", [f'<b>{AP.numero_inteiro(o.get("nota"))}</b>' if AP.numero_inteiro(o.get("nota")) is not None
                                    else "" for o in ops])
     for c in rec.get("coberturas") or []:
@@ -984,12 +987,15 @@ def _conta_do_resumo(modelo: dict) -> Optional[dict]:
     return {"cotadas": completas + diferentes + nr, "completas": completas, "diferentes": diferentes, "nr": nr}
 
 
-def _frase_da_conta(c: Optional[dict], ofertas_que_cobrem_menos: int) -> str:
+def _frase_da_conta(c: Optional[dict], ofertas_que_cobrem_menos: int,
+                    com_o_que: str = " com a mesma cobertura completa") -> str:
     """ "Cotamos em 16 seguradoras: 13 deram preço com a mesma cobertura completa, 1 só ofereceu um produto
-    diferente e 2 não deram preço." — cada seguradora em UM lugar só, e as partes somam o total."""
+    diferente e 2 não deram preço." — cada seguradora em UM lugar só, e as partes somam o total. `com_o_que`
+    (conserto K2): a vida sem cobertura detalhada não diz "cobertura completa"; o padrão é o de sempre (a carteira e
+    o canal seguem byte a byte)."""
     if not c:
         return ""
-    partes = [f"{c['completas']} {'deu' if c['completas'] == 1 else 'deram'} preço com a mesma cobertura completa"]
+    partes = [f"{c['completas']} {'deu' if c['completas'] == 1 else 'deram'} preço{com_o_que}"]
     if c["diferentes"]:
         partes.append(f"{c['diferentes']} só {'ofereceu um produto diferente' if c['diferentes'] == 1 else 'ofereceram produtos diferentes'}")
     if c["nr"]:

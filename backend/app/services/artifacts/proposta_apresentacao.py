@@ -244,7 +244,9 @@ def coberturas_para_o_cliente(ops: list[dict], modelo: dict) -> list[dict]:
                     continue
                 valor = brl(valor, False)
             linhas.append(dict(c, nome=nome, valor=valor))
-        saida.append(dict(o, coberturas=linhas))
+        # conserto K2 (laudo de design R2, pendência 4): no RE a Básica primeiro e a assistência por último — no cartão
+        # e no "Comparar" (os dois seguem a ordem da 1ª opção)
+        saida.append(dict(o, coberturas=_ordem_do_re(linhas) if r != RAMO_VIDA else linhas))
     return saida
 
 
@@ -805,8 +807,70 @@ def tem_franquia(modelo: Any, ops: Optional[list] = None) -> bool:
 
 
 def o_que_a_nota_pesa(modelo: Any, ops: Optional[list] = None) -> str:
-    """ "preço, franquia e coberturas" (LEGENDA_DA_NOTA) — ou "preço e coberturas" quando nenhuma opção tem franquia."""
+    """ "preço, franquia e coberturas" (LEGENDA_DA_NOTA) — ou "preço e coberturas" quando nenhuma opção tem franquia.
+    SPEC-130-C (conserto K2, laudo de design R2 B1): fora do auto, sem cobertura detalhada em opção nenhuma (a vida
+    cujo cálculo só devolveu o preço), a nota não pesou cobertura — "preço" (ou "preço e franquia"). O auto, como era."""
+    lista = ops if ops is not None else (modelo.get("opcoes") if isinstance(modelo, dict) else None) or []
+    if not e_do_auto(modelo) and sem_cobertura_detalhada(lista):
+        return "preço e franquia" if tem_franquia(modelo, ops) else "preço"
     return LEGENDA_DA_NOTA if tem_franquia(modelo, ops) else "preço e coberturas"
+
+
+#: o marcador do leitor do robô quando a seguradora NÃO ecoou o capital da vida (`leitor_agger.CAPITAL_PEDIDO` — o
+#: guarda `test_spec130c_as_paginas` confere que é o mesmo): não é cobertura, é o capital que o pedido levou
+CAPITAL_PEDIDO = "capital_pedido"
+
+
+def _cobertura_que_conta(c: Any) -> bool:
+    """Uma cobertura DETALHADA: não é o marcador do capital pedido e não é um valor zerado (zero = não contratada)."""
+    if not isinstance(c, dict) or not str(c.get("chave") or "").strip() or c.get("chave") == CAPITAL_PEDIDO:
+        return False
+    v = c.get("valor")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return v > 0
+    if isinstance(v, str) and re.fullmatch(r"\s*\d+(?:\.\d+)?\s*", v):
+        return float(v) > 0
+    return True
+
+
+def sem_cobertura_detalhada(ops: Any) -> bool:
+    """SPEC-130-C (conserto K2, laudo de design R2 B1): nenhuma opção traz cobertura detalhada — 📊 a vida do canário
+    (16/10): a seguradora devolve só o preço e o capital (`capital_pedido`). Sem opção nenhuma → False (nada a dizer).
+    A MESMA regra no modelo (`multicalculo/proposta.py`) e na página."""
+    lista = [o for o in ops or [] if isinstance(o, dict)]
+    return bool(lista) and not any(_cobertura_que_conta(c) for o in lista for c in o.get("coberturas") or [])
+
+
+def vida_sem_coberturas(modelo: Any, ops: Optional[list] = None) -> bool:
+    """A página de VIDA cujas opções não detalham cobertura: nela nada diz "cobertura completa" (a página não sabe)."""
+    lista = ops if ops is not None else (modelo.get("opcoes") if isinstance(modelo, dict) else None) or []
+    return ramo_do_modelo(modelo) == RAMO_VIDA and sem_cobertura_detalhada(lista)
+
+
+def susep_limpa(anf: Any) -> str:
+    """O número da SUSEP da corretora, sem o prefixo que às vezes vem no cadastro ("SUSEP nº: 202031234" → "202031234").
+    🔴 UMA regra só (conserto K2, item 7): o topo, o cartão da corretora, o compromisso "o número está no topo" e o
+    rodapé leem daqui — dois recortes diferentes fariam o compromisso apontar um número que o topo não mostra."""
+    s = str((anf or {}).get("susep") or "") if isinstance(anf, dict) else ""
+    return re.sub(r"(?i)^\s*susep\b\s*(?:n(?:[úu]mero)?\s*[º°o.]*)?[\s:#.\-]*", "", s).strip()
+
+
+#: SPEC-130-C (conserto K2, laudo de design R2 pendência 4) — a ordem das coberturas de RE na tela: a BÁSICA (incêndio,
+#: raio e explosão — o coração do seguro de imóvel) primeiro, depois o conteúdo e os vidros; a assistência por último.
+#: As chaves são as do motor (`multicalculo.pedido.CHAVE_DA_BASICA` e `comparacao.NOME_DA_COBERTURA_RE`; o guarda
+#: confere): aqui como texto porque este módulo é PURO.
+CHAVE_DA_BASICA_RE = "isDanosIncendioRaioExplosao"
+ORDEM_DO_RE_PRIMEIRO = (CHAVE_DA_BASICA_RE, "isDanosIncendioRaioExplosaoCond", "vidros")
+ORDEM_DO_RE_POR_ULTIMO = ("assist24hs",)
+
+
+def _ordem_do_re(linhas: list[dict]) -> list[dict]:
+    def peso(c: dict) -> int:
+        k = str(c.get("chave") or "")
+        if k in ORDEM_DO_RE_PRIMEIRO:
+            return ORDEM_DO_RE_PRIMEIRO.index(k)
+        return len(ORDEM_DO_RE_PRIMEIRO) + (1 if k in ORDEM_DO_RE_POR_ULTIMO else 0)
+    return sorted(linhas, key=peso)                 # estável: o resto fica na ordem em que veio
 
 
 def aviso_do_ramo(texto: Any, susep: Any, modelo: Any) -> str:

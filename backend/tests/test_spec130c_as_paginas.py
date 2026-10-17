@@ -200,7 +200,9 @@ def test_cada_momento_tem_a_sua_voz():
     assert "Quem já conhece o seu seguro." in r and "Você renova com a gente há 3 anos." in r
     assert "no Google" not in r                                   # quem já é cliente não precisa de prova de estranho
     assert "O Comparador Ficticio só compara" in c and "Só cotamos com Corretoras Nível 5" in c
-    assert "202031234" in c and "202031234" not in v and "202031234" not in r     # a SUSEP no topo da venda/renovação
+    # §9.3 (conserto K2, laudo de design R2 pendência 5): a venda mostra a SUSEP no cartão como o QCM (antes: só no
+    # canal); a renovação continua com ela só no topo
+    assert "SUSEP 202031234" in c and "SUSEP 202031234" in v and "202031234" not in r
     # "renova com a gente há N anos" SÓ com prova (CDC art. 37)
     assert "renova com a gente" not in texto_visivel(PH.render_proposta(renovacao(anos=None)))
 
@@ -213,7 +215,11 @@ def test_o_cartao_magro_continua_cartao():
     bloco = _bloco(PV.render_cotacao(m))
     vis = texto_visivel(bloco)
     assert NOME in vis and "Florianópolis" in vis and "Quem representa você é a corretora." in vis
-    assert 'class="bc-fatos"' not in bloco and 'class="bc-fotos' not in bloco and "no mercado" not in vis
+    # §9.3 (conserto K2, pendência 5): o único fato do cartão é a SUSEP (a venda a mostra como o QCM)
+    assert [texto_visivel(x) for x in re.findall(r"<li><b[^>]*>(.*?)</b>",
+                                                 re.search(r'<ul class="bc-fatos">(.*?)</ul>', bloco).group(1))] == \
+        ["SUSEP 202031234"]
+    assert 'class="bc-fotos' not in bloco and "no mercado" not in vis
     assert bloco.count('<li class="bc-selo') == 1 and f"{NOME}, corretora Nível 5" in vis
 
 
@@ -354,7 +360,9 @@ def test_mutacao_5_a_renovacao_sem_o_3d_e_com_as_abas():
     assert doc.count('class="tab"') == 3 and doc.count('<div class="slot"') == 3
     vis = texto_visivel(doc)
     assert vis.count("vence em") == 1 and "Mais um ano em boas mãos" in vis and "Quero renovar" in vis
-    assert "Renovando até 20/10, o seu seguro continua sem um dia descoberto" in vis
+    # §9.3 (conserto K2, laudo de design R2 pendência 1): o preço do CONTRATO vale até ANTES do vencimento (20/10) — o
+    # apelo usa a data do preço; a frase de antes vale quando o preço dura até o vencimento (test_k2_2)
+    assert re.search(r"Renove até \d\d/\d\d e garanta este preço — o seu seguro vale até 20/10", vis), vis[:600]
     assert "O mesmo atendimento: Bruna continua cuidando de você" in vis
     for proibida in ("a melhor das", "Nossa recomendação", "Onde cada opção cai", "Comparação independente"):
         assert proibida not in vis, proibida
@@ -454,9 +462,10 @@ def test_ka1_o_selo_diz_compromissos_e_nunca_que_alguem_confere():
         assert selo_afirma_o_que_ninguem_confere(doc) == [], (nome, selo_afirma_o_que_ninguem_confere(doc))
         assert "cinco compromissos" in vis and "5 compromissos" in vis, (nome, vis[:600])
         assert "cumpre os" not in vis and "o multicálculo prova" not in vis and "24 horas" not in vis, nome
-    # cada compromisso diz como o CLIENTE vê: a SUSEP está no topo desta página (o número não se repete no bloco)
+    # cada compromisso diz como o CLIENTE vê: a SUSEP está no topo desta página. §9.3 (conserto K2, pendência 5): o
+    # cartão da venda passou a mostrar a SUSEP como o do QCM — o número do cartão é o MESMO do topo (test_k2_7)
     v = texto_visivel(_bloco(PV.render_cotacao(venda())))
-    assert "o número está no topo desta página" in v and "202031234" not in v
+    assert "o número está no topo desta página" in v and "SUSEP 202031234" in v
     sem = texto_visivel(_bloco(PV.render_cotacao(venda(susep=None))))
     assert "o número está" not in sem and f"peça o número à {NOME}" in sem
     # a nota do Google só é "a desta página" quando a página a mostra (a renovação nunca mostra Google)
@@ -668,12 +677,169 @@ def test_ka8_a_capa_e_da_cor_da_marca_e_o_cartao_magro_tem_um_fato():
     m = venda(rica=False, desde=None, google=None, cidade=None, selo="Corretora Nível 5")
     m["venda"] = {}
     vis = texto_visivel(_bloco(PV.render_cotacao(m)))
-    assert "202031234 registro na SUSEP" in vis, vis[:400]
+    assert "SUSEP 202031234" in vis, vis[:400]                  # §9.3 (K2): o rótulo junto do número
     m["anfitria"]["susep"] = None
     assert "site da corretora" in texto_visivel(_bloco(PV.render_cotacao(m)))
-    # CONTROLE: com cidade, o cartão de antes (a SUSEP mora no topo — laudo 132-B D6)
-    com_cidade = venda(rica=False, desde=None, google=None)
-    com_cidade["venda"] = {}
-    assert "registro na SUSEP" not in texto_visivel(_bloco(PV.render_cotacao(com_cidade)))
+    # CONTROLE: a renovação com cidade, o cartão de antes (a SUSEP mora no topo — laudo 132-B D6). §9.3 (K2): a venda
+    # passou a mostrar a SUSEP sempre (como o QCM) — o controle migrou para a renovação
+    com_cidade = renovacao(rica=False, desde=None, google=None)
+    assert "202031234" not in texto_visivel(_bloco(PH.render_proposta(com_cidade)))
     # o site do canal ocupa a linha inteira (não quebra deixando um buraco)
     assert re.search(r'<li class="bc-largo"><a href="https://', _bloco(PC.render_proposta_do_canal(canal())))
+
+
+# =====================================================================================================================
+# CONSERTO K2 (laudo do juiz de design R2, 17/10) — cada guarda com a sua LINHA DE CONTROLE (CLAUDE.md §9.3/§9.4)
+# =====================================================================================================================
+def _vida_pelo_motor(*, renova: bool, cobertura_detalhada: bool = False) -> dict:
+    """A página de VIDA com as opções do MOTOR (§9.4): a gravação REAL pelo leitor (`andamento_do_ramo`), a comparação, as
+    opções do produto e `opcoes_da_pagina` — os motivos e o "por que" nascem onde nascem no produto. `cobertura_detalhada`
+    (o CONTROLE): a seguradora devolve a cobertura de morte detalhada → a página volta a poder falar de cobertura."""
+    from datetime import datetime, timezone
+
+    from app.services.multicalculo import comparacao as CMP
+    from app.services.multicalculo import config as CFG
+    from app.services.multicalculo import proposta as P
+    from scripts import publicar_exemplo_da_pagina as EX
+
+    cid, pid = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+    ofertas, eventos, estados = EX.andamento_do_ramo(cid, AP.RAMO_VIDA, pid, datetime(2026, 10, 17, tzinfo=timezone.utc))
+    if cobertura_detalhada:
+        for o in ofertas:
+            o["coberturas"] = dict(o.get("coberturas") or {}, isAppMorte=100000)
+    cfg = CMP.config_da_renovacao(CFG.PADRAO_DO_PRODUTO, estados) if renova else CFG.PADRAO_DO_PRODUTO
+    quadro = CMP.comparar(ofertas, eventos, estados=estados, config=cfg, ramo=AP.RAMO_VIDA)
+    ranking = quadro.ranking(quadro.opcao_completa, cid)
+    apolice = {"seguradora": str(ranking[0].get("seguradora_original") or ranking[0]["seguradora"])} if renova else None
+    ops = CMP.opcoes(quadro, situacao="renovacao" if renova else "novo_sem_apolice", apolice_atual=apolice, config=cfg,
+                     corretora=cid)
+    opcoes, _b = P.opcoes_da_pagina(ops, ofertas, cfg, ramo=AP.RAMO_VIDA)
+    m = do_ramo(AP.RAMO_VIDA, renova=renova)
+    resumo = {k: quadro.resumo[k] for k in ("seguradoras_cotadas", "com_preco_comparavel", "com_produto_diferente",
+                                             "nao_responderam")}
+    m.update(opcoes=opcoes, resumo=resumo, **P.partes_do_quadro(quadro, ranking))
+    m["faq"] = P._faq({}, resumo=resumo, opcoes=opcoes, situacao="novo_sem_apolice", ramo=AP.RAMO_VIDA) if not renova \
+        else P.faq_da_renovacao(ramo=AP.RAMO_VIDA, opcoes=opcoes)
+    return m
+
+
+@pytest.mark.parametrize("renova", [False, True], ids=["venda", "renovacao"])
+def test_k2_1_vida_sem_cobertura_detalhada_nunca_diz_cobertura_completa(renova):
+    m = _vida_pelo_motor(renova=renova)
+    assert AP.vida_sem_coberturas(m), "a gravação real de vida deveria vir SEM cobertura detalhada (📊 canário 16/10)"
+    doc = (PH.render_proposta if renova else PV.render_cotacao)(m)
+    assert "cobertura completa" not in doc.lower(), [x for x in re.findall(r"[^.<>]{0,60}cobertura completa[^.<>]{0,30}",
+                                                                         texto_visivel(doc), re.I)]
+    assert "cobertura completa" not in json.dumps(m["faq"], ensure_ascii=False).lower()
+    vis = texto_visivel(doc)
+    assert re.search(r"Capital de R\$\s100\.000\s*para quem você indicar", vis), vis[:900]
+    assert re.search(r'<h2 id="h-op">O que você (contrata|renova)</h2>', doc) and "O que está coberto" not in vis
+    assert ("A mesma seguradora de hoje, com o capital de R$ 100.000" if renova
+            else "A única que devolveu preço para o capital que você pediu") in vis, vis[:1200]
+    if not renova:
+        assert "pesa preço." in vis and "pesa preço e coberturas" not in vis
+        assert "Cotamos em 7 seguradoras para você — 1 devolveu preço." in vis
+    # CONTROLE: a MESMA gravação com a cobertura de morte detalhada → o guarda consegue ficar vermelho
+    controle = (PH.render_proposta if renova else PV.render_cotacao)(_vida_pelo_motor(renova=renova,
+                                                                                      cobertura_detalhada=True))
+    assert "cobertura completa" in controle.lower(), "controle: com cobertura detalhada a frase de antes volta"
+
+
+def test_k2_1_a_regra_de_sem_detalhe_e_o_marcador_do_leitor():
+    from portal_worker.multicalculo.leitor_agger import CAPITAL_PEDIDO
+
+    assert AP.CAPITAL_PEDIDO == CAPITAL_PEDIDO
+    so_capital = [{"coberturas": [{"chave": CAPITAL_PEDIDO, "valor": "100000"}]}]
+    assert AP.sem_cobertura_detalhada(so_capital)
+    assert AP.sem_cobertura_detalhada([{"coberturas": [{"chave": "isAppMorte", "valor": "0"}]}])   # zero = não tem
+    assert not AP.sem_cobertura_detalhada([{"coberturas": [{"chave": "isAppMorte", "valor": "100000"}]}])
+    assert not AP.sem_cobertura_detalhada([])
+
+
+def test_k2_2_renovacao_o_preco_vence_antes_do_seguro():
+    m = renovacao()
+    m.update(validade_ate="2026-10-15")
+    m["renovacao"]["vence_em"] = "2026-10-20"
+    vis = texto_visivel(PH.render_proposta(m))
+    assert "Renove até 15/10 e garanta este preço — o seu seguro vale até 20/10" in vis, vis[:700]
+    assert vis.count("vence em") == 1                       # o vencimento por extenso é um só (o título)
+    assert "Renovando até 20/10" not in vis
+    # CONTROLE: o preço vale até depois do vencimento → a frase de sempre
+    m.update(validade_ate="2026-10-25")
+    vis2 = texto_visivel(PH.render_proposta(m))
+    assert "Renovando até 20/10, o seu seguro continua sem um dia descoberto" in vis2 and "Renove até" not in vis2
+
+
+def _linha(doc: str, rotulo: str) -> str:
+    m = re.search(rf'<div class="row"><h4>{re.escape(rotulo)}</h4>(.*?)</div></div>', doc, re.S)
+    return m.group(1) if m else ""
+
+
+def test_k2_3_comparar_preco_rotulado_e_nota_so_quando_difere():
+    m = renovacao()
+    for o in m["opcoes"]:
+        o["nota"] = 91
+    doc = PH.render_proposta(m)
+    preco = _linha(doc, "Preço por ano")
+    assert preco.startswith('<div class="cols"><div class="cell"><b>R$'), preco[:120]   # rótulo + o valor da 1ª coluna
+    assert "Nota, de 0 a 100" not in doc                                             # 91 · 91 · 91 não diz nada
+    # CONTROLE: notas diferentes → a linha volta (e a carteira, sem `cliente`, nunca muda — test_a_carteira_e_byte_a_byte)
+    m["opcoes"][1]["nota"] = 80
+    assert "Nota, de 0 a 100" in PH.render_proposta(m)
+
+
+def test_k2_4_re_a_basica_primeiro_e_a_assistencia_por_ultimo():
+    from app.services.multicalculo import comparacao as CMP
+    from app.services.multicalculo.pedido import CHAVE_DA_BASICA
+
+    assert AP.CHAVE_DA_BASICA_RE == CHAVE_DA_BASICA and set(AP.ORDEM_DO_RE_POR_ULTIMO) <= set(CMP.NOME_DA_COBERTURA_RE)
+    m = do_ramo(16)
+    for o in m["opcoes"]:                                   # 📊 a ordem que o motor deu ao condomínio de exemplo (16/10)
+        o["coberturas"] = ([{"chave": "assist24hs", "nome": "Assistência", "valor": "Assistência Condomínio"},
+                            {"chave": "valorDeNovo", "nome": "valorDeNovo", "valor": "1"}] + o["coberturas"])
+    m["opcoes"][1]["coberturas"][0] = dict(m["opcoes"][1]["coberturas"][0], valor="Contratada")
+    doc = PV.render_cotacao(m)
+    lis = [texto_visivel(x) for x in re.findall(r"<li>.*?</li>",
+                                                re.search(r'<ul class="covs">.*?</ul>', _cartoes(doc)[0], re.S).group(0))]
+    assert lis[0].startswith("Básica (incêndio, raio e explosão)"), lis
+    assert lis[-1].startswith("Assistência"), lis
+    cmp_ = doc[doc.find('id="comparar"'):]
+    assert cmp_.find("Básica (incêndio") < cmp_.find("Danos elétricos") < cmp_.find(">Assistência<")
+    # CONTROLE: o auto não é reordenado (o mesmo objeto volta)
+    a = venda()
+    assert AP.coberturas_para_o_cliente(a["opcoes"], a) is a["opcoes"]
+
+
+def test_k2_5_a_susep_com_o_rotulo_e_no_cartao_da_venda():
+    magro = venda(rica=False, desde=None, google=None, cidade=None, selo="Corretora Nível 5")
+    magro["venda"] = {}
+    for doc in (PV.render_cotacao(magro), PV.render_cotacao(venda()), PC.render_proposta_do_canal(canal())):
+        vis = texto_visivel(_bloco(doc))
+        assert "SUSEP 202031234" in vis and "registro na SUSEP" not in vis, vis[:500]
+    # CONTROLE: a renovação com cidade não repete a SUSEP no cartão (ela mora no topo — laudo 132-B D6)
+    assert "202031234" not in texto_visivel(_bloco(PH.render_proposta(renovacao())))
+
+
+@pytest.mark.parametrize("cadastro", ["SUSEP 202031234", "SUSEP nº: 202031234", "susep n° 202031234",
+                                      "SUSEP no. 202031234", "SUSEP#202031234", "202031234"])
+def test_k2_7_o_numero_do_compromisso_e_o_que_o_topo_mostra(cadastro):
+    doc = PV.render_cotacao(venda(susep=cadastro))
+    topo = re.search(r'<p class="cred">.*?SUSEP nº ([^<]+)</b>', doc, re.S).group(1)
+    cartao = re.search(r'<span class="bc-num">([^<]+)</span>', _bloco(doc)).group(1)
+    assert topo == cartao == AP.susep_limpa({"susep": cadastro}) == "202031234", (topo, cartao)
+    assert "o número está no topo desta página" in texto_visivel(_bloco(doc))
+    # o canal: o cartão e o rodapé com o MESMO número
+    c = PC.render_proposta_do_canal(canal(susep=cadastro))
+    assert "SUSEP 202031234" in texto_visivel(_bloco(c)) and "sob o nº 202031234" in texto_visivel(c)
+    # CONTROLE: as duas regras de ANTES divergiam (📊 17/10, `git show 8e6c930`): o recorte do cartão deixava "o. " em
+    # "SUSEP no. 202031234" enquanto o do topo dava "202031234" — o guarda acima pega essa divergência
+    antes_cartao = re.sub(r"^\s*susep\b[\s:nº°.#-]*", "", "SUSEP no. 202031234", flags=re.I).strip()
+    antes_topo = re.sub(r"(?i)^\s*susep\s*(?:n\s*[º°o.]*\s*)?[:\-]?\s*", "", "SUSEP no. 202031234").strip()
+    assert antes_cartao != antes_topo == "202031234"
+
+
+def test_k2_6_se_acontecer_numerado_como_no_qcm():
+    doc = PV.render_cotacao(venda())
+    sec = re.search(r'<section class="s" aria-labelledby="h-sin">.*?</section>', doc, re.S).group(0)
+    passos = [s for s in CONTRATO.get("sinistro") or [] if isinstance(s, str) and s.strip()]
+    assert '<ol class="steps">' in sec and sec.count("<li>") == len(passos) >= 2 and "<ul>" not in sec, sec[:400]

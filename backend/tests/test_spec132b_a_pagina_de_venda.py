@@ -75,8 +75,13 @@ APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "docume
 #: MESMO hash de antes.
 RETRATO_ANTES = {
     "carteira": "56d8c9e5469dc837fa11cf95379f2e1237818f3ab7293cce73f86166d2aeac96",
-    "renovacao": "d8b4aea6c893b2592f5c9c8aa55e5ceb9cbd24d50c0aaaf7c056d0dadb4db2d0",
-    "canal": "6b5ab39b58600ac29324804f48e738e9b177a8ac352e50a993475e4ff9e2762a",
+    # §9.3 (SPEC-130-C, conserto K2, 17/10): a renovação e o canal mudaram DE PROPÓSITO. 📊 o diff HEAD 8e6c930 × K2 do HTML
+    # destes modelos (`scratchpad/k2/dif.py`): renovação = o apelo com a data do preço (ela vem antes do vencimento), o
+    # "Se acontecer" numerado e 7 linhas de CSS; canal = SÓ 2 linhas de CSS do cartão (o número da SUSEP sem quebrar).
+    # Antes: renovação d8b4aea6c893b2592f5c9c8aa55e5ceb9cbd24d50c0aaaf7c056d0dadb4db2d0 · canal 6b5ab39b58600ac29324804f
+    # 48e738e9b177a8ac352e50a993475e4ff9e2762a
+    "renovacao": "561e307416dd1a08141547c448e0ed224ef9d9d9ffecc17caf0ce3b53dd07af3",
+    "canal": "7ebc6a6697872b5472965ba11a7ae3b1e2d10a0b6f36e38b9a3fe7576a749261",
 }
 
 
@@ -463,10 +468,13 @@ def test_D6_sem_repeticao_susep_validade_e_uma_linha_do_tempo():
     m["anfitria"] = dict(m["anfitria"], susep="SUSEP 202031234")
     doc = PV.render_cotacao(m)
     txt = texto_visivel(doc)
-    assert txt.count("202031234") == 2, txt.count("202031234")
+    # §9.3 (SPEC-130-C, conserto K2, laudo de design R2 pendência 5): 3× — o topo, o cartão da corretora ("SUSEP N", como
+    # o do QCM) e o rodapé. Antes: 2× (topo + rodapé)
+    assert txt.count("202031234") == 3, txt.count("202031234")
     # "13/10" no cartão; "13/10/2026" na resposta "O preço pode mudar?" e no rodapé (o curto conta os três)
     assert txt.count(PH._data_curta(m["validade_ate"])) == 3 and txt.count(PH.AP.data_br(m["validade_ate"])) == 2
-    assert doc.count('class="steps"') == 1 and 'class="sin"' in doc
+    # §9.3 (K2, laudo R2): o "Se acontecer" também é numerado, como no QCM (dentro do cartão compacto `.sin`). Antes: 1
+    assert doc.count('class="steps"') == 2 and 'class="sin sin-n"' in doc
     assert "guardar em PDF" not in txt and 'class="vfato"><b>SUSEP' not in doc
     assert "deram preço nesta cotação" not in txt
     # o "Se acontecer" fala com o NOME da corretora (item 10), com ponto final

@@ -111,9 +111,9 @@ def _perguntas(lista: Any) -> list[dict]:
 
 
 def _susep(anf: dict) -> str:
-    """O número da SUSEP sem o prefixo que às vezes vem junto no cadastro ("SUSEP 202031234" → "202031234")."""
-    s = str(anf.get("susep") or "").strip()
-    return re.sub(r"(?i)^\s*susep\s*(?:n\s*[º°o.]*\s*)?[:\-]?\s*", "", s).strip()
+    """O número da SUSEP sem o prefixo — a regra ÚNICA (`AP.susep_limpa`, conserto K2 item 7): o topo e o cartão da
+    corretora mostram o MESMO número que o compromisso "o número está no topo desta página" cita."""
+    return AP.susep_limpa(anf)
 
 
 def _parcela(o: dict) -> Optional[dict]:
@@ -246,6 +246,12 @@ def _capital(o: dict, *, renova: bool) -> str:
     nota = ("o valor pedido na renovação" if renova else "o valor que você pediu") if c["pedido"] else ""
     return (f'<p class="op-fq op-cap"><span>Capital segurado</span> <b>{_e(c["valor"])}</b>'
             + (f'<small>{_e(nota)}</small>' if nota else "") + "</p>")
+
+
+def _dia_iso(valor: Any) -> str:
+    """"2026-11-14" de uma data/instante ISO; ilegível → "9999-99-99" (nunca MENOR que uma data: a frase de antes vale)."""
+    m = re.match(r"^\d{4}-\d{2}-\d{2}", str(valor or ""))
+    return m.group(0) if m else "9999-99-99"
 
 
 def _conta(modelo: dict) -> Optional[dict]:
@@ -479,6 +485,11 @@ body.venda{background:var(--canvas)}
 .sin>svg{width:28px;height:28px;color:var(--p-text)}
 .sin ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
 .sin li{font-size:15px;line-height:1.42;color:var(--ink)}
+/* conserto K2: "Se acontecer" numerado 1–N como no QCM, dentro do mesmo cartão */
+.sin.sin-n{grid-template-columns:1fr}
+.sin-n .steps{margin:0}
+.sin-n .steps li:last-child{padding-bottom:0}
+.sin-n .steps p{font-size:15px;line-height:1.42}
 /* D5: o lado esquerdo do hero no notebook (só ≥ 1024 px) */
 .vlado{display:none}
 .vhoje{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
@@ -677,7 +688,9 @@ def _todas_as_seguradoras(modelo: dict, ops: list[dict]) -> str:
                      "</span></li>")
     pdif = [x for x in modelo.get("produto_diferente") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
     nr = [x for x in modelo.get("nao_responderam") or [] if isinstance(x, dict) and str(x.get("seguradora") or "").strip()]
-    conta = PH._frase_da_conta(PH._conta_do_resumo(modelo), len(pdif))
+    # conserto K2 (B1): a vida sem cobertura detalhada conta quem DEU PREÇO, sem "a mesma cobertura completa"
+    conta = (PH._frase_da_conta(PH._conta_do_resumo(modelo), len(pdif), com_o_que="")
+             if AP.vida_sem_coberturas(modelo, ops) else PH._frase_da_conta(PH._conta_do_resumo(modelo), len(pdif)))
     pd_html = ""
     if pdif:
         pd_html = ('<p class="line-static"><b>Cobrem menos (fora da lista):</b> '
@@ -756,6 +769,9 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     fala_com_a_pessoa = bool(pessoa_nome and digitos and digitos == str(pessoa.get("whatsapp") or ""))
     com_quem = (f"com {pessoa_nome}" if fala_com_a_pessoa else (f"com a {nome_anf}" if nome_anf else ""))
     ramo = AP.ramo_do_modelo(modelo)
+    # conserto K2 (laudo de design R2, B1): a vida cujo cálculo não detalhou cobertura — nada aqui diz "cobertura
+    # completa" (a página não sabe o que está coberto); ela diz o que SABE: o capital
+    vida_sem_cob = AP.vida_sem_coberturas(modelo, ops)
     if auto:
         sobre_o_bem = f"do {bem['apelido']}" if bem["apelido"] else ""
     else:                                   # "do seguro residencial" · "do seguro do condomínio" · "do seguro de vida"
@@ -802,6 +818,10 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     if renova:
         lede = ", ".join(x for x in (bem["descricao"], bem["ano"]) if x)
         lede = f"{lede}." if lede else "Tudo pronto para o seu seguro continuar por mais um ano."
+    elif conta and conta["cotadas"] > 1 and conta["completas"] < conta["cotadas"] and vida_sem_cob:
+        # conserto K2 (laudo de design R2, B1): a vida sem cobertura detalhada não afirma "a mesma cobertura completa"
+        lede = (f"Cotamos em {conta['cotadas']} seguradoras para você — {conta['completas']} "
+                f"{'devolveu' if conta['completas'] == 1 else 'devolveram'} preço. Sem custo e sem compromisso.")
     elif conta and conta["cotadas"] > 1 and conta["completas"] < conta["cotadas"]:
         # laudo de design 132-B, item 7: o N REAL (§4) — quantas cotamos E quantas têm a mesma cobertura; as outras
         # (produto diferente, sem preço) a frase das opções conta logo abaixo, e as partes somam o total (J-B3)
@@ -816,8 +836,14 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     if renova and rec is not None:
         continua = []
         venc_curto = PH._data_curta(ren.get("vence_em"))
-        continua.append(f"Renovando até {venc_curto}, o seu seguro continua sem um dia descoberto" if venc_curto
-                        else "Renovando antes do vencimento, o seu seguro continua sem um dia descoberto")
+        # conserto K2 (laudo de design R2, pendência 1): o preço vence ANTES do seguro → o apelo usa a data menor ("Renovando
+        # até 16/11" com "Preço válido até 14/11" fazia quem renovasse dia 15 perder o preço). "vale até", não "vence em":
+        # o "vence em" é UM só, no título (confirmação de design 132-B, (g) — `test_spec131b`)
+        if venc_curto and validade_curta and _dia_iso(modelo.get("validade_ate")) < _dia_iso(ren.get("vence_em")):
+            continua.append(f"Renove até {validade_curta} e garanta este preço — o seu seguro vale até {venc_curto}")
+        else:
+            continua.append(f"Renovando até {venc_curto}, o seu seguro continua sem um dia descoberto" if venc_curto
+                            else "Renovando antes do vencimento, o seu seguro continua sem um dia descoberto")
         if pessoa_nome or nome_anf:
             continua.append(f"O mesmo atendimento: {pessoa_nome or 'a ' + nome_anf} continua cuidando de você")
         bonus = AP.numero_inteiro(ren.get("bonus_classe"))
@@ -950,6 +976,12 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
             sem_cob = ("" if covs or mais else
                        f'<p class="op-semcob">A seguradora não detalhou as coberturas no cálculo: a '
                        f'{_e(nome_anf or "corretora")} confirma cada cobertura com você antes de fechar.</p>')
+            # conserto K2 (laudo de design R2, B1): sem cobertura detalhada, o cartão mostra o fato que EXISTE — o capital
+            cap_o = AP.capital_da_opcao(o) if vida_sem_cob else None
+            if sem_cob and cap_o:
+                sem_cob = (f'<ul class="covs"><li><span class="ci">{icones.get("isAppMorte", PH.ICO["check"])}</span>'
+                           f'<span class="cn">Capital de {_e(AP.nbsp(cap_o["valor"]))}</span>'
+                           f'<span class="cv">para quem você indicar</span></li></ul>' + sem_cob)
             miolo = (f'<ul class="covs">{covs}</ul>' if covs else "") + mais + sem_cob
         else:
             miolo = (_bloco_do_preco(o, "preco", a_vista=a_vista)
@@ -980,7 +1012,10 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
         # com UMA opção a seção vira "O que está coberto": a conta das outras sobe para junto do "Cotamos em N" do topo
         # (as partes continuam somando o total — J-B3)
         lede, frase_conta = f"{lede} {frase_conta}", ""
-    if so_cobertura:
+    if so_cobertura and vida_sem_cob:
+        # conserto K2 (B1): o título não promete o que a seção não tem — "O que está coberto" sobre "não detalhou"
+        titulo_ops = "O que você renova" if renova else "O que você contrata"
+    elif so_cobertura:
         titulo_ops = "O que a sua renovação cobre" if renova else "O que está coberto"
     elif renova:
         titulo_ops = {1: "A sua renovação", 2: "As duas opções da sua renovação"}.get(n, f"As {n} opções da sua renovação")
@@ -1090,8 +1125,9 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
                      "não um 0800.")
         sinistro = (f'<section class="s" aria-labelledby="h-sin"><h2 id="h-sin">Se acontecer alguma coisa</h2>'
                     + (f'<p class="sub">{guincho}{quem}</p>' if nome_anf else "")
-                    + f'<div class="sin">{PH.ICO["casco"]}<ul>'
-                    + "".join(f"<li>{_e(AP.nbsp(s))}</li>" for s in passos_s) + "</ul></div></section>")
+                    # conserto K2 (laudo de design R2, menores): os passos NUMERADOS, como no QCM (só o 1º tinha ícone)
+                    + '<div class="sin sin-n"><ol class="steps">'
+                    + "".join(f"<li><p>{_e(AP.nbsp(s))}</p></li>" for s in passos_s) + "</ol></div></section>")
     duas = (f'<div class="vduas">{depois_html}{sinistro}</div>' if depois_html and sinistro
             else depois_html + sinistro)
 
@@ -1156,6 +1192,9 @@ def _pagina(modelo: dict, *, renova: bool) -> str:
     else:
         metodo = ("Como comparamos: só entram lado a lado as ofertas com a mesma cobertura completa; as que cobrem menos "
                   f"dizem o que deixam de cobrir. A nossa nota, de 0 a 100, pesa {AP.o_que_a_nota_pesa(modelo, ops)}.")
+        if vida_sem_cob:                        # conserto K2 (B1): o critério que a página USOU — o capital e o preço
+            metodo = ("Como comparamos: só entram lado a lado as ofertas para o capital que você pediu. A nossa nota, de "
+                      f"0 a 100, pesa {AP.o_que_a_nota_pesa(modelo, ops)}.")
         if eco:
             metodo += (f" A economia compara o prêmio líquido da sua apólice atual ({AP.brl(eco['hoje'], False)} por "
                        f"ano, lido no documento que você enviou, sem o IOF) com o preço {A_VISTA} da opção "

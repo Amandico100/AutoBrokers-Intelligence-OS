@@ -194,7 +194,8 @@ def _google(anf: dict) -> Optional[tuple[str, int, str]]:
 
 
 def _susep(anf: dict) -> str:
-    return re.sub(r"^\s*susep\b[\s:nº°.#-]*", "", str(anf.get("susep") or ""), flags=re.I).strip()
+    """A regra ÚNICA (`AP.susep_limpa`, conserto K2 item 7) — o compromisso cita o número que o topo mostra."""
+    return AP.susep_limpa(anf)
 
 
 def _logo(anf: dict) -> Optional[str]:
@@ -297,8 +298,8 @@ def _voz(momento: str, nome: str, modelo: dict, nome_canal: str) -> str:
 
 
 def _fatos(momento: str, anf: dict, modelo: dict) -> tuple[list[str], str]:
-    """(os fatos do cartão, a linha da fonte). Cada um SÓ com dado. A SUSEP só no canal (na venda e na renovação ela
-    mora no topo e no rodapé — laudo de design 132-B, D6); o Google nunca na renovação (quem já é cliente não precisa de
+    """(os fatos do cartão, a linha da fonte). Cada um SÓ com dado. A SUSEP no canal e na venda (conserto K2: o mesmo
+    cartão nos dois); na renovação ela mora no topo e no rodapé (laudo de design 132-B, D6); o Google nunca na renovação (quem já é cliente não precisa de
     prova de estranho — laudo I3 §2.3); o site no canal (na venda/renovação ele está em "quem cuida de você")."""
     fatos, fonte = [], ""
     g = _google(anf) if momento != "renovacao" else None
@@ -307,8 +308,14 @@ def _fatos(momento: str, anf: dict, modelo: dict) -> tuple[list[str], str]:
                      f'{"avaliações" if g[1] != 1 else "avaliação"}</span></li>')
         if g[2]:
             fonte = f'<p class="bc-fonte">Nota e avaliações: {_e(AP.aspas_tipograficas(g[2]))}.</p>'
-    if momento == "canal" and _susep(anf):
-        fatos.append(f'<li><b>{_e(_susep(anf))}</b> <span>registro na SUSEP</span></li>')
+    # conserto K2 (laudo de design R2, pendência 5): "SUSEP 202037116" — o rótulo JUNTO do número (o número cru em
+    # destaque parecia código) — e também na VENDA: o cartão do QCM a mostra, o da venda a mostra igual (consistência)
+    # o número nunca quebra no meio (📊 390 px, 17/10: "SUSEP 24215 / 9031" em meia largura) — "SUSEP" e o número
+    # podem ir em duas linhas, o número inteiro numa só
+    li_susep = (f'<li><b class="bc-susep">SUSEP <span class="bc-num">{_e(_susep(anf))}</span></b> '
+                '<span>registro de corretora; a consulta é pública</span></li>' if _susep(anf) else "")
+    if momento in ("canal", "venda") and li_susep:
+        fatos.append(li_susep)
     anos = anos_de_mercado(anf, modelo)
     if anos:
         fatos.append(f'<li><b>{anos[0]}{AP.NB}{"ano" if anos[0] == 1 else "anos"}</b> '
@@ -330,8 +337,8 @@ def _fatos(momento: str, anf: dict, modelo: dict) -> tuple[list[str], str]:
     # conserto KA (pendência 4b): o cartão MAGRO (sem fato nenhum e sem cidade) era logo + parágrafo — ganha UM fato de
     # verdade que o modelo já tem: a SUSEP; sem ela, o site. Com cidade o cartão já diz onde a corretora está.
     if not fatos and not str(anf.get("cidade") or "").strip():
-        if _susep(anf):
-            fatos.append(f'<li><b>{_e(_susep(anf))}</b> <span>registro na SUSEP</span></li>')
+        if li_susep:
+            fatos.append(li_susep)
         elif site_ok:
             fatos.append(li_site)
     return fatos, fonte
@@ -468,6 +475,8 @@ CSS_DO_BLOCO_DA_CORRETORA = r"""
 .bc-fatos li.bc-largo{grid-column:1/-1}
 .bc-fatos b{display:flex;align-items:center;gap:5px;font-size:19px;line-height:1.15;font-weight:650;color:var(--ink-strong);overflow-wrap:anywhere}
 .bc-fatos b svg{width:16px;height:16px;flex:none;color:#C98A00}
+.bc-fatos b.bc-susep{flex-wrap:wrap;column-gap:6px;row-gap:0}
+.bc-fatos b .bc-num{font-size:inherit;line-height:inherit;color:inherit;white-space:nowrap}
 .bc-fatos span{font-size:13px;line-height:1.3;color:var(--ink-muted)}
 .bc-fatos a{display:inline-flex;align-items:center;min-height:44px;font-size:15px;font-weight:650;color:var(--ink-strong);
   overflow-wrap:anywhere;text-underline-offset:3px}

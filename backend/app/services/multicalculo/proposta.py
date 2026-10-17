@@ -726,8 +726,12 @@ def _faq(cfg_anf: Mapping[str, Any], *, resumo: Mapping[str, Any], opcoes: List[
         if chave == "qual_tenho_hoje" and not ({"igual_a_atual", "sua_renovacao"} & set(ids)):
             continue                                            # só sobre opções que EXISTEM
         if chave == "outras_seguradoras" and resumo.get("seguradoras_cotadas"):
+            # conserto K2 (B1): a vida sem cobertura detalhada conta o preço para o capital, nunca "cobertura completa"
+            from app.services.artifacts import proposta_apresentacao as AP
+            para = ("o capital que você pediu" if int(ramo) == CMP.RAMO_VIDA and AP.sem_cobertura_detalhada(opcoes)
+                    else "a mesma cobertura completa")
             resposta += (f" Nesta cotação: {resumo['seguradoras_cotadas']} seguradoras consultadas, "
-                         f"{resumo.get('com_preco_comparavel', 0)} com preço para a mesma cobertura completa.")
+                         f"{resumo.get('com_preco_comparavel', 0)} com preço para {para}.")
         if chave == "reduzir_franquia" and "menor_franquia" in ids:
             o = ids["menor_franquia"]
             fv = (o.get("franquia") or {}).get("valor")
@@ -1044,6 +1048,39 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
 #: opções" que o cliente não vê: sai do cartão. A comparação não muda (SPEC §1); com 2+ opções ele continua.
 MOTIVO_DAS_OUTRAS_OPCOES = "Mesma configuração de coberturas das outras opções comparadas"
 
+#: conserto K2 (laudo de design R2, B1) — o que a comparação diz da opção (`comparacao._motivos` /
+#: `_por_que_da_renovacao`) → o que a página da VIDA sem cobertura detalhada pode afirmar. Cada frase de lá que fala de
+#: "cobertura completa" tem a sua tradução AQUI; uma frase nova com "cobertura completa" que não esteja aqui SAI (antes
+#: calar do que afirmar o que a seguradora não detalhou). O guarda roda o MOTOR (`test_spec130c_as_paginas`, K2).
+_RE_POSICAO_COMPLETA = re.compile(r"^(Menor preço|\d+º menor preço) entre as (\d+) seguradoras com cobertura completa$")
+
+
+def frase_da_vida_sem_detalhe(texto: Optional[str], capital: Optional[str], *, mesmo_capital: bool = False
+                              ) -> Optional[str]:
+    """A frase da comparação dita sem "cobertura completa" (`capital`: "R$ 100.000" da opção, ou None). → None: a frase
+    sai (não há o que afirmar)."""
+    t = str(texto or "").strip()
+    if not t:
+        return None
+    if t == "A única seguradora com cobertura completa que devolveu preço":
+        return "A única que devolveu preço para o capital que você pediu"
+    m = _RE_POSICAO_COMPLETA.match(t)
+    if m:
+        return f"{m.group(1)} entre as {m.group(2)} seguradoras que devolveram preço para o capital que você pediu"
+    if t == MOTIVO_DAS_OUTRAS_OPCOES:           # "a mesma configuração de coberturas" — a página não as conhece
+        return "O mesmo capital das outras opções comparadas" if mesmo_capital else None
+    if t.startswith("Cobertura completa na mesma seguradora de hoje"):
+        return (f"A mesma seguradora de hoje, com o capital de {capital}." if capital
+                else "A mesma seguradora de hoje: você continua com quem já conhece.")
+    if t.startswith("A sua seguradora de hoje não devolveu preço com cobertura completa"):
+        return ("A sua seguradora de hoje não devolveu preço; esta devolveu preço para o capital de "
+                f"{capital}." if capital else
+                "A sua seguradora de hoje não devolveu preço para o capital que você pediu; esta devolveu.")
+    if t.startswith("Cobertura completa em outra seguradora"):
+        return (f"O capital de {capital} em outra seguradora, se você quiser comparar." if capital
+                else "Outra seguradora, se você quiser comparar.")
+    return None if "cobertura completa" in t.lower() else t
+
 
 def _capital_numero(v: Any) -> Optional[float]:
     """Um capital só se for NÚMERO > 0 finito (o leitor grava número — 📊 `isAppMorte 100000` / `capital_pedido
@@ -1085,14 +1122,27 @@ def opcoes_da_pagina(ops: Sequence[Mapping[str, Any]], ofertas_a: Sequence[Mappi
     por_id = {str(o.get("id")): o for o in ofertas_a}
     brutas = [por_id.get(str(o["ref"]["oferta_id"]), {}) for o in ops]
     opcoes: List[Dict[str, Any]] = []
-    for o, bruta in zip(ops, brutas):
+    vida = ramo is not None and int(ramo) == CMP.RAMO_VIDA
+    capitais = [capital_da_vida(b.get("coberturas")) for b in brutas] if vida else []
+    # conserto K2 (laudo de design R2, B1): a VIDA cujas opções não detalham cobertura (📊 a Porto do canário, 16/10: só o
+    # preço e o capital) — os motivos e o "por que" da comparação falam de "cobertura completa"; aqui eles passam a dizer
+    # o que se SABE (o capital pedido). A comparação não muda (SPEC §1); a regra de "sem detalhe" é a da página.
+    from app.services.artifacts import proposta_apresentacao as AP
+    vida_sem_detalhe = vida and AP.sem_cobertura_detalhada(ops)
+    mesmo_capital = (vida_sem_detalhe and all(capitais) and len({c["valor"] for c in capitais}) == 1)
+    for i, (o, bruta) in enumerate(zip(ops, brutas)):
         sem_juros = _parcelas_sem_juros(bruta)
         item = {k: v for k, v in o.items() if k != "ref"}
-        item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]
-                           if not (len(ops) == 1 and t == MOTIVO_DAS_OUTRAS_OPCOES)]
+        motivos = [t for t in o["motivos"] if not (len(ops) == 1 and t == MOTIVO_DAS_OUTRAS_OPCOES)]
+        por_que = o.get("por_que")
+        if vida_sem_detalhe:
+            cap = reais_inteiros(capitais[i]["valor"]) if capitais[i] else None
+            motivos = [x for x in (frase_da_vida_sem_detalhe(t, cap, mesmo_capital=mesmo_capital) for t in motivos) if x]
+            por_que = frase_da_vida_sem_detalhe(por_que, cap, mesmo_capital=mesmo_capital) if por_que else por_que
+        item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in motivos]
         item["o_que_muda"] = [arredondar_texto(t) for t in o["o_que_muda"]]
-        if o.get("por_que"):                    # SPEC-131-B: o "por que recomendamos" de cada cartão da renovação
-            item["por_que"] = arredondar_texto(o["por_que"])
+        if por_que:                             # SPEC-131-B: o "por que recomendamos" de cada cartão da renovação
+            item["por_que"] = arredondar_texto(por_que)
         item["coberturas"] = [dict(c) for c in o["coberturas"]]
         total = _total_do_parcelamento(bruta, item.get("parcelas"))
         if total is not None:

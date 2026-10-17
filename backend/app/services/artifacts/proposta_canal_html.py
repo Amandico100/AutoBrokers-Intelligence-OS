@@ -136,7 +136,8 @@ def _nivel(selo: str) -> str:
 
 
 def _susep(anf: dict) -> str:
-    return re.sub(r"^\s*susep\b[\s:nº°.#-]*", "", str(anf.get("susep") or ""), flags=re.I).strip()
+    """A regra ÚNICA (`AP.susep_limpa`, conserto K2 item 7) — o cartão e o rodapé do canal com o mesmo número."""
+    return AP.susep_limpa(anf)
 
 
 def _economia(modelo: dict) -> Optional[dict]:
