@@ -118,7 +118,9 @@ def test_sem_a_bandeira_a_renovacao_nao_tem_a_faixa_nem_o_estilo():
     ren = dict(contrato, situacao="renovacao", opcoes=EX._opcoes_da_renovacao(contrato, premio_de_hoje=4389.24),
                renovacao={"vence_em": "2026-11-03", "seguradora_atual": "Bradesco", "premio_atual": 4389.24})
     sem, com = PH.render_renovacao(ren), PH.render_renovacao(dict(ren, exemplo=True))
-    assert FAIXA not in sem and 'class="exemplo"' not in sem and ".exemplo{" not in sem
+    # §9.3 (SPEC-130-C, D-130C-01): a renovação mora no esqueleto da VENDA, cujo CSS sempre trouxe a regra `.exemplo{`
+    # (sem efeito sem o elemento). A lição continua no que se VÊ: sem a bandeira, nem a faixa nem o elemento
+    assert FAIXA not in texto_visivel(sem) and 'class="exemplo"' not in sem
     assert FAIXA in texto_visivel(com)
     assert PH.render_renovacao(dict(ren, exemplo="sim")) == sem          # só `True` liga (nunca um texto qualquer)
 

@@ -15,9 +15,12 @@ destino_do_fechar_do_canal   o wa.me de VOLTA À CONVERSA do canal (`canal.whats
 em quantidade de linhas — e nenhum nome de corretora perdedora. O duelo entre corretoras da carteira não entra.
 
 O SCRIPT é o MESMO da carteira (`proposta_html.SCRIPT_DA_PROPOSTA`, o hash da CSP não muda e `service.py` fica
-intocado). Esta página não tem o `#track` da carteira: o script só tira a classe `no-js` e sai. Tudo funciona sem ele —
-os cartões são um carrossel de CSS (`.ops`, scroll-snap; lado a lado em grade a partir de 880 px — SPEC-133-A.1), o comparar e as dúvidas são `<details>`, o "Quero fechar" é um link comum (`?fechar=`), o
-mesmo redirecionamento medido (`share.clicked`) da carteira.
+intocado). SPEC-130-C (D-130C-09): as opções usam o MESMO carrossel da venda — `#track > .slot > .pass`, as abas e o
+"1 de N" que o script já dirige (o `.pass` daqui não tem o 3D da carteira: nenhum CSS desta página lê `--d`). Tudo
+funciona sem ele — os cartões são um carrossel de CSS (`.ops`, scroll-snap; lado a lado em grade a partir de 880 px —
+SPEC-133-A.1), as abas são âncoras, o comparar e as dúvidas são `<details>`, o "Quero fechar" é um link comum
+(`?fechar=`), o mesmo redirecionamento medido (`share.clicked`) da carteira. A corretora se apresenta no BLOCO DA
+CORRETORA (`proposta_corretora`, o mesmo das outras páginas), com a voz do canal.
 
 As frases que a mensagem do canal também diz (a parcela em destaque, o tempo até o teto, "Corretoras de Nível 5", os
 anos de mercado) vêm das MESMAS funções de `multicalculo/mensagem.py` — uma regra só para o balão e para a página.
@@ -31,20 +34,13 @@ from urllib.parse import quote
 
 from . import proposta_apresentacao as AP
 from . import proposta_html as PH
+from .proposta_corretora import (CRITERIOS_DO_NIVEL_5, CSS_DO_BLOCO_DA_CORRETORA,  # noqa: F401 (reexportados)
+                                 VERSAO_DOS_CRITERIOS, bloco_da_corretora, selo_do_programa)
 from .proposta_estilo import _font_face
 
-#: 💭 Os 5 itens do "Corretora Nível 5" — o RASCUNHO do programa (PRONTIDAO-DA-133-A §8, para o Founder lapidar;
-#: D-130A1-04: a lista tem de estar escrita e pública antes de abrir ao público). O modelo pode trazer a própria lista
-#: (`canal.selo_criterios`: [[título, detalhe], …]) — vence esta.
-CRITERIOS_DO_NIVEL_5 = (
-    ("Registro ativo na SUSEP", "conferido no cadastro e na consulta pública."),
-    ("Cota em todas as seguradoras que aceitam o seu perfil", "o multicálculo prova, a cada pedido."),
-    ("Responde na hora, 24 horas", "o agente da corretora atende; a pessoa da corretora assume no horário dela."),
-    ("Acompanha o sinistro do aviso ao fim", "cada passo fica registrado."),
-    ("Reputação pública conferida", "Google e Reclame Aqui lidos e respondidos — a nota aparece como está, sem filtro."),
-)
-#: a versão da lista acima (sobe quando o texto muda — o consumidor vê qual lista valia)
-VERSAO_DOS_CRITERIOS = 1
+# SPEC-130-C (D-130C-02): os itens do Nível 5, a versão e o selo moram no BLOCO DA CORRETORA (`proposta_corretora`) —
+# as três páginas os mostram. Os nomes continuam aqui (quem lia `PC.CRITERIOS_DO_NIVEL_5` segue lendo a mesma lista).
+_selo_do_programa = selo_do_programa
 
 
 # =====================================================================================================================
@@ -227,20 +223,6 @@ def simbolo(uid: str, classe: str = "q") -> str:
             f'<path class="q-tail" d="{_RABO}" stroke-width="3.2" stroke-linejoin="round"/></svg>')
 
 
-def _selo_do_programa(nivel: str) -> str:
-    """O selo de certificação do programa (o "ISO" do Founder): anel duplo, o nível no centro."""
-    num = re.search(r"(\d+)\s*$", nivel)
-    centro = (f'<text x="60" y="80" text-anchor="middle" class="s5-num">{PH._e(num.group(1))}</text>' if num else
-              '<path d="M42 62l12 12 24-26" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" '
-              'class="s5-ok"/>')
-    palavra = PH._e((nivel[: num.start()] if num else "").strip().upper()[:10])
-    return ('<svg class="s5" viewBox="0 0 120 120" aria-hidden="true" focusable="false">'
-            '<circle cx="60" cy="60" r="57" class="s5-out"/><circle cx="60" cy="60" r="49" class="s5-in"/>'
-            '<circle cx="60" cy="60" r="44" class="s5-line" fill="none" stroke-width="1.6" stroke-dasharray="2 3.2"/>'
-            + (f'<text x="60" y="44" text-anchor="middle" class="s5-word">{palavra}</text>' if palavra else "")
-            + centro + "</svg>")
-
-
 # =====================================================================================================================
 # o CSS da página do canal (tokens no :root, claro e escuro, mobile primeiro)
 # =====================================================================================================================
@@ -332,16 +314,34 @@ details[open]>summary svg{transform:rotate(180deg)}
 .s>.sub{margin-top:6px;font-size:15px;color:var(--ink-muted);max-width:62ch}
 
 /* as opções — SPEC-133-A.1 (Founder 10/10): LADO A LADO em carrossel. No celular arrasta para o lado (scroll-snap de
-   CSS, sem script) e o próximo cartão aparece na borda; do computador (≥ 880 px) os cartões ficam lado a lado em grade */
-.ops{margin:14px -16px 0;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
+   CSS, sem script) e o próximo cartão aparece na borda; do computador (≥ 880 px) os cartões ficam lado a lado em grade.
+   SPEC-130-C (D-130C-09): o MESMO componente da venda — `#track > .slot > .pass`, as abas e o "1 de N" que o script já
+   dirige (o trilho é `position:relative`: o script mede `offsetLeft` contra ELE e sabe quando estão lado a lado) */
+.ops{position:relative;margin:14px -16px 0;display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
   scroll-padding-inline:16px;padding:4px 16px 14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .ops::-webkit-scrollbar{display:none}
 .ops:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;border-radius:18px}
-.ops>.op{flex:0 0 min(320px, calc(100% - 52px));scroll-snap-align:start;scroll-snap-stop:always}
-.ops>.op:last-child{scroll-snap-align:end}
-.ops.um>.op{flex-basis:100%}
-.arraste{margin-top:10px;font-size:13.5px;color:var(--ink-muted);display:flex;align-items:center;gap:6px}
-.arraste svg{width:16px;height:16px;flex:none}
+.ops>.slot{flex:0 0 min(320px, calc(100% - 52px));display:flex;scroll-snap-align:start;scroll-snap-stop:always}
+.ops>.slot:last-child{scroll-snap-align:end}
+.ops.um>.slot{flex-basis:100%}
+.slot>.op{flex:1;min-width:0}
+.no-js .js-only{display:none!important}
+.navrow{display:flex;align-items:center;gap:10px;margin-top:14px}
+.navrow .tabs{flex:1}
+.tabs{position:relative;display:flex;padding:3px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line)}
+.tab-ind{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px) / var(--n, 3));border-radius:11px;
+  background:var(--surface);box-shadow:0 1px 2px rgb(var(--shadow)/.16),0 3px 10px rgb(var(--shadow)/.08);
+  transform:translateX(calc(var(--pos, 0) * 100%));pointer-events:none}
+.tab{position:relative;flex:1 1 0;display:grid;place-items:center;text-align:center;border-radius:11px;padding:4px 6px;
+  min-height:44px;font-size:14px;line-height:1.15;font-weight:500;color:var(--ink-muted);text-decoration:none}
+.tab[aria-selected="true"]{color:var(--ink-strong);font-weight:700}
+.nav{display:none;align-items:center;gap:2px;flex:none}
+.nav button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);cursor:pointer;
+  display:grid;place-items:center;color:var(--ink-strong);font:inherit;padding:0}
+.nav button:disabled{opacity:.4;cursor:default}
+.nav svg{width:18px;height:18px}
+.count{min-width:46px;text-align:center;font-size:14px;color:var(--ink-muted)}
+@media (min-width:600px){.nav{display:flex}}
 .op{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px}
 .op.rec{border:2px solid var(--navy);box-shadow:0 10px 28px -18px rgb(var(--shadow)/.6)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .op.rec{border-color:var(--lime)}}
@@ -403,42 +403,9 @@ details[open]>summary svg{transform:rotate(180deg)}
 .cmp-head .cmp-cells>div{font-weight:700}
 .cmp-head .cmp-cells small{display:block;font-weight:500;color:var(--ink-muted);font-size:12.5px}
 
-/* a corretora */
-.host{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px}
-.host-id{display:flex;align-items:center;gap:14px}
-.plate{background:#fff;border-radius:12px;padding:6px 10px;border:1px solid var(--line);flex:none}
-.plate img{height:34px;width:auto;max-width:112px;object-fit:contain}
-.mono{width:52px;height:52px;border-radius:14px;background:var(--navy);color:#fff;display:grid;place-items:center;font-weight:700;font-size:19px;flex:none}
-.host h3{font-size:20px;line-height:1.2;color:var(--ink-strong);font-weight:700}
-.host-id p{font-size:14px;color:var(--ink-muted)}
-.n5ok{margin-top:14px;display:inline-flex;align-items:center;gap:8px;font-weight:700;color:var(--ink-strong);font-size:15.5px;
-  background:var(--pos-bg);border-radius:999px;padding:5px 13px 5px 6px}
-.n5ok svg{width:22px;height:22px;flex:none}
-.n5ok .ck{fill:var(--pos)}
-.facts{margin:14px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.facts li{background:var(--surface-2);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:1px;min-width:0}
-.facts b{font-size:18px;color:var(--ink-strong);font-weight:700;display:flex;align-items:center;gap:5px;overflow-wrap:anywhere}
-.facts b svg{width:16px;height:16px;color:#C98A00;flex:none}
-.facts span{font-size:13px;color:var(--ink-muted)}
-.facts a{color:var(--ink-strong);font-weight:700;font-size:15px;overflow-wrap:anywhere;text-underline-offset:3px}
-.src{margin-top:10px;font-size:12.5px;color:var(--ink-muted)}
-.what{margin-top:12px;font-size:14px;color:var(--ink)}
-
-/* o selo do programa */
-.n5{margin-top:34px;border-radius:22px;padding:22px 18px;background:var(--surface);border:1px solid var(--line);
-  display:grid;gap:14px;justify-items:start}
-.s5{width:104px;height:104px}
-.s5-out{fill:var(--navy)}.s5-in{fill:var(--navy);stroke:var(--lime);stroke-width:3}.s5-line{stroke:var(--lime)}
-.s5-word{fill:var(--lime);font:700 12px var(--font);letter-spacing:2px}
-.s5-num{fill:#fff;font:700 44px var(--font)}.s5-ok{stroke:#fff}
-.n5 h2{font-size:23px;line-height:1.15;font-weight:700;letter-spacing:-.02em;color:var(--ink-strong)}
-.n5 .sub{margin-top:6px;font-size:15px;color:var(--ink-muted)}
-.n5 ol{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:n}
-.n5 li{counter-increment:n;display:grid;grid-template-columns:30px 1fr;gap:10px;font-size:15px;align-items:start}
-.n5 li::before{content:counter(n);width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
-  background:var(--lime);color:var(--on-lime);font-weight:700;font-size:14px}
-.n5 li b{color:var(--ink-strong);font-weight:700}
-.n5-v{font-size:12.5px;color:var(--ink-muted)}
+/* a corretora e o selo do programa: o BLOCO DA CORRETORA (SPEC-130-C, `proposta_corretora`, o 2º <style>) — o selo
+   na cor do programa (marinho e limão) */
+body .bc{--bc-marca:var(--navy);--bc-selo:var(--navy);--bc-selo-acento:var(--lime);--bc-selo-num:#FFFFFF}
 
 /* melhor preço por seguradora */
 .rank{margin:14px 0 0;padding:0;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
@@ -482,14 +449,11 @@ details[open]>summary svg{transform:rotate(180deg)}
 
 @media (min-width:640px){
   .hero h1{font-size:40px}
-  .facts{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .n5{grid-template-columns:120px 1fr;column-gap:24px;align-items:start;padding:28px}
-  .n5 .s5{width:120px;height:120px;grid-row:span 3}
 }
 @media (min-width:880px){
   .ops{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));overflow:visible;margin:14px 0 0;padding:0}
-  .ops>.op{flex:none}
-  .arraste{display:none}
+  .ops>.slot{flex:none}
+  .navrow{display:none}
 }
 @media (min-width:960px){
   .hero{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:32px;align-items:center;padding-top:22px}
@@ -500,8 +464,8 @@ details[open]>summary svg{transform:rotate(180deg)}
 }
 @media (prefers-reduced-motion:no-preference){.op,.win{animation:sobe .45s ease-out both}
   @keyframes sobe{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}}
-@media print{.dock,.cta,.want,.arraste{display:none!important}.endpad{height:0}body{background:#fff}
-  .ops{display:block;overflow:visible;margin:14px 0 0;padding:0}.ops>.op{margin-bottom:12px;break-inside:avoid}}
+@media print{.dock,.cta,.want,.navrow{display:none!important}.endpad{height:0}body{background:#fff}
+  .ops{display:block;overflow:visible;margin:14px 0 0;padding:0}.ops>.slot{display:block;margin-bottom:12px;break-inside:avoid}}
 """
 
 
@@ -567,10 +531,12 @@ def _cartao(o: dict, i: int, rec: dict, barata: Optional[dict], modelo: dict, hr
                 f'<ul>{"".join(covs)}</ul></details>' if covs else "")
     want = (f'<a class="want" href="{PH._e(href)}" rel="nofollow">{PH.ICO["wa"]}Quero esta</a>' if href else "")
     aria = f"Opção {i + 1}: {rotulo}, {o.get('seguradora') or ''}, {PH._brl(o.get('premio_anual'))} por ano"
-    return (f'<article class="op{" rec" if o is rec else ""}" data-opcao="{PH._e(o["id"])}" aria-label="{PH._e(aria)}">'
+    # SPEC-130-C (D-130C-09): o cartão dentro do `.slot` do `#track` (o carrossel da venda, que o script dirige)
+    return (f'<div class="slot" id="opt-{i}" data-i="{i}" role="tabpanel" aria-labelledby="tab-{i}">'
+            f'<article class="op{" rec" if o is rec else ""} pass" data-opcao="{PH._e(o["id"])}" aria-label="{PH._e(aria)}">'
             f'<div class="op-h"><span class="badge">{PH._e(rotulo)}</span>{nota_html}</div>'
             f'<p class="seg">{PH._e(o.get("seguradora") or "")}{f"<span>{PH._e(produto)}</span>" if produto else ""}</p>'
-            f'{cabeca}{medidor}{corpo}{detalhes}{want}</article>')
+            f'{cabeca}{medidor}{corpo}{detalhes}{want}</article></div>')
 
 
 def _comparar(ops: list[dict]) -> str:
@@ -685,71 +651,35 @@ def render_proposta_do_canal(modelo: dict) -> str:
 
     # ---- as opções
     opcoes = ""
+    n = len(ops)
     if ops:
         cartoes = "".join(_cartao(o, i, rec, barata, modelo, href_fechar(o)) for i, o in enumerate(ops))
-        opcoes = (f'<section class="s" aria-labelledby="h-ops"><h2 id="h-ops">'
-                  f'{"As opções que separamos" if len(ops) > 1 else "A opção que separamos"}</h2>'
+        # SPEC-130-C (D-130C-09): as abas e o "1 de N" da venda (o script já os dirige; sem JS, âncoras)
+        _fora_da_ordem = ' tabindex="-1"'
+        abas = "".join(f'<a class="tab" href="#opt-{i}" role="tab" id="tab-{i}" aria-controls="opt-{i}" '
+                       f'aria-selected="{"true" if i == 0 else "false"}"{"" if i == 0 else _fora_da_ordem}>'
+                       f'{PH._e(o.get("rotulo") or o.get("id"))}</a>' for i, o in enumerate(ops))
+        navrow = ""
+        if n > 1:
+            navrow = (f'<div class="navrow"><div class="tabs" role="tablist" aria-label="Opções">'
+                      f'<span class="tab-ind" id="tab-ind" aria-hidden="true"></span>{abas}</div>'
+                      f'<div class="nav js-only"><button type="button" id="prev" aria-label="Opção anterior">'
+                      f'{PH.ICO["left"]}</button><span class="count" id="count" aria-live="polite">1 de {n}</span>'
+                      f'<button type="button" id="next" aria-label="Próxima opção">{PH.ICO["right"]}</button></div></div>')
+        opcoes = (f'<section class="s" aria-labelledby="h-ops" style="--n:{n}"><h2 id="h-ops">'
+                  f'{"As opções que separamos" if n > 1 else "A opção que separamos"}</h2>'
                   f'<p class="sub">A mesma comparação, lado a lado. A nota vai de 0 a 100 e pesa preço, franquia e coberturas.</p>'
-                  f'<div class="ops{" um" if len(ops) == 1 else ""}" style="--n:{len(ops)}" tabindex="0" role="region" '
-                  f'aria-roledescription="carrossel" aria-label="{PH._e(f"As {len(ops)} opções, lado a lado" if len(ops) > 1 else "A opção")}">'
+                  + navrow
+                  + f'<div class="ops{" um" if n == 1 else ""}" id="track" tabindex="0" role="region" '
+                  f'aria-roledescription="carrossel" aria-label="{PH._e(f"As {n} opções. Use as setas do teclado para trocar." if n > 1 else "A opção")}">'
                   f'{cartoes}</div>'
-                  + (f'<p class="arraste">{PH.ICO["right"]}Arraste para o lado para ver as outras opções</p>'
-                     if len(ops) > 1 else "")
-                  + f'<div style="--n:{len(ops)}">{_comparar(ops)}</div></section>')
+                  + f'<div>{_comparar(ops)}</div></section>')
 
-    # ---- a corretora
-    corretora = ""
-    if nome_anf:
-        id_visual = (f'<span class="plate"><img src="{PH._e(logo)}" alt="" height="40"></span>' if logo
-                     else f'<span class="mono" aria-hidden="true">{PH._e(AP.monograma(nome_anf))}</span>')
-        cidade = str(anf.get("cidade") or "").strip()
-        fatos = []
-        g = anf.get("google") if isinstance(anf.get("google"), dict) else None
-        g_nota = AP.dec(g.get("nota")) if g else None
-        g_n = AP.numero_inteiro(g.get("avaliacoes")) if g else None
-        if g_nota is not None and g_n and g_n > 0:
-            fatos.append(f'<li><b>{PH.ICO["star"]}{f"{g_nota:.1f}".replace(".", ",")}</b>'
-                         f'<span>no Google · {g_n} {"avaliações" if g_n != 1 else "avaliação"}</span></li>')
-        else:
-            g = None
-        susep = _susep(anf)
-        if susep:
-            fatos.append(f'<li><b>{PH._e(susep)}</b><span>registro na SUSEP</span></li>')
-        anos = M._anos(modelo, anf.get("desde"))
-        if anos:
-            n_anos = re.match(r"^(\d+)", anos).group(1)
-            fatos.append(f'<li><b>{n_anos}{AP.NB}{"anos" if n_anos != "1" else "ano"}</b><span>de mercado</span></li>')
-        site = str(anf.get("site") or "").strip()
-        if re.fullmatch(r"[A-Za-z0-9.-]+\.[A-Za-z]{2,}(/[A-Za-z0-9._~/-]*)?", site or ""):
-            fatos.append(f'<li><a href="https://{PH._e(site)}" rel="noopener">{PH._e(site)}</a><span>site da corretora</span></li>')
-        fonte_g = (f'<p class="src">Nota e avaliações: {PH._e(AP.aspas_tipograficas(g["fonte"]))}.</p>'
-                   if g and str(g.get("fonte") or "").strip() else "")
-        n5ok = (f'<p class="n5ok"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="ck" cx="12" cy="12" r="11"/>'
-                f'<path d="M7 12.4l3.3 3.3L17.2 8.8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" '
-                f'stroke-linejoin="round"/></svg>{PH._e(selo)}</p>' if selo else "")
-        corretora = (f'<section class="s" aria-labelledby="h-host"><h2 id="h-host">Quem é a corretora que cobra menos?</h2>'
-                     f'<div class="host"><div class="host-id">{id_visual}<div><h3>{PH._e(nome_anf)}</h3>'
-                     + (f"<p>{PH._e(cidade)}</p>" if cidade else "") + f"</div></div>{n5ok}"
-                     + (f'<ul class="facts">{"".join(fatos)}</ul>' if fatos else "") + fonte_g
-                     + f'<p class="what">Quem atende e cuida do seu seguro é a corretora. O {PH._e(nome_canal)} só compara '
-                       f'e indica quem cobrou menos com a mesma cobertura completa.</p></div></section>')
-
-    # ---- o selo do programa (só com o selo ligado na anfitriã)
+    # ---- a corretora: o BLOCO DA CORRETORA (SPEC-130-C, D-130C-02) — o cartão, os selos (Nível 5 + premiada, só com
+    #      prêmio), "<Nome>, corretora … Nível 5", os itens e as fotos. O "Só cotamos com Corretoras Nível 5" de antes
+    #      mora nele (não se repete)
+    corretora = bloco_da_corretora(modelo, "canal", nome_canal=nome_canal)
     n5 = ""
-    if selo:
-        nivel = _nivel(selo)
-        canal = modelo.get("canal") if isinstance(modelo.get("canal"), dict) else {}
-        crit = canal.get("selo_criterios")
-        lista = ([(str(a), str(b)) for a, b in crit if str(a).strip()] if isinstance(crit, list)
-                 and all(isinstance(x, (list, tuple)) and len(x) == 2 for x in crit) and crit else CRITERIOS_DO_NIVEL_5)
-        itens = "".join(f"<li><span><b>{PH._e(a)}</b>: {PH._e(b)}</span></li>" for a, b in lista)
-        n5 = (f'<section class="n5" aria-labelledby="h-n5">{_selo_do_programa(nivel)}'
-              f'<div><h2 id="h-n5">Só cotamos com Corretoras {PH._e(nivel)}</h2>'
-              f'<p class="sub">O selo é do programa {PH._e(nome_canal)}, não do tamanho da corretora: qualquer corretora pode '
-              f'ser {PH._e(nivel)}, desde que cumpra os {len(lista)} itens — e cada um é conferido.</p></div>'
-              f'<ol>{itens}</ol><p class="n5-v">Lista do programa {PH._e(selo)} · versão '
-              f'{VERSAO_DOS_CRITERIOS if lista is CRITERIOS_DO_NIVEL_5 else PH._e(str(canal.get("selo_versao") or "do modelo"))}</p>'
-              f'</section>')
 
     # ---- melhor preço por seguradora (o ranking da corretora que cobra menos; nenhum nome de corretora por linha)
     rk = PH._ranking(modelo)
@@ -834,15 +764,22 @@ def render_proposta_do_canal(modelo: dict) -> str:
                f'{PH._e(AP.voz(modelo)["nota_longa"])} pesa preço, franquia e coberturas.</p>'
              + f'<p>Comparação independente · {PH._e(nome_canal)}</p></footer>')
 
+    def sub_do_dock(o: dict) -> str:
+        pc = _parcela(o)
+        return " · ".join(x for x in (str(o.get("seguradora") or ""), f"{pc[0]} {pc[1]}" if pc
+                                      else PH._brl(o.get("premio_anual"))) if x)
+
     dock = ""
     if rec is not None and digitos:
-        pc = _parcela(rec)
-        dock = (f'<div class="dock"><a class="cta" id="ab-fechar" href="{PH._e(href_fechar(rec))}" rel="nofollow">'
-                f'{PH.ICO["wa"]}<span class="t">Quero fechar<small>'
-                f'{PH._e(" · ".join(x for x in (str(rec.get("seguradora") or ""), f"{pc[0]} {pc[1]}" if pc else PH._brl(rec.get("premio_anual"))) if x))}'
+        # SPEC-130-C: com o `#track`, o script troca o "Quero fechar" para a opção à vista — o texto vai junto
+        # (`#close-sub` + `sub`/`aria` em `ab-dados`); sem JS fica a 1ª, com o nome dela
+        dock = (f'<div class="dock"><a class="cta" id="ab-fechar" href="{PH._e(href_fechar(rec))}" rel="nofollow" '
+                f'aria-label="{PH._e("Quero fechar: " + sub_do_dock(rec))}">'
+                f'{PH.ICO["wa"]}<span class="t">Quero fechar<small id="close-sub">{PH._e(sub_do_dock(rec))}'
                 f'</small></span></a></div>')
 
-    dados = {"opcoes": [{"id": o["id"], "rotulo": o.get("rotulo"), "seguradora": o.get("seguradora")} for o in ops]}
+    dados = {"opcoes": [{"id": o["id"], "rotulo": o.get("rotulo"), "seguradora": o.get("seguradora"),
+                         "sub": sub_do_dock(o), "aria": "Quero fechar: " + sub_do_dock(o)} for o in ops]}
     titulo_pagina = f"{nome_canal} no seu seguro"
     return f"""<!doctype html>
 <html lang="pt-BR" class="no-js">
@@ -863,6 +800,7 @@ def render_proposta_do_canal(modelo: dict) -> str:
 <meta name="twitter:description" content="{PH._e(previa['descricao'])}">
 {PH.MARCADOR_DA_PREVIA}
 <style>{CSS_DO_CANAL}</style>
+<style>{CSS_DO_BLOCO_DA_CORRETORA}</style>
 </head>
 <body>
 {topo}

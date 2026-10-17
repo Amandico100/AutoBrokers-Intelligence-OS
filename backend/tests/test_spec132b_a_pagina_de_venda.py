@@ -64,10 +64,14 @@ APOLICE_CARA = {"seguradora": "Porto", "premio_anual": 9000.0, "origem": "docume
 #: §9.3 (14/10, confirmação de design 132-B, R6/(e)/(g)): a RENOVAÇÃO mudou de novo por decisão DELA — sem "Para guardar
 #: em PDF", a explicação da nota só com a nota nos cartões, o "vence em" uma vez só, "iguais nas três" só quando é verdade.
 #: Retirado com o mesmo cálculo; carteira e canal: os MESMOS hashes (o conserto não os tocou).
+#: §9.3 (16/10, SPEC-130-C): a RENOVAÇÃO mudou por decisão DELA (D-130C-01: o esqueleto da venda, sem o 3D da carteira;
+#: D-130C-02/07: o bloco da corretora "Mais um ano em boas mãos") e o CANAL por decisão DELE (D-130C-02/09: o bloco da
+#: corretora no lugar do cartão + "Só cotamos…", o carrossel com abas da venda) — retirados com o mesmo cálculo
+#: (`scratchpad/f2/jobs/job_03_retrato.py`). A CARTEIRA: o MESMO hash de antes (esta SPEC não a toca).
 RETRATO_ANTES = {
     "carteira": "56d8c9e5469dc837fa11cf95379f2e1237818f3ab7293cce73f86166d2aeac96",
-    "renovacao": "8b673f7ad77c564fa5c40ff6b822318737154b70ce536e97eda4aa246083a8cf",
-    "canal": "d5c72d4bffe4373d1e7c481081cd6c1bfb1789bf7f41565c09d77013b816a787",
+    "renovacao": "39a9543fc88d0cae2b52a8faba10e2dedd1fb4f44f42003d19faf75c2db14b5b",
+    "canal": "aa0e440cd717e54adf959de7102d915e26c6c9d574dd11c08e01ce729467b6a7",
 }
 
 
@@ -138,8 +142,11 @@ def _venda(modelo=None, **extra):
 #: a página da corretora NUNCA fala do canal comparador nem do programa dele (mutação 4). Os nomes vêm da CONFIG do
 #: produto (é dela que a página do canal os lê) + os textos fixos do canal; nada aqui é nome de corretora.
 def _marcas_do_canal():
+    """§9.3 (SPEC-130-C, D-130C-05): o selo "Corretora Nível 5" do programa passou a valer nas TRÊS páginas (o Founder,
+    16/10) — saiu desta lista. A lição continua: a página da corretora nunca diz o NOME do canal, nem "comparador",
+    nem duelo/ranking entre corretoras."""
     canal = CFG.PADRAO_DO_PRODUTO["canal"]
-    return [canal["nome"], canal["selo"]["nome"], "Nível 5", "Comparação independente", "Comparador independente",
+    return [canal["nome"], "Comparação independente", "Comparador independente",
             "comparador", "corretoras parceiras", "Outra corretora parceira", "a melhor das", "Quero renovar"]
 
 
@@ -154,7 +161,10 @@ def vazamentos_da_marca_isenta(doc):
 # =====================================================================================================================
 # 1. a página servida, na ordem do §4
 # =====================================================================================================================
-_ORDEM = ['<header class="wrap vtop">', "<h1>", 'id="h-oferta"', 'id="h-op"', 'id="track"', 'id="comparar"', 'id="h-pq"',
+#: §9.3 (SPEC-130-C, D-130C-02): o "Por que fechar com a X" (`h-pq`) virou o BLOCO DA CORRETORA (`h-corretora`), no
+#: MESMO lugar da ordem — o título da venda continua "Por que fechar com a <Nome>"
+_ORDEM = ['<header class="wrap vtop">', "<h1>", 'id="h-oferta"', 'id="h-op"', 'id="track"', 'id="comparar"',
+          'id="h-corretora"',
           'id="h-host"', 'id="h-depois"', 'id="h-sin"', 'id="h-faq"', 'id="h-fim"', 'class="legal"', 'class="dock"']
 
 

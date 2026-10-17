@@ -128,6 +128,108 @@ def monograma(nome: Any) -> str:
 VEICULOS = {"carro", "moto", "caminhão", "caminhao", "caminhonete", "van", "utilitário", "utilitario", "veículo",
             "veiculo"}
 
+#: SPEC-130-C (U4) — os códigos de RAMO do Agger. São os MESMOS de `portal_worker.multicalculo.contrato` (o guarda
+#: `test_spec130c_as_paginas.test_os_ramos_sao_os_do_contrato` confere): aqui como constantes porque este módulo é PURO
+#: (sem import do motor) e a página só precisa saber de que seguro fala.
+RAMO_AUTO, RAMO_RESIDENCIAL, RAMO_CONDOMINIO, RAMO_EMPRESARIAL, RAMO_VIDA = 31, 2, 16, 18, 91
+
+#: Como a página chama o seguro de cada ramo — completa "a cotação/a renovação {…} está pronta". Por que estes textos:
+#: são as palavras do Founder (16/10, abertura da SPEC-130-C) para cada ramo; o auto com apelido usa o apelido ("do seu
+#: Compass"), como sempre. `seguro` é o nome do seguro numa frase ("o seu seguro residencial").
+FALA_DO_RAMO = {
+    RAMO_AUTO: {"do_seguro": "do seu seguro", "seguro": "seguro"},
+    RAMO_RESIDENCIAL: {"do_seguro": "do seu seguro residencial", "seguro": "seguro residencial"},
+    RAMO_CONDOMINIO: {"do_seguro": "do seguro do condomínio", "seguro": "seguro do condomínio"},
+    RAMO_EMPRESARIAL: {"do_seguro": "do seguro da sua empresa", "seguro": "seguro da sua empresa"},
+    RAMO_VIDA: {"do_seguro": "do seu seguro de vida", "seguro": "seguro de vida"},
+}
+
+
+def ramo_do_modelo(modelo: Any) -> int:
+    """O ramo do modelo (`ramo`, inteiro); ausente ou desconhecido → o auto (o contrato da 130-A nasceu auto)."""
+    r = modelo.get("ramo") if isinstance(modelo, dict) else None
+    return r if numero_inteiro(r) is not None and r in FALA_DO_RAMO else RAMO_AUTO
+
+
+def e_do_auto(modelo: Any) -> bool:
+    return ramo_do_modelo(modelo) == RAMO_AUTO
+
+
+def do_seguro(modelo: dict) -> str:
+    """ "do seu Compass" (auto com apelido) · "do seu seguro" · "do seu seguro residencial" · "do seguro do condomínio" ·
+    "do seguro da sua empresa" · "do seu seguro de vida". Sem dado pessoal além do apelido do auto (como sempre)."""
+    r = ramo_do_modelo(modelo)
+    apelido = o_bem(modelo)["apelido"] if r == RAMO_AUTO else ""
+    return f"do seu {apelido}" if apelido else FALA_DO_RAMO[r]["do_seguro"]
+
+
+#: 🔴 As palavras do AUTO que NUNCA aparecem numa página de RE ou de vida (SPEC-130-C, mutação 3). Um texto do modelo ou
+#: da config que as traga (o padrão "Se ela pedir vistoria do carro…", uma dúvida "E se eu bater o carro?") sai da página
+#: desses ramos — antes errar por omissão do que falar de carro com quem segura a casa.
+PALAVRAS_DO_AUTO = re.compile(r"\b(carros?|guinchos?|fipe|b[ôo]nus|bat(?:er|eu|ida)|oficinas?|ve[íi]culos?|placa)\b",
+                              re.I)
+
+
+def sem_palavra_do_auto(textos: Iterable[str], modelo: dict) -> list[str]:
+    """Os textos como vieram no AUTO; nos outros ramos, sem o "do carro" do padrão ("vistoria do carro" → "vistoria") e
+    sem os textos que ainda falam de carro."""
+    lista = [t for t in textos if isinstance(t, str)]
+    if e_do_auto(modelo):
+        return lista
+    limpos = [re.sub(r"\s+do\s+carro\b", "", t) for t in lista]
+    return [t for t in limpos if not PALAVRAS_DO_AUTO.search(t)]
+
+
+#: SPEC-130-C (U4) — as coberturas de VIDA com o nome que o CLIENTE entende. As chaves são as cruas do Agger (📊 a
+#: fixture `tests/fixtures/agger_ramos/vida_resultado.json`, 16/10: isAppMorte, isAppMorteAcidental, isAppInvalidez,
+#: isInvalidezDoenca, isDespesasMedicasHospitalares, isDoencasGravesGrupo); `comparacao.coberturas_publicas` as entrega
+#: com `nome` = a chave. Chave nova que não esteja aqui vira um nome legível (`nome_legivel`) — NUNCA a chave crua.
+NOME_DA_COBERTURA_VIDA = {
+    "isAppMorte": "Morte",
+    "isAppMorteAcidental": "Morte acidental",
+    "isAppInvalidez": "Invalidez por acidente",
+    "isInvalidezDoenca": "Invalidez por doença",
+    "isDespesasMedicasHospitalares": "Despesas médicas e hospitalares",
+    "isDoencasGravesGrupo": "Doenças graves",
+    "isDiariaIncapacidade": "Diária por incapacidade",
+    "isFuneral": "Assistência funeral",
+}
+_RE_CHAVE_CRUA = re.compile(r"^(?:is)?[a-z]+(?:[A-Z][a-z0-9]*)+$|^is[A-Z]")
+
+
+def nome_legivel(chave: Any) -> str:
+    """ "isDespesasExtras" → "Despesas extras" (a chave crua nunca chega à tela)."""
+    s = re.sub(r"^is(?=[A-Z])", "", str(chave or "").strip())
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", s).replace("_", " ").strip().lower()
+    return s[:1].upper() + s[1:]
+
+
+def coberturas_para_o_cliente(ops: list[dict], modelo: dict) -> list[dict]:
+    """VENDA e RENOVAÇÃO fora do auto: cada cobertura com o nome do cliente (vida pelo dicionário; nome cru → legível) e,
+    na vida, o capital em R$ ("100000" → "R$ 100.000"; zero = não contratada, a linha some). Cópias: o modelo de quem
+    chama não muda. O auto volta como veio (a página dele não muda um byte)."""
+    r = ramo_do_modelo(modelo)
+    if r == RAMO_AUTO:
+        return ops
+    saida = []
+    for o in ops:
+        linhas = []
+        for c in o.get("coberturas") or []:
+            if not isinstance(c, dict):
+                continue
+            chave, nome, valor = str(c.get("chave") or ""), str(c.get("nome") or "").strip(), c.get("valor")
+            if r == RAMO_VIDA and chave in NOME_DA_COBERTURA_VIDA:
+                nome = NOME_DA_COBERTURA_VIDA[chave]
+            elif not nome or nome == chave or _RE_CHAVE_CRUA.match(nome):
+                nome = nome_legivel(chave or nome)
+            if r == RAMO_VIDA and re.fullmatch(r"\s*\d+(?:\.\d+)?\s*", str(valor or "")):
+                if dec(valor) is None or dec(valor) <= 0:
+                    continue
+                valor = brl(valor, False)
+            linhas.append(dict(c, nome=nome, valor=valor))
+        saida.append(dict(o, coberturas=linhas))
+    return saida
+
 
 def o_bem(modelo: dict) -> dict:
     """{rotulo, descricao, ano, apelido, e_veiculo} de `bem` (qualquer ramo) ou `veiculo` (auto)."""
@@ -149,7 +251,7 @@ def o_bem(modelo: dict) -> dict:
     else:
         rotulo = descricao = ano = apelido = ""
     ramo = modelo.get("ramo")
-    e_veiculo = rotulo.lower() in VEICULOS or (ramo == 31 and not rotulo)
+    e_veiculo = rotulo.lower() in VEICULOS or (ramo == RAMO_AUTO and not rotulo)
     return {"rotulo": rotulo, "descricao": descricao, "ano": ano, "apelido": apelido, "e_veiculo": e_veiculo}
 
 
@@ -416,6 +518,12 @@ def escolher_coberturas(ops: list[dict]) -> tuple[list[str], list[str], bool]:
         return len(vals) > 1
 
     topo = [k for k in chaves if k in ("casco", "terceiros") or muda(k)]
+    if not any(k in ("casco", "terceiros") for k in chaves):
+        # SPEC-130-C (U4): RE e vida não têm batida/terceiros — o cartão mostra o que MUDA e as primeiras da lista (a
+        # básica do RE, a morte da vida), até 4; o resto em "Mais N coberturas". O auto não passa por aqui.
+        for k in chaves:
+            if len(topo) < 4 and k not in topo:
+                topo.append(k)
     for k in ("reserva", "assistencia", "vidros"):
         if len(topo) < 5 and k in chaves and k not in topo:
             topo.append(k)

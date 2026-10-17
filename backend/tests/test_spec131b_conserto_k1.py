@@ -509,9 +509,14 @@ def test_design_o_aumento_nunca_e_vantagem_a_franquia_e_uma_palavra_e_o_vencimen
     assert '"Sua renovação"' not in txt and "“Sua renovação”" in txt     # aspas tipográficas
     # 🔴 conserto 7: o vencimento numa linha própria; o nome com peso forte; um eixo só no notebook
     assert re.search(r'<span class="vence">vence em \d\d/\d\d/\d{4}</span>', doc) and "· vence em" not in doc
-    css = PH.CSS_DA_RENOVACAO
-    assert ".hero h1 .vence{display:block" in css and ".hero h1 .hello{color:var(--ink-strong)" in css
-    assert "@media (min-width:1024px){" in css and ".hero.wrap{max-width:720px}" in css
+    # §9.3 (SPEC-130-C, D-130C-01): a renovação mora no esqueleto da VENDA — o vencimento continua numa linha própria
+    # (`.renova .vhero h1 .vence`), o título inteiro (com o nome) na tinta forte e UM eixo só no notebook (a coluna de
+    # 1080 px da venda); antes as três lições moravam no CSS da carteira (`PH.CSS_DA_RENOVACAO`, que saiu)
+    from app.services.artifacts import proposta_cotacao_html as PV
+    assert ".renova .vhero h1 .vence{display:block" in PV.CSS_DA_RENOVACAO
+    assert re.search(r"\.vhero h1\{[^}]*color:var\(--ink-strong\)", PV.CSS_DA_VENDA)
+    assert "@media (min-width:1024px){" in PV.CSS_DA_VENDA and ".venda .wrap{max-width:1080px}" in PV.CSS_DA_VENDA
+    assert '<body class="venda renova">' in doc
 
 
 def test_design_a_cotacao_segue_com_os_textos_de_antes():
@@ -541,7 +546,7 @@ def test_design_a_cotacao_segue_com_os_textos_de_antes():
 def _parcelas_divergentes(doc: str) -> list:
     """Em cada cartão (`<article class="pass">`), toda "Nx de R$ V" com o MESMO N tem o MESMO V. Devolve as divergências."""
     ruins = []
-    for i, art in enumerate(re.findall(r'<article class="pass".*?</article>', doc, re.S)):
+    for i, art in enumerate(re.findall(r'<article class="pass[^"]*".*?</article>', doc, re.S)):
         por_n: dict = {}
         for n, v in re.findall(r"(\d+)x de R\$\s*([\d.,]+)", texto_visivel(art)):
             por_n.setdefault(n, set()).add(v)
@@ -553,7 +558,7 @@ def test_k3_a_mesma_opcao_mostra_uma_parcela_so(monkeypatch):
     m = G4.mundo(monkeypatch)
     r = G4._publicar(m)
     doc = G4._servido(m, r["token"])
-    cartoes = re.findall(r'<article class="pass".*?</article>', doc, re.S)
+    cartoes = re.findall(r'<article class="pass[^"]*".*?</article>', doc, re.S)
     assert len(cartoes) >= 2, "a página de renovação tem os cartões das opções"
     assert any(re.search(r"\d+x de R\$", texto_visivel(c)) for c in cartoes), "a parcela continua sob o preço"
     assert _parcelas_divergentes(doc) == [], _parcelas_divergentes(doc)

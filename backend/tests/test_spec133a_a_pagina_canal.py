@@ -104,7 +104,9 @@ def _hash(texto):
 def _bloco(doc, cls):
     """O texto de um bloco: `<p>`/`<section>` até o fecho dele; o `host` (tem divs dentro) até o fim da seção."""
     if cls == "host":
-        m = re.search(r'<div class="host">(.*?)</section>', doc, re.S)
+        # §9.3 (SPEC-130-C, D-130C-02): a corretora se apresenta no BLOCO DA CORRETORA (cartão + selos + itens), o mesmo
+        # das outras páginas — antes um `<div class="host">` só do canal
+        m = re.search(r'<section class="s bc"[^>]*>(.*?)</section>', doc, re.S)
         return _vis(m.group(1)) if m else ""
     m = re.search(rf'<(p|section)\b[^>]*class="{cls}"[^>]*>(.*?)</\1>', doc, re.S)
     return _vis(m.group(2)) if m else ""
@@ -174,7 +176,8 @@ def defeitos_da_pagina(doc: str, modelo: dict, *, dados=None) -> list:
     if re.search(r"\son[a-z]+\s*=", re.sub(r"<script\b.*?</script>", "", doc, flags=re.S), re.I):
         d.append("handler inline (a CSP o bloquearia)")
     tem_selo = bool((modelo.get("anfitria") or {}).get("selo"))
-    if tem_selo != ('class="n5"' in doc) or tem_selo != ("Só cotamos com Corretoras Nível 5" in vis):
+    # §9.3 (SPEC-130-C): o bloco Nível 5 (antes `<section class="n5">`) são os selos do BLOCO DA CORRETORA
+    if tem_selo != ('<ul class="bc-selos' in doc) or tem_selo != ("Só cotamos com Corretoras Nível 5" in vis):
         d.append(f"bloco Nível 5 ≠ selo ({tem_selo})")
     return d
 
@@ -258,7 +261,7 @@ def test_o_bloco_nivel_5_some_com_o_selo_desligado(monkeypatch):
     doc = _servir(m, r["token"])["html"]
     modelo = _modelo_gravado(m, r["artifact_id"])
     assert "selo" not in modelo["anfitria"]
-    assert 'class="n5"' not in doc and "Nível 5" not in texto_visivel(doc)
+    assert '<ul class="bc-selos' not in doc and "Nível 5" not in texto_visivel(doc)          # §9.3 (SPEC-130-C)
     assert defeitos_da_pagina(doc, modelo) == []
 
 
@@ -333,7 +336,7 @@ def test_MUTACOES_os_guardas_da_pagina_ficam_vermelhos(servido, monkeypatch):
         "o preço cheio no lugar da parcela": re.sub(r'(<p class="parc">).*?(</p>)', r"\1<b>R$ 3.730,56</b>\2", doc, 1, re.S),
         "um script a mais": doc.replace("</body>", "<script>alert(1)</script></body>", 1),
         "um handler inline": doc.replace('<a class="cta"', '<a onclick="x()" class="cta"', 1),
-        "o bloco Nível 5 sem selo": doc.replace('class="n5"', 'class="n5x"', 1),
+        "o bloco Nível 5 sem selo": doc.replace('<ul class="bc-selos', '<ul class="sem-selos', 1),   # §9.3 (SPEC-130-C)
     }
     for nome, mutado in mutacoes.items():
         assert mutado != doc, nome

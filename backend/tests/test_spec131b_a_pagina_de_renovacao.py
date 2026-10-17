@@ -195,8 +195,10 @@ def test_a_pagina_servida_de_renovacao(monkeypatch):
     assert re.search(r'<span class="vence">vence em ', doc) and "· vence em" not in doc
     # 🔴 mutação 1: a 1ª é a "Sua renovação" (a seguradora de HOJE, a mais cara do quadro) — nunca "a melhor das N"
     assert ordem_das_opcoes(doc)[0] == "sua_renovacao"
-    assert texto_visivel(re.search(r'<span class="badge b1">(.*?)</span>', doc).group(1)) == "Sua renovação"
-    assert re.search(r'<p class="insurer">Porto', doc)
+    # §9.3 (SPEC-130-C, D-130C-01: a renovação no esqueleto da venda): o 1º cartão diz "Sua renovação" (antes o selo
+    # `.badge.b1` da carteira; agora a etiqueta `.op-tag` do cartão da venda) e a seguradora de hoje (antes `.insurer`)
+    assert texto_visivel(re.search(r'<span class="op-tag">(.*?)</span>', doc).group(1)) == "Sua renovação"
+    assert re.search(r'<p class="op-seg">Porto', doc)
     for proibida in ("a melhor das", "a melhor opção", "Mais em conta", "Recomendada", "Comparação independente",
                      "O que é o", "Onde cada opção cai", "corretoras parceiras", "cliente desde", "No banco ou na "
                      "cooperativa", "Outras seguradoras não ficaram melhores"):
@@ -217,10 +219,13 @@ def test_a_pagina_servida_de_renovacao(monkeypatch):
     assert doc.count("<h3>Por que recomendamos</h3>") == 1 and doc.count("<h3>Por que considerar</h3>") == 2
     # R3: a MESMA nota nos três (diferença < 3) sai dos cartões; R4: sem "Tipo na seguradora" (as duas franquias
     # diferentes eram "reduzida"); R5: a SUSEP no topo, discreta — nunca um número solto no "Quem cuida"
+    # §9.3 (SPEC-130-C): no esqueleto da venda a nota NUNCA está nos cartões (a lição do R3 — a nota não decide sozinha
+    # entre opções parecidas) e continua na linha "Nota, de 0 a 100" do "Comparar", quando o modelo a traz
     notas = [o.get("nota") for o in r["modelo"]["opcoes"] if o.get("nota") is not None]
-    assert ('class="field"' in doc) == (bool(notas) and max(notas) - min(notas) >= 3)
+    assert 'class="field"' not in doc and ("Nota, de 0 a 100" in txt) == bool(notas)
     assert "Tipo na seguradora" not in txt and "registro na SUSEP" not in txt
-    topo = texto_visivel(re.search(r'<header class="wrap top">(.*?)</header>', doc, re.S).group(1))
+    # §9.3 (SPEC-130-C): o topo é o da venda (`.vtop`)
+    topo = texto_visivel(re.search(r'<header class="wrap vtop">(.*?)</header>', doc, re.S).group(1))
     assert topo.startswith("Corretora de seguros") or "Corretora de seguros" in topo
     assert PH.AP.FRASE_SEM_ORDEM not in txt
     assert "pequenos reparos" in txt and "Mostrar só o que muda" in txt
@@ -263,7 +268,7 @@ def test_a_mais_completa_mostra_os_pequenos_reparos_e_nao_diz_iguais_nas_tres(mo
     txt = _texto(doc)
     assert "iguais nas três" not in txt and "iguais nas opções" not in txt
     # o cartão da "Mais completa": a LINHA com o selo "a mais"
-    cartoes = re.findall(r'<article class="pass".*?</article>', doc, re.S)
+    cartoes = re.findall(r'<article class="pass[^"]*".*?</article>', doc, re.S)    # §9.3: o cartão é `pass op`
     assert len(cartoes) == 3
     mais = next(c for c in cartoes if "Mais completa" in texto_visivel(c))
     assert re.search(r"Pequenos\s*reparos:\s*Incluídos\s*a mais", texto_visivel(mais)), texto_visivel(mais)

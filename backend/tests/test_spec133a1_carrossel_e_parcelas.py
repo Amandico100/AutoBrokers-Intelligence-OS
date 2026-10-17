@@ -126,9 +126,11 @@ def defeitos(doc: str, modelo: dict, dados: dict, baloes=None) -> list:
     if not regra or "display:flex" not in regra.group(1) or "overflow-x:auto" not in regra.group(1) \
             or "scroll-snap-type:x mandatory" not in regra.group(1):
         d.append("o contêiner .ops não é um carrossel (flex + overflow-x + scroll-snap)")
-    if not re.search(r"\.ops>\.op\{[^}]*scroll-snap-align:start", css):
+    # §9.3 (SPEC-130-C, D-130C-09): cada cartão mora num `.slot` do `#track` (o carrossel com abas da venda) — o encaixe
+    # e o "dentro do .ops" passam a ser do `.slot`; a lição (cartões lado a lado que encaixam) é a mesma
+    if not re.search(r"\.ops>\.slot\{[^}]*scroll-snap-align:start", css):
         d.append("os cartões não encaixam (scroll-snap-align)")
-    if not re.search(r'<div class="ops[^"]*"[^>]*>\s*<article class="op', doc):
+    if not re.search(r'<div class="ops[^"]*"[^>]*>\s*<div class="slot"[^>]*>\s*<article class="op', doc):
         d.append("os cartões não estão dentro do .ops")
     cartoes = _cartoes(doc)
     if list(cartoes) != [o["id"] for o in modelo["opcoes"]]:
@@ -188,8 +190,10 @@ def test_o_fio_carrossel_e_parcelas_da_lente_na_pagina_servida_e_no_balao(servid
     assert modelo["origem"] == "canal" and len(modelo["opcoes"]) >= 2
     assert all("parcela_menor" in o for o in modelo["opcoes"])            # a proposta carrega a menor por opção
     assert defeitos(doc, modelo, m.dados, r["mensagem"]) == []
-    # o mesmo script (o hash da CSP não muda) e nenhum #track da carteira
-    assert s["csp_script_hashes"] == [PH.HASH_DO_SCRIPT] and 'id="track"' not in doc
+    # o mesmo script (o hash da CSP não muda) e nenhum trilho 3D da carteira. §9.3 (SPEC-130-C, D-130C-09): o QCM usa o
+    # `#track` com abas e "1 de N" da VENDA (o `.ops`, sem o `.track` da carteira, que girava os cartões)
+    assert s["csp_script_hashes"] == [PH.HASH_DO_SCRIPT] and 'id="track"' in doc and 'class="track"' not in doc
+    assert 'role="tablist"' in doc and 'id="count"' in doc
 
 
 def test_o_12_nunca_e_constante_youse_so_traz_4x():
@@ -325,7 +329,7 @@ def navegador():
 
 _GEOMETRIA = """() => {
   const ops = document.querySelector('.ops'), cs = getComputedStyle(ops);
-  const cards = [...ops.querySelectorAll(':scope > .op')].map(c => c.getBoundingClientRect());
+  const cards = [...ops.querySelectorAll(':scope > .slot')].map(c => c.getBoundingClientRect());
   return {display: cs.display, snap: cs.scrollSnapType, overflowX: cs.overflowX, scrollW: ops.scrollWidth,
           clientW: ops.clientWidth, cards: cards.map(r => ({l: r.left, r: r.right, t: r.top, w: r.width})),
           docW: document.documentElement.scrollWidth, bodyW: document.body.scrollWidth, vw: innerWidth};
