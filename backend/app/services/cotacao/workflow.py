@@ -46,24 +46,11 @@ _ESPACO = uuid.uuid5(uuid.NAMESPACE_URL, "autobrokers:cotacao.chat:mensagem")
 
 _dormir = asyncio.sleep   # os testes trocam
 
-#: SPEC-129-D (conserto K3) — a VIDA (= `contrato.RAMO_VIDA`). A entrega de vida responde NO CHAT, ao corretor, sem
-#: publicar a página do cliente: a apresentação de vida é da 130-C (D-129D-10) e nesta SPEC nada de vida vai ao cliente.
+#: SPEC-129-D (conserto K3) — a VIDA (= `contrato.RAMO_VIDA`): o run da vida marca o ramo no `input_payload`.
+#: SPEC-130-C (D-130C-08, revê a D-129D-16): a entrega de vida PUBLICA a página do cliente como os outros ramos (o
+#: mesmo `publicar_cotacao`, a mesma mensagem com o link). O que a 129-D garante continua ANTES daqui: as perguntas de
+#: saúde/renda nunca presumidas (`pedido_da_conversa`) e a chave `MULTICALCULO_VIDA_LIGADO` (sem ela não há pedido 91).
 RAMO_VIDA = 91
-NOTA_DA_VIDA = ("Os valores são para você conferir: a página de vida para o cliente ainda não existe — mande os "
-                "valores ao cliente você mesmo, ou abra o cálculo no Agger.")
-
-
-async def _opcoes_de_vida_sem_pagina(db: Any, company_id: str, pedido_id: str) -> Optional[List[Dict[str, Any]]]:
-    """As opções da cotação de VIDA para a tabela do chat — o MESMO comparador da página (`proposta.montar_proposta` →
-    `resumo_da_cotacao`), SEM publicar nada (o modelo é só lido). Falhou → None (a frase honesta com o total)."""
-    try:
-        from app.services.multicalculo.proposta import montar_proposta, resumo_da_cotacao
-
-        modelo = await montar_proposta(company_id, pedido_id, "novo_sem_apolice", None, None, db=db)
-        return list(resumo_da_cotacao(modelo).get("opcoes") or [])
-    except Exception as exc:  # noqa: BLE001 — o resultado existe; a tabela é que não saiu
-        logger.warning("[COTACAO] as opções de vida não foram montadas (%s)", type(exc).__name__)
-        return None
 
 
 def _cliente(db: Any) -> Any:
@@ -370,23 +357,8 @@ async def _cotacao(ctx: dict) -> Any:
                 tipo="sem_resposta", texto=RESP.texto_sem_resposta(aviso=aviso, ajuste=ajuste),
                 payload={"pedido_id": pedido_id, "estado": "sem_resposta"})
             return {"situacao": "sem_preco", "escreveu": bool(escreveu)}
-        if str(payload.get("ramo") or "") == str(RAMO_VIDA):
-            # SPEC-129-D (K3): a vida responde AQUI, ao corretor — a tabela do comparador, sem link e sem mensagem
-            # para o cliente (D-129D-10). ⛔ Nada de fumante/renda/esporte nesta mensagem: só seguradora e preço.
-            opcoes = await _opcoes_de_vida_sem_pagina(db, company_id, pedido_id)
-            texto = (RESP.texto_pronto(responderam=responderam, opcoes=opcoes or [], link=None,
-                                       mensagem_para_o_cliente=None, aviso_da_conta=aviso)
-                     + ("" if opcoes else "\n\nOs valores de cada seguradora estão em Cotação Rápida → Cotações e no "
-                                          "Agger.")
-                     + f"\n\n{NOTA_DA_VIDA}")
-            resumo_vida = {"opcoes": opcoes or []}
-            produzido.update({"pedido_id": pedido_id, "url": None, "token": None, "artifact_id": None,
-                              "mensagem": None, "resumo": resumo_vida})
-            escreveu = await asyncio.to_thread(
-                gravar_mensagem, db, company_id=company_id, conversation_id=conversa, run_id=run_id, tipo="pronta",
-                texto=RESP.sem_documento_inteiro(texto),
-                payload={"pedido_id": pedido_id, "estado": "pronta", "ramo": RAMO_VIDA, "resumo": resumo_vida})
-            return {"situacao": "entregue", "artifact_id": None, "escreveu": bool(escreveu)}
+        # SPEC-130-C (D-130C-08): a vida segue o MESMO caminho dos outros ramos — publica a página e manda o link.
+        # ⛔ Nada de fumante/renda/esporte na resposta: a página e a mensagem só têm seguradora, coberturas e preço.
         try:
             from app.services.multicalculo.proposta import publicar_cotacao
 

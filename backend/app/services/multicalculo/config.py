@@ -237,6 +237,89 @@ PADRAO_DO_PRODUTO: Dict[str, Any] = {
                                          "a Lei Geral de Proteção de Dados (LGPD). Esta página não mostra o seu CPF nem "
                                          "o seu telefone."},
                         ],
+                        # SPEC-130-C (U4) — os textos dos OUTROS ramos (as listas acima são do AUTO e não mudam):
+                        # `re` = condomínio, residencial e empresarial; `vida` = vida individual. ⛔ Nenhuma palavra de
+                        # carro (batida, vistoria do carro, guincho, FIPE, bônus), nenhum prazo nem carência inventados.
+                        # A corretora troca cada lista na linha dela (`servicos.cotacao.pagina.por_ramo.<re|vida>.<lista>`).
+                        "por_ramo": {
+                            "re": {
+                                "depois_do_sim": [
+                                    "Você escolhe a opção e fala com a gente. Tiramos as últimas dúvidas e conferimos "
+                                    "os seus dados.",
+                                    "Fazemos a proposta na seguradora. Se ela pedir vistoria do imóvel, avisamos e "
+                                    "combinamos com você.",
+                                    "A apólice chega no seu e-mail. E a {corretora} continua do seu lado durante todo o "
+                                    "seguro.",
+                                ],
+                                "faq": [
+                                    {"pergunta": "Por que fechar com uma corretora?",
+                                     "resposta": "Porque a corretora trabalha para você, não para a seguradora: compara "
+                                                 "várias de uma vez, explica o que cada cobertura faz e representa você "
+                                                 "diante da seguradora — na contratação e, principalmente, se precisar "
+                                                 "acionar o seguro."},
+                                    {"pergunta": "O que é a cobertura básica?",
+                                     "resposta": "É a cobertura de incêndio, raio e explosão, que todo seguro deste "
+                                                 "tipo tem. As outras coberturas de cada opção aparecem no cartão dela."},
+                                    {"pergunta": "E se acontecer um dano?",
+                                     "resposta": "Você avisa a {corretora}. A gente orienta o que fazer, abre o aviso na "
+                                                 "seguradora com você e acompanha até o fim. A franquia, quando a opção "
+                                                 "tem, é a sua parte no prejuízo."},
+                                    {"pergunta": "O preço pode mudar?",
+                                     "resposta": "Os preços desta cotação valem até {validade}. Depois disso a "
+                                                 "seguradora pode recalcular, e a gente atualiza a cotação para você, "
+                                                 "sem custo."},
+                                    {"pergunta": "Como eu pago?",
+                                     "resposta": "À vista ou parcelado, nas formas que cada seguradora aceita (cartão "
+                                                 "de crédito, boleto ou débito em conta). Os cartões mostram a parcela "
+                                                 "de cada opção."},
+                                    {"pergunta": "Posso cancelar depois?",
+                                     "resposta": "Pode. A devolução do que você já pagou segue as regras da seguradora "
+                                                 "para o período que ficou sem uso, e a gente cuida do pedido com você."},
+                                    {"pergunta": "Os meus dados estão seguros?",
+                                     "resposta": "Estão. Usamos os seus dados só para cotar e contratar o seu seguro, "
+                                                 "como manda a Lei Geral de Proteção de Dados (LGPD). Esta página não "
+                                                 "mostra o seu CPF, o seu telefone nem o endereço do imóvel."},
+                                ],
+                            },
+                            "vida": {
+                                "depois_do_sim": [
+                                    "Você escolhe a opção e fala com a gente. Tiramos as últimas dúvidas e conferimos "
+                                    "os seus dados.",
+                                    "Fazemos a proposta na seguradora, com a sua declaração de saúde e os "
+                                    "beneficiários que você indicar. Se ela pedir mais alguma informação, avisamos.",
+                                    "A apólice chega no seu e-mail. E a {corretora} continua do seu lado durante todo o "
+                                    "seguro.",
+                                ],
+                                "faq": [
+                                    {"pergunta": "Por que fechar com uma corretora?",
+                                     "resposta": "Porque a corretora trabalha para você, não para a seguradora: compara "
+                                                 "várias de uma vez, explica o que cada cobertura faz e cuida da sua "
+                                                 "família diante da seguradora, se um dia for preciso acionar o seguro."},
+                                    {"pergunta": "Quem recebe o seguro?",
+                                     "resposta": "As pessoas que você indicar como beneficiárias na hora de contratar. "
+                                                 "A {corretora} ajuda você a preencher."},
+                                    {"pergunta": "Preciso declarar a minha saúde?",
+                                     "resposta": "Sim. A seguradora pergunta sobre a sua saúde e os seus hábitos na "
+                                                 "proposta. Responda com a verdade: uma declaração inexata pode fazer "
+                                                 "perder o direito ao seguro (Código Civil, art. 766)."},
+                                    {"pergunta": "O preço pode mudar?",
+                                     "resposta": "Os preços desta cotação valem até {validade}. Depois disso a "
+                                                 "seguradora pode recalcular, e a gente atualiza a cotação para você, "
+                                                 "sem custo."},
+                                    {"pergunta": "Como eu pago?",
+                                     "resposta": "À vista ou parcelado, nas formas que cada seguradora aceita (cartão "
+                                                 "de crédito, boleto ou débito em conta). Os cartões mostram a parcela "
+                                                 "de cada opção."},
+                                    {"pergunta": "Posso cancelar depois?",
+                                     "resposta": "Pode. O que acontece com o que você já pagou segue as regras da "
+                                                 "seguradora, e a gente cuida do pedido com você."},
+                                    {"pergunta": "Os meus dados estão seguros?",
+                                     "resposta": "Estão. Usamos os seus dados só para cotar e contratar o seu seguro, "
+                                                 "como manda a Lei Geral de Proteção de Dados (LGPD). Esta página não "
+                                                 "mostra o seu CPF, o seu telefone nem as suas respostas de saúde."},
+                                ],
+                            },
+                        },
                     }},
         "renovacao": {"modo": "calcular", "excecoes_do_modo": [],
                       # D-131-0-05 / §5 F3 — o Agger do comercial falhou (senha recusada): a conta da CORRETORA só
@@ -1022,16 +1105,31 @@ def opcoes_da_cotacao(cfg: Optional[Mapping[str, Any]]) -> tuple:
     return tuple(o for o in OPCOES_DA_COTACAO if o in v)
 
 
-def pagina_da_cotacao(cfg: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+#: SPEC-130-C — o grupo de textos da página de venda de cada ramo que não é o auto (`pagina.por_ramo.<grupo>`)
+_GRUPO_DOS_TEXTOS = {"16": "re", "2": "re", "18": "re", "91": "vida"}
+
+
+def pagina_da_cotacao(cfg: Optional[Mapping[str, Any]], ramo: Any = None) -> Dict[str, Any]:
     """SPEC-132-B — os textos da página de VENDA: {diferenciais: [str], depois_do_sim: [str], faq: [{pergunta,
     resposta}]}. Cada lista da corretora vale INTEIRA quando está no formato; fora dele (ou vazia, salvo
-    `diferenciais`), o padrão do produto daquela lista — nunca uma lista quebrada na página do cliente."""
+    `diferenciais`), o padrão do produto daquela lista — nunca uma lista quebrada na página do cliente.
+
+    SPEC-130-C (U4): `ramo` ausente ou o auto → exatamente as listas de antes. RE e vida → `depois_do_sim` e `faq` do
+    GRUPO do ramo (`pagina.por_ramo.re|vida`): as listas da corretora para o auto foram escritas para carro e não
+    valem fora dele; os `diferenciais` (fatos da corretora) valem em todos os ramos."""
     pad = PADRAO_DO_PRODUTO["servicos"]["cotacao"]["pagina"]
     bloco: Mapping[str, Any] = {}
     if cfg is not None:
         bloco = _bloco_do_servico(cfg, "cotacao").get("pagina") or {}
         if not isinstance(bloco, Mapping):
             bloco = {}
+    grupo = _GRUPO_DOS_TEXTOS.get(str(ramo)) if ramo is not None else None
+    if grupo:
+        do_ramo = (bloco.get("por_ramo") or {}) if isinstance(bloco.get("por_ramo"), Mapping) else {}
+        do_ramo = do_ramo.get(grupo) if isinstance(do_ramo.get(grupo), Mapping) else {}
+        pad_do_ramo = pad["por_ramo"][grupo]
+        pad = {"diferenciais": pad["diferenciais"], **pad_do_ramo}
+        bloco = {"diferenciais": bloco.get("diferenciais"), **{k: do_ramo.get(k) for k in pad_do_ramo}}
 
     def textos(v: Any) -> Optional[list]:
         if isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):

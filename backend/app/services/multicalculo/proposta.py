@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import inspect
 import logging
 import re
 from collections import Counter
@@ -37,6 +38,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterable, List, Mapping, Opti
 from app.services.multicalculo import comparacao as CMP
 from app.services.multicalculo import config as CFG
 from app.services.multicalculo import manual_de_negociacao as MANUAL
+from app.services.multicalculo.pedido import RAMO_CONDOMINIO, RAMO_EMPRESARIAL, RAMO_RESIDENCIAL
 from app.services.multicalculo.porta import KIND_CANAL, OPCOES as OPCOES_DO_PEDIDO, MulticalculoProvider, NaoEncontrado
 from app.services.multicalculo.repositorio import RepositorioMulticalculo
 
@@ -180,8 +182,18 @@ def descricao_do_veiculo(bruto: Any) -> str:
     return " ".join(saida)
 
 
+#: SPEC-130-C (U4) — o "bem" de RE e de VIDA é SÓ o rótulo do ramo. ⛔ Nada de endereço, nome, CPF/CNPJ, nascimento
+#: nem tipo de imóvel: o pedido é cifrado e a proposta não o decifra; a oferta de RE/vida não traz descrição neutra.
+ROTULO_DO_BEM: Dict[int, str] = {RAMO_RESIDENCIAL: "residencial", RAMO_CONDOMINIO: "condomínio",
+                                 RAMO_EMPRESARIAL: "empresa", CMP.RAMO_VIDA: "vida"}
+
+
 def _bem(ofertas: Sequence[Mapping[str, Any]], ramo: int) -> Optional[Dict[str, Any]]:
-    """O que foi cotado, da OFERTA (`coberturas.modeloSelecionado`) — o pedido é cifrado e a proposta não o decifra."""
+    """O que foi cotado, da OFERTA (`coberturas.modeloSelecionado`) — o pedido é cifrado e a proposta não o decifra.
+    SPEC-130-C: RE e vida → `{rotulo do ramo, descricao/ano/apelido vazios}` (sem dado pessoal); o auto, como sempre."""
+    if int(ramo) != CMP.RAMO_AUTO:
+        rotulo = ROTULO_DO_BEM.get(int(ramo))
+        return {"rotulo": rotulo, "descricao": None, "ano": None, "apelido": None} if rotulo else None
     modelos = Counter(str((o.get("coberturas") or {}).get("modeloSelecionado") or "").strip()
                       for o in ofertas if isinstance(o.get("coberturas"), Mapping))
     modelos.pop("", None)
@@ -570,17 +582,127 @@ async def montar_anfitria(db: Any, company_id: str, cfg: Mapping[str, Any], *,
     if g:
         anf["google"] = g
     anf["whatsapp"] = _whatsapp_da_anfitria(db, company_id, perfil if publicada else None)
+    # SPEC-130-C (U2/U3): as fotos e os prêmios da MARCA desta corretora (o `company_id` DA PÁGINA — a anfitriã, nunca
+    # o solicitante nem o canal) e o selo do programa pela config DELA. Leitura que falha → lista vazia (o bloco some).
+    anf["fotos"] = await fotos_da_anfitria(db, company_id)
+    anf["premios"] = await premios_da_anfitria(db, company_id)
+    anf["selo"] = selo_da_corretora(cfg)
+    if anf["selo"]:
+        anf["selo_criterios"] = criterios_do_selo(cfg)
     return {k: v for k, v in anf.items() if v is not None}
+
+
+# =====================================================================================================================
+# SPEC-130-C (U2/U3) — as fotos, os prêmios e o selo da anfitriã (o bloco da corretora nas três páginas)
+# =====================================================================================================================
+#: quantas fotos a página mostra (D-130C-03: 8 guardadas, 4 na página) e quantos prêmios o modelo leva (§4: ≤ 10)
+TETO_DE_FOTOS_NA_PAGINA = 4
+TETO_DE_PREMIOS = 10
+TETO_DA_LEGENDA = 80
+_RE_DATA_URL_DE_FOTO = re.compile(r"data:image/(?:webp|jpeg|png);base64,([A-Za-z0-9+/=]+)")
+
+
+async def _ler_da_marca(funcao: str, db: Any, company_id: str, **kw: Any) -> List[Any]:
+    """Chama `app.services.brand.fotos.<funcao>(db, company_id, **kw)` (a F1 — o dono da leitura e do filtro
+    `company_id` no SELECT). Módulo ausente, erro ou resposta torta → [] (a página sai sem o bloco; nunca cai)."""
+    try:
+        from app.services.brand import fotos as FOTOS
+
+        r = getattr(FOTOS, funcao)(db, company_id, **kw)
+        if inspect.isawaitable(r):
+            r = await r
+        return list(r or [])
+    except Exception as exc:  # noqa: BLE001 — sem foto/prêmio a página sai sem o bloco
+        logger.warning("[PROPOSTA] %s da marca ilegível (%s): a página sai sem", funcao, type(exc).__name__)
+        return []
+
+
+async def fotos_da_anfitria(db: Any, company_id: str) -> List[Dict[str, str]]:
+    """As fotos da corretora como a página as embute: [{src: "data:image/…;base64,…", legenda}], no máximo 4. 🔴 Cerca
+    de saída: só `data:` de imagem rasterizada cujos BYTES dizem o tipo e dentro do teto do logo (`_data_url`) — nunca
+    uma URL externa, SVG ou documento; legenda em texto, até 80 caracteres."""
+    saida: List[Dict[str, str]] = []
+    for f in await _ler_da_marca("fotos_da_pagina", db, company_id, teto=TETO_DE_FOTOS_NA_PAGINA):
+        if not isinstance(f, Mapping):
+            continue
+        m = _RE_DATA_URL_DE_FOTO.fullmatch(str(f.get("src") or ""))
+        if not m:
+            continue
+        try:
+            src = _data_url(base64.b64decode(m.group(1), validate=True))
+        except (binascii.Error, ValueError):
+            src = None
+        if not src:
+            continue
+        saida.append({"src": src, "legenda": str(f.get("legenda") or "").strip()[:TETO_DA_LEGENDA]})
+        if len(saida) >= TETO_DE_FOTOS_NA_PAGINA:
+            break
+    return saida
+
+
+async def premios_da_anfitria(db: Any, company_id: str) -> List[Dict[str, Any]]:
+    """Os prêmios cadastrados pela corretora: [{nome, ano|None}] (D-130C-04: "premiada" só com ≥ 1 — CDC art. 37)."""
+    saida: List[Dict[str, Any]] = []
+    for p in await _ler_da_marca("premios", db, company_id):
+        if not isinstance(p, Mapping):
+            continue
+        nome = str(p.get("nome") or "").strip()[:TETO_DA_LEGENDA]
+        if not nome:
+            continue
+        ano = p.get("ano")
+        saida.append({"nome": nome, "ano": ano if isinstance(ano, int) and not isinstance(ano, bool) and ano > 0
+                      else None})
+        if len(saida) >= TETO_DE_PREMIOS:
+            break
+    return saida
+
+
+def selo_da_corretora(cfg: Optional[Mapping[str, Any]]) -> Optional[str]:
+    """D-130C-05: o selo do PROGRAMA na página da corretora (venda e renovação). O NOME é o do padrão do produto — a
+    corretora não renomeia o que o programa afirma ao consumidor (D-130A1-04) — e o "ligado" é o da config DELA
+    (`canal.selo.ligado`, ligado por padrão em `PADRAO_DO_PRODUTO`; ela pode desligar). Sem config → sem selo."""
+    pad = (CFG.PADRAO_DO_PRODUTO.get("canal") or {}).get("selo") or {}
+    proprio = ((cfg or {}).get("canal") or {}).get("selo") or {}
+    nome = str(pad.get("nome") or "").strip()
+    if nome and pad.get("ligado") is True and isinstance(proprio, Mapping) and proprio.get("ligado") is True:
+        return nome
+    return None
+
+
+def criterios_do_selo(cfg: Optional[Mapping[str, Any]]) -> Optional[List[List[str]]]:
+    """Os itens do selo SÓ quando a config os tem (`canal.selo_criterios`: [[título, detalhe], …]) — nunca inventados;
+    sem eles a página usa a lista do programa."""
+    crit = ((cfg or {}).get("canal") or {}).get("selo_criterios")
+    if not (isinstance(crit, list) and crit and all(
+            isinstance(x, (list, tuple)) and len(x) == 2 and all(isinstance(y, str) for y in x) and x[0].strip()
+            for x in crit)):
+        return None
+    return [[str(a).strip(), str(b).strip()] for a, b in crit]
 
 
 # =====================================================================================================================
 # a FAQ do caso — as objeções reais, com os números DESTE quadro, só sobre opções que existem
 # =====================================================================================================================
+#: SPEC-130-C (U4) — fora do AUTO, só as objeções que não falam de carro (nada de batida, aplicativo, concessionária,
+#: cooperativa/carro reserva); na VIDA também sem franquia (a oferta de vida não tem)
+_OBJECOES_DO_RE = ("melhorar_preco", "reduzir_franquia", "outras_seguradoras", "qual_tenho_hoje", "parcelar_mais")
+_OBJECOES_DA_VIDA = ("melhorar_preco", "outras_seguradoras", "qual_tenho_hoje", "parcelar_mais")
+
+
 def _faq(cfg_anf: Mapping[str, Any], *, resumo: Mapping[str, Any], opcoes: List[Dict[str, Any]],
-         situacao: str, voz: str = "corretora", com_whatsapp: bool = True) -> List[Dict[str, str]]:
+         situacao: str, voz: str = "corretora", com_whatsapp: bool = True,
+         ramo: int = CMP.RAMO_AUTO) -> List[Dict[str, str]]:
+    auto = int(ramo) == CMP.RAMO_AUTO
+    if not auto:
+        # a FAQ PRÓPRIA da corretora foi escrita para a página de auto: fora dele valem só as objeções do ramo
+        cfg_anf = {k: v for k, v in cfg_anf.items() if k != "faq"}
     base = MANUAL.faq_padrao(cfg_anf, voz=voz, com_whatsapp=com_whatsapp)
     if MANUAL.faq_da_corretora(cfg_anf):                                       # a FAQ da corretora vale inteira
         return [{"p": i["pergunta"], "r": i["resposta"]} for i in base]
+    if not auto:
+        do_ramo = {MANUAL.objecao(c)["pergunta"] for c in
+                   (_OBJECOES_DA_VIDA if int(ramo) == CMP.RAMO_VIDA else _OBJECOES_DO_RE) if MANUAL.objecao(c)}
+        base = [i for i in base if i["pergunta"] in do_ramo]
     por_pergunta = {}
     for chave in ("melhorar_preco", "reduzir_franquia", "outras_seguradoras", "qual_tenho_hoje", "banco_cooperativa",
                   "endosso_concessionaria", "parcelar_mais", "sinistro_quem_ligo", "uso_aplicativo"):
@@ -640,15 +762,63 @@ def _data_br(iso: Any) -> Optional[str]:
     return f"{dia}/{mes}/{ano}"
 
 
+#: SPEC-130-C (U4) — o que fica sem cobertura quando o seguro de RE não é renovado, pelo ramo
+_O_QUE_FICA_SEM_COBERTURA = {RAMO_RESIDENCIAL: "o imóvel", RAMO_CONDOMINIO: "o condomínio",
+                             RAMO_EMPRESARIAL: "a empresa"}
+
+
+def _reajuste_do_capital(cfg: Mapping[str, Any], ramo: Any) -> Optional[float]:
+    """O reajuste do capital da renovação de VIDA pela config da corretora (`config.reajuste_do_capital_pct`); fora da
+    vida, ou ilegível → None."""
+    if int(ramo) != CMP.RAMO_VIDA:
+        return None
+    try:
+        return CFG.reajuste_do_capital_pct(cfg, ramo)
+    except Exception:  # noqa: BLE001 — sem o número a frase diz só "o capital da sua apólice"
+        return None
+
+
+def _faq_da_renovacao_de_vida(opcoes: Sequence[Mapping[str, Any]], *, vence_em: Any,
+                              reajuste_capital_pct: Optional[float], falar: str) -> List[Dict[str, str]]:
+    """SPEC-130-C (U4): as dúvidas de quem renova o seguro de VIDA. Só o que é verdade para qualquer corretora: o
+    capital é o da apólice (+ o reajuste que a config DELA tem — `config.capital_renovado`), a declaração de saúde é do
+    segurado (Código Civil, art. 766 — a mesma regra da 129-D), parcelar. ⛔ Nenhum prazo nem carência inventados."""
+    reaj = f", reajustado em {pct_br(reajuste_capital_pct)}" if reajuste_capital_pct else ""
+    saida = [
+        {"p": "Por que o preço da renovação mudou?",
+         "r": "O preço de cada ano é recalculado pela seguradora, com o capital e os dados de quem é segurado. Por "
+              "isso calculamos a sua renovação de novo."},
+        {"p": "O capital continua o mesmo?",
+         "r": f"A renovação foi calculada com o capital da sua apólice de hoje{reaj}. {falar} se quiser outro valor, "
+              "que recalculamos."},
+        {"p": "Preciso responder de novo sobre a minha saúde?",
+         "r": "Se a seguradora perguntar, responda com a verdade: a declaração é sua, e uma informação inexata pode "
+              "fazer perder o direito ao seguro (Código Civil, art. 766)."},
+    ]
+    vence = _data_br(vence_em)
+    saida.append({"p": "E se eu não renovar?",
+                  "r": f"O seu seguro termina no vencimento{', em ' + vence if vence else ''}, e a partir daí não há "
+                       "cobertura."})
+    return saida
+
+
 def faq_da_renovacao(*, ramo: int, opcoes: Sequence[Mapping[str, Any]], vence_em: Any = None,
-                     reajuste_pct: Optional[float] = None, com_whatsapp: bool = True) -> List[Dict[str, str]]:
+                     reajuste_pct: Optional[float] = None, com_whatsapp: bool = True,
+                     reajuste_capital_pct: Optional[float] = None) -> List[Dict[str, str]]:
     """SPEC-131-B (laudo I3 §2.3): as dúvidas de quem JÁ é cliente — reajuste, bônus, mudar a franquia, se não renovar,
     parcelar. Só afirma o que é verdade para qualquer corretora e o que ESTA página mostra; as objeções de cliente
-    novo (banco/cooperativa, "outras seguradoras") ficam na cotação (D-131-40)."""
+    novo (banco/cooperativa, "outras seguradoras") ficam na cotação (D-131-40).
+    SPEC-130-C (U4): por RAMO — o auto como sempre; o RE sem bônus/FIPE/carro e com a franquia só se alguma opção a
+    tem; a vida com o capital e a declaração de saúde (`reajuste_capital_pct`: o da config da corretora)."""
     auto = int(ramo) == CMP.RAMO_AUTO
     ids = {str(o.get("id")): o for o in opcoes}
     falar = "Me responda por aqui" if com_whatsapp else "Fale com a corretora"
     saida: List[Dict[str, str]] = []
+    if int(ramo) == CMP.RAMO_VIDA:
+        saida = _faq_da_renovacao_de_vida(opcoes, vence_em=vence_em, reajuste_capital_pct=reajuste_capital_pct,
+                                          falar=falar)
+        saida.append(_faq_de_parcelar(opcoes))
+        return [{"p": i["p"], "r": arredondar_texto(i["r"])} for i in saida]
     if auto:
         saida.append({"p": "Por que o preço da renovação mudou?",
                       "r": "O preço de cada ano é recalculado pela seguradora: muda com o valor do carro na tabela "
@@ -663,28 +833,35 @@ def faq_da_renovacao(*, ramo: int, opcoes: Sequence[Mapping[str, Any]], vence_em
                       "r": f"A cobertura básica (incêndio, raio e explosão) é reajustada{pct} para acompanhar o valor "
                            "do imóvel, e cada seguradora recalcula o preço do ano. As outras coberturas seguem as do "
                            "seu seguro de hoje."})
+    # RE (SPEC-130-C): a pergunta da franquia só quando alguma opção TEM franquia (a de RE costuma vir zerada)
+    com_franquia = auto or any(float((o.get("franquia") or {}).get("valor") or 0) > 0 for o in opcoes
+                               if isinstance(o.get("franquia"), Mapping))
     if "franquia_reduzida" in ids or "menor_franquia" in ids:
         o = ids.get("franquia_reduzida") or ids["menor_franquia"]
         saida.append({"p": "Posso mudar a franquia?",
                       "r": f"Pode. Veja o cartão “{o.get('rotulo')}”: ele mostra quanto custa a franquia menor. "
                            f"{falar} se quiser outra combinação."})
-    else:
+    elif com_franquia:
         saida.append({"p": "Posso mudar a franquia?",
                       "r": f"Pode. Franquia menor costuma deixar o seguro um pouco mais caro. {falar} que "
                            "recalculamos com a franquia que você preferir."})
     vence = _data_br(vence_em)
-    sem = "o carro" if auto else "o imóvel"
+    sem = "o carro" if auto else _O_QUE_FICA_SEM_COBERTURA.get(int(ramo), "o imóvel")
     saida.append({"p": "E se eu não renovar?",
                   "r": (f"O seu seguro termina no vencimento{', em ' + vence if vence else ''}, e {sem} fica sem "
                         "cobertura a partir daí." + (" Renovando no prazo, você não perde o bônus." if auto else ""))})
+    saida.append(_faq_de_parcelar(opcoes))
+    return [{"p": i["p"], "r": arredondar_texto(i["r"])} for i in saida]
+
+
+def _faq_de_parcelar(opcoes: Sequence[Mapping[str, Any]]) -> Dict[str, str]:
     p = (opcoes[0].get("parcelas") if opcoes else None) or {}
     vezes = p.get("vezes") if isinstance(p, Mapping) else None
-    saida.append({"p": "Dá para parcelar?",
-                  "r": (f"Dá. A opção “{opcoes[0].get('rotulo')}” vai até {int(vezes)}x; cada seguradora tem o seu "
-                        "limite de parcelas." if vezes and int(vezes) > 1 else
-                        "Dá. Cada seguradora tem o seu limite de parcelas; os cartões mostram o parcelamento de cada "
-                        "opção.")})
-    return [{"p": i["p"], "r": arredondar_texto(i["r"])} for i in saida]
+    return {"p": "Dá para parcelar?",
+            "r": (f"Dá. A opção “{opcoes[0].get('rotulo')}” vai até {int(vezes)}x; cada seguradora tem o seu "
+                  "limite de parcelas." if vezes and int(vezes) > 1 else
+                  "Dá. Cada seguradora tem o seu limite de parcelas; os cartões mostram o parcelamento de cada "
+                  "opção.")}
 
 
 # =====================================================================================================================
@@ -851,6 +1028,61 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
     return info
 
 
+def opcoes_da_pagina(ops: Sequence[Mapping[str, Any]], ofertas_a: Sequence[Mapping[str, Any]],
+                     cfg_sol: Mapping[str, Any], *, canal: bool = False
+                     ) -> Tuple[List[Dict[str, Any]], List[Mapping[str, Any]]]:
+    """As opções do MODELO a partir de `comparacao.opcoes` e das ofertas DA ANFITRIÃ: sem o `ref` interno; nível, juros
+    com nome, "por que é mais barata", arredondamento único. Devolve (opções, ofertas brutas de cada uma). PURO — a
+    mesma conta da página real e do exemplo (SPEC-130-C: `scripts/publicar_exemplo_da_pagina` a chama)."""
+    por_id = {str(o.get("id")): o for o in ofertas_a}
+    brutas = [por_id.get(str(o["ref"]["oferta_id"]), {}) for o in ops]
+    opcoes: List[Dict[str, Any]] = []
+    for o, bruta in zip(ops, brutas):
+        sem_juros = _parcelas_sem_juros(bruta)
+        item = {k: v for k, v in o.items() if k != "ref"}
+        item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]]
+        item["o_que_muda"] = [arredondar_texto(t) for t in o["o_que_muda"]]
+        if o.get("por_que"):                    # SPEC-131-B: o "por que recomendamos" de cada cartão da renovação
+            item["por_que"] = arredondar_texto(o["por_que"])
+        item["coberturas"] = [dict(c) for c in o["coberturas"]]
+        total = _total_do_parcelamento(bruta, item.get("parcelas"))
+        if total is not None:
+            item["parcelas"] = dict(item["parcelas"], total=total)
+        if sem_juros:
+            item["parcelas_sem_juros"] = sem_juros
+        if canal:                               # SPEC-133-A.1 F1: só o QCM (a carteira não ganha chave — D-133A1-01)
+            menor, maior_sj = _parcela_menor(bruta), _parcela_sem_juros_maior(bruta)
+            if menor:
+                item["parcela_menor"] = menor
+            if maior_sj:
+                item["parcela_sem_juros_maior"] = maior_sj
+        opcoes.append(item)
+    _niveis(opcoes, [b.get("coberturas") or {} for b in brutas])
+    # a opção que vem de um cálculo MAIS BARATO (a econômica, ou a mínima no canal — D-130A1-05) diz o que corta
+    papeis = cfg_sol.get("calculo_por_papel") or {}
+    calculo_minima = str(papeis.get("minima") or "minima")
+    calculos_baratos = {str(papeis.get("economica") or "economica"), calculo_minima}
+    for item, bruta, o in zip(opcoes[1:], brutas[1:], ops[1:]):
+        if item["id"] == "mais_em_conta" or str(o["ref"].get("opcao") or "") in calculos_baratos:
+            frase = _por_que_mais_barata(item, opcoes[0], bruta, brutas[0],
+                                         minima=str(o["ref"].get("opcao") or "") == calculo_minima)
+            if frase:
+                item["por_que_mais_barata"] = frase
+    return opcoes, brutas
+
+
+def partes_do_quadro(quadro: "CMP.Comparacao", ranking: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """O ranking, o produto diferente e quem não respondeu, como o modelo os leva (PURO; a página real e o exemplo)."""
+    return {
+        "ranking": [{"seguradora": r["seguradora"], "premio_anual": r["premio_anual"],
+                     "franquia": r["franquia"]["valor"]} for r in ranking],
+        "produto_diferente": [{"seguradora": d["seguradora"], "produto": d["produto"],
+                               "premio_anual": d["premio_anual"], "por_que_nao_compara": d["motivo"]}
+                              for d in quadro.diferentes],
+        "nao_responderam": [{"seguradora": n["seguradora"], "motivo": n["motivo"]} for n in quadro.nao_responderam],
+    }
+
+
 async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolice_atual: Optional[Mapping] = None,
                           primeiro_nome: Optional[str] = None, *, db: Any, agora: Optional[datetime] = None,
                           baixar_logo: Optional[BaixarLogo] = None, premio_atual_declarado: Optional[float] = None,
@@ -911,42 +1143,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     if not ops or not ranking:
         raise PropostaImpossivel("a corretora anfitriã não tem oferta com cobertura completa neste pedido")
     cfg_anf = cfg_sol if anfitria_id == company_id else CFG.carregar(anfitria_id, db=db, servico=servico)
-
-    # as opções: sem o `ref` interno; nível, juros com nome, "por que é mais barata", arredondamento único
-    por_id = {str(o.get("id")): o for o in ofertas_a}
-    brutas = [por_id.get(str(o["ref"]["oferta_id"]), {}) for o in ops]
-    opcoes: List[Dict[str, Any]] = []
-    for o, bruta in zip(ops, brutas):
-        sem_juros = _parcelas_sem_juros(bruta)
-        item = {k: v for k, v in o.items() if k != "ref"}
-        item["motivos"] = [arredondar_texto(_texto_de_parcela(t, sem_juros)) for t in o["motivos"]]
-        item["o_que_muda"] = [arredondar_texto(t) for t in o["o_que_muda"]]
-        if o.get("por_que"):                    # SPEC-131-B: o "por que recomendamos" de cada cartão da renovação
-            item["por_que"] = arredondar_texto(o["por_que"])
-        item["coberturas"] = [dict(c) for c in o["coberturas"]]
-        total = _total_do_parcelamento(bruta, item.get("parcelas"))
-        if total is not None:
-            item["parcelas"] = dict(item["parcelas"], total=total)
-        if sem_juros:
-            item["parcelas_sem_juros"] = sem_juros
-        if origem == "canal":                   # SPEC-133-A.1 F1: só o QCM (a carteira não ganha chave — D-133A1-01)
-            menor, maior_sj = _parcela_menor(bruta), _parcela_sem_juros_maior(bruta)
-            if menor:
-                item["parcela_menor"] = menor
-            if maior_sj:
-                item["parcela_sem_juros_maior"] = maior_sj
-        opcoes.append(item)
-    _niveis(opcoes, [b.get("coberturas") or {} for b in brutas])
-    # a opção que vem de um cálculo MAIS BARATO (a econômica, ou a mínima no canal — D-130A1-05) diz o que corta
-    papeis = cfg_sol.get("calculo_por_papel") or {}
-    calculo_minima = str(papeis.get("minima") or "minima")
-    calculos_baratos = {str(papeis.get("economica") or "economica"), calculo_minima}
-    for item, bruta, o in zip(opcoes[1:], brutas[1:], ops[1:]):
-        if item["id"] == "mais_em_conta" or str(o["ref"].get("opcao") or "") in calculos_baratos:
-            frase = _por_que_mais_barata(item, opcoes[0], bruta, brutas[0],
-                                         minima=str(o["ref"].get("opcao") or "") == calculo_minima)
-            if frase:
-                item["por_que_mais_barata"] = frase
+    opcoes, brutas = opcoes_da_pagina(ops, ofertas_a, cfg_sol, canal=origem == "canal")
 
     resumo = {k: quadro.resumo[k] for k in ("seguradoras_cotadas", "com_preco_comparavel", "com_produto_diferente",
                                              "nao_responderam")}
@@ -968,15 +1165,23 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     dias = CFG.validade_dias(cfg_anf, seguradoras_do_quadro)
     validade_ate = (hoje.date() + timedelta(days=dias)).isoformat()
 
+    # 🔴 SPEC-130-C: a anfitriã é a corretora DA PÁGINA — no canal, a VENCEDORA (`anfitria_id`), nunca o canal técnico
+    # (o solicitante) nem outra corretora do pedido: as fotos e os prêmios são lidos SÓ por este id
     anfitria = await montar_anfitria(db, anfitria_id, cfg_anf, baixar_logo=baixar_logo)
     if origem == "canal":
         # D-130A1-04: o selo é do PROGRAMA — o NOME e o "ligado" vêm da config do CANAL (o solicitante); a config da
         # ANFITRIÃ só pode DESLIGAR o selo dela (`canal.selo.ligado: false`), nunca renomeá-lo: a corretora não escreve
-        # o que o canal afirma ao consumidor (conserto 130-A.1, red P1). Só o canal o leva: a carteira não fala do canal.
+        # o que o canal afirma ao consumidor (conserto 130-A.1, red P1). A regra do canal SUBSTITUI a da corretora
+        # (SPEC-130-C: `montar_anfitria` põe o selo da página da corretora; aqui ele é refeito pela regra do canal).
+        anfitria.pop("selo", None)
+        anfitria.pop("selo_criterios", None)
         selo = (cfg_sol.get("canal") or {}).get("selo") or {}
         selo_anf = (cfg_anf.get("canal") or {}).get("selo") or {}
         if selo.get("ligado") is True and selo_anf.get("ligado") is not False and str(selo.get("nome") or "").strip():
             anfitria["selo"] = str(selo["nome"]).strip()
+            crit = criterios_do_selo(cfg_sol)
+            if crit:
+                anfitria["selo_criterios"] = crit
     # D-MC-55: a perdedora entra SEM nome (só o preço dela) — e nenhum dado dela é lido para a página
     entre = [{"corretora": anfitria.get("nome") if l["corretora_company_id"] == anfitria_id else None,
               "melhor_completa": l["melhor_completa"], "vencedora": bool(l["vencedora"])}
@@ -999,18 +1204,15 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
         "situacao": situacao,
         "resumo": resumo,
         "opcoes": opcoes,
-        "ranking": [{"seguradora": r["seguradora"], "premio_anual": r["premio_anual"],
-                     "franquia": r["franquia"]["valor"]} for r in ranking],
-        "produto_diferente": [{"seguradora": d["seguradora"], "produto": d["produto"],
-                               "premio_anual": d["premio_anual"], "por_que_nao_compara": d["motivo"]}
-                              for d in quadro.diferentes],
-        "nao_responderam": [{"seguradora": n["seguradora"], "motivo": n["motivo"]} for n in quadro.nao_responderam],
+        **partes_do_quadro(quadro, ranking),
         "entre_corretoras": entre,
         "anfitria": anfitria,
         "faq": (faq_da_renovacao(ramo=ramo, opcoes=opcoes, reajuste_pct=CFG.reajuste_basica_pct(cfg_anf, ramo),
-                                 com_whatsapp=bool(whats)) if renovacao else
-                _faq(cfg_anf, resumo=resumo, opcoes=opcoes, situacao=situacao, voz=origem, com_whatsapp=bool(whats))),
-        "sinistro": MANUAL.sinistro_padrao(cfg_anf, com_whatsapp=bool(whats)),
+                                 com_whatsapp=bool(whats), reajuste_capital_pct=_reajuste_do_capital(cfg_anf, ramo))
+                if renovacao else
+                _faq(cfg_anf, resumo=resumo, opcoes=opcoes, situacao=situacao, voz=origem, com_whatsapp=bool(whats),
+                     ramo=ramo)),
+        "sinistro": MANUAL.sinistro_padrao(cfg_anf, com_whatsapp=bool(whats), ramo=ramo),
         "validade_ate": validade_ate,
         "gerado_em": hoje.replace(microsecond=0).isoformat(),
         "aviso_legal": AVISO_LEGAL_CANAL if origem == "canal" else AVISO_LEGAL_CORRETORA,
@@ -1432,8 +1634,9 @@ async def publicar_renovacao(company_id: str, renovacao_id: str, *, pessoa: Any,
     modelo["renovacao"]["fechar_com"] = "dono" if dono.get("whatsapp") else ("corretora" if destino else "nenhum")
     modelo["faq"] = faq_da_renovacao(ramo=modelo["ramo"], opcoes=modelo["opcoes"],
                                      vence_em=modelo["renovacao"].get("vence_em"), reajuste_pct=reajuste,
-                                     com_whatsapp=bool(destino))
-    modelo["sinistro"] = MANUAL.sinistro_padrao(ctx["cfg_sol"], com_whatsapp=bool(destino))
+                                     com_whatsapp=bool(destino),
+                                     reajuste_capital_pct=_reajuste_do_capital(ctx["cfg_sol"], modelo["ramo"]))
+    modelo["sinistro"] = MANUAL.sinistro_padrao(ctx["cfg_sol"], com_whatsapp=bool(destino), ramo=modelo["ramo"])
     _sem_comissao(modelo)
     quem = pessoa_de(db, company_id, pessoa)
     publicado = _gravar_e_compartilhar(db, company_id, pedido_id, modelo, ctx, base,
@@ -1657,9 +1860,9 @@ async def publicar_cotacao(company_id: str, pedido_id: str, *, pessoa_user_id: A
     modelo["cta"] = cta_da_pagina(destino, modelo["opcoes"], nome=nome_cliente, ref_curta=pedido_id[:8])
     cfg_cot = CFG.carregar(company_id, db=db, servico="cotacao")
     modelo["venda"] = bloco_da_venda(corretor=corretor, marca=marca_da_venda(db, company_id),
-                                     pagina=CFG.pagina_da_cotacao(cfg_cot), destino=destino)
+                                     pagina=CFG.pagina_da_cotacao(cfg_cot, ramo=modelo["ramo"]), destino=destino)
     modelo["faq"] = [{"p": f["pergunta"], "r": f["resposta"]} for f in modelo["venda"]["faq"]]
-    modelo["sinistro"] = MANUAL.sinistro_padrao(cfg_cot, com_whatsapp=bool(destino))
+    modelo["sinistro"] = MANUAL.sinistro_padrao(cfg_cot, com_whatsapp=bool(destino), ramo=modelo["ramo"])
     modelo["pagina"] = "venda"
     if exemplo:
         modelo["exemplo"] = True

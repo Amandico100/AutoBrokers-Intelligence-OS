@@ -233,9 +233,11 @@ def test_6_fumante_e_renda_nunca_vao_ao_log_nem_ao_run(mundo, monkeypatch, vida,
 
 
 # =====================================================================================================================
-# (7) a ENTREGA — as ofertas voltam na conversa, SEM a página do cliente (a página de vida é da 130-C, D-129D-10)
+# (7) a ENTREGA — SPEC-130-C (D-130C-08, revê a D-129D-16; §9.3 — a afirmação migra): a vida PUBLICA a página do
+# cliente como os outros ramos (o mesmo `publicar_cotacao`, o mesmo link). A lição que fica: nada de renda nem de
+# resposta de saúde/risco na resposta do chat.
 # =====================================================================================================================
-def test_7_a_entrega_de_vida_responde_no_chat_sem_publicar_pagina(mundo, monkeypatch, vida):
+def test_7_a_entrega_de_vida_publica_a_pagina_e_nao_mostra_renda_nem_saude(mundo, monkeypatch, vida):
     m = mundo
     a, uid, conversa, sess = _cenario(m)
     _cota(m, a, uid, sess, **VIDA_COMPLETA)
@@ -247,24 +249,28 @@ def test_7_a_entrega_de_vida_responde_no_chat_sem_publicar_pagina(mundo, monkeyp
                                    ofertas=[{"seguradora": "Seguradora Alfa", "premio_total": 900.0},
                                             {"seguradora": "Seguradora Beta", "premio_total": 1100.0}])
 
-    lidos = []
+    publicadas = []
 
-    async def opcoes_de_vida(db, company_id, pedido_id):
-        lidos.append((company_id, pedido_id))
-        return [{"id": "recomendada", "papel": "Recomendada", "seguradora": "Seguradora Alfa",
-                 "parcela": {"vezes": 12, "valor": 75.0, "sem_juros": True}, "a_vista": 900.0, "franquia": None}]
+    async def publicar_cotacao(company_id, pedido_id, *, pessoa_user_id, apolice_atual=None, db=None,
+                               primeiro_nome=None, **_kw):     # a borda: a publicação da página (B2)
+        publicadas.append((company_id, pedido_id))
+        return {"token": "tokvida", "url": B.LINK_BASE + "tokvida", "artifact_id": "a" * 8,
+                "resumo": {"opcoes": [{"id": "recomendada", "papel": "Recomendada", "seguradora": "Seguradora Alfa",
+                                       "parcela": {"vezes": 12, "valor": 75.0, "sem_juros": True}, "a_vista": 900.0,
+                                       "franquia": None}]}}
+
+    from app.services.multicalculo import proposta as PROP
 
     monkeypatch.setattr(WF, "_porta", lambda db: PortaDasOfertas())
-    monkeypatch.setattr(WF, "_opcoes_de_vida_sem_pagina", opcoes_de_vida)
+    monkeypatch.setattr(PROP, "publicar_cotacao", publicar_cotacao)
     m.rodar_runs(a)
     [msg] = m.mensagens_do_assistente(conversa)
     texto = msg["content"]
     assert texto.startswith("Pronto: 2 seguradoras responderam."), texto
     assert "| Recomendada | Seguradora Alfa |" in texto
-    assert "Apresentação para o cliente" not in texto and "Mensagem para o cliente" not in texto
-    assert "página de vida" in texto.lower(), "o corretor não foi avisado de que a apresentação de vida não existe"
-    assert not m.publicacoes, "publicou uma página de cliente para vida (D-129D-10: é da 130-C)"
-    assert lidos == [(a, ped["id"])]
+    assert f"Apresentação para o cliente: {B.LINK_BASE}tokvida" in texto, texto
+    assert "página de vida" not in texto.lower(), "o aviso de 'a página de vida não existe' ficou (D-130C-08)"
+    assert publicadas == [(a, ped["id"])], "a vida não publicou a página do cliente (D-130C-08)"
     assert not _RENDA.search(texto) and not _RESPOSTA_DE_RISCO.search(texto)
 
 

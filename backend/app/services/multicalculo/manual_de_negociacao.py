@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from app.services.multicalculo.config import PADRAO_DO_PRODUTO
 from app.services.multicalculo.negociacao import COM_QUEM, FRASE_DA_ALAVANCA
+from portal_worker.multicalculo.contrato import RAMO_AUTO, RAMO_VIDA
 
 CONTEXTOS = ("carteira", "canal")
 
@@ -181,6 +182,23 @@ _SINISTRO: List[str] = [
     "A seguradora analisa o caso e indica os próximos passos (vistoria, oficina ou documentos)",
     "A corretora acompanha com a seguradora até o fim",
 ]
+#: SPEC-130-C (U4) — o "se acontecer" dos ramos de RE (condomínio, residencial, empresarial): verdade para qualquer
+#: corretora e qualquer seguradora. ⛔ Nada de carro, oficina, guincho; nenhum prazo prometido.
+_SINISTRO_RE: List[str] = [
+    "Avise a sua corretora pelo WhatsApp assim que puder",
+    "Tire fotos do dano e não jogue fora o que estragou antes de a seguradora ver",
+    "Separe os orçamentos do conserto ou da troca do que foi danificado",
+    "A seguradora analisa o caso e indica os próximos passos; a corretora acompanha até o fim",
+]
+#: SPEC-130-C (U4) — o "se acontecer" da VIDA: quem avisa é a família ou o beneficiário. ⛔ Nenhum prazo de pagamento.
+_SINISTRO_VIDA: List[str] = [
+    "A família ou o beneficiário avisa a corretora pelo WhatsApp assim que puder",
+    "A corretora diz quais documentos a seguradora pede, do segurado e do beneficiário, e ajuda a reunir",
+    "Ela abre o aviso na seguradora, que analisa os documentos e indica os próximos passos",
+    "A corretora acompanha com a seguradora até o fim",
+]
+#: o 1º passo SEM WhatsApp de atendimento cadastrado (J-B1), por ramo
+_SINISTRO_1_SEM_WHATSAPP_VIDA = "A família ou o beneficiário avisa a corretora assim que puder"
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -296,9 +314,18 @@ def faq_padrao(config: Optional[Mapping[str, Any]] = None, *, voz: str = "corret
     return saida
 
 
-def sinistro_padrao(config: Optional[Mapping[str, Any]] = None, *, com_whatsapp: bool = True) -> List[str]:
+def sinistro_padrao(config: Optional[Mapping[str, Any]] = None, *, com_whatsapp: bool = True,
+                    ramo: Any = None) -> List[str]:
     """Os passos do sinistro que são verdade para QUALQUER corretora; a dela (config `sinistro`) substitui.
-    `com_whatsapp=False` (J-B1): o 1º passo não promete um canal que a corretora não cadastrou."""
+    `com_whatsapp=False` (J-B1): o 1º passo não promete um canal que a corretora não cadastrou.
+    `ramo` (SPEC-130-C): ausente ou o AUTO → os passos de sempre (byte a byte); RE e vida → os do ramo. A lista PRÓPRIA
+    da corretora foi escrita para a página de auto: fora dele valem os passos do ramo (nunca "bater"/"oficina" no RE)."""
+    if ramo is not None and int(ramo) != RAMO_AUTO:
+        vida = int(ramo) == RAMO_VIDA
+        passos = _SINISTRO_VIDA if vida else _SINISTRO_RE
+        if com_whatsapp:
+            return list(passos)
+        return [_SINISTRO_1_SEM_WHATSAPP_VIDA if vida else _SINISTRO_1_SEM_WHATSAPP] + list(passos[1:])
     proprio = (config or {}).get("sinistro")
     if isinstance(proprio, list) and proprio and all(isinstance(i, str) and i.strip() for i in proprio):
         return [i.strip() for i in proprio]
