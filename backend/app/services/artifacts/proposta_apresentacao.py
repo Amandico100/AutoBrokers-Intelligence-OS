@@ -852,7 +852,8 @@ def susep_limpa(anf: Any) -> str:
     🔴 UMA regra só (conserto K2, item 7): o topo, o cartão da corretora, o compromisso "o número está no topo" e o
     rodapé leem daqui — dois recortes diferentes fariam o compromisso apontar um número que o topo não mostra."""
     s = str((anf or {}).get("susep") or "") if isinstance(anf, dict) else ""
-    return re.sub(r"(?i)^\s*susep\b\s*(?:n(?:[úu]mero)?\s*[º°o.]*)?[\s:#.\-]*", "", s).strip()
+    # confirmação 2 (17/10): "SUSEP: nº 202031234" e "nº 202031234" também limpam (antes sobrava "nº" → "SUSEP nº nº …")
+    return re.sub(r"(?i)^\s*(?:susep\b)?[\s:#.\-]*(?:(?:n[úu]mero|n\s*[º°o]\.?|n\.)\s*)?[\s:#.\-]*", "", s).strip()
 
 
 #: SPEC-130-C (conserto K2, laudo de design R2 pendência 4) — a ordem das coberturas de RE na tela: a BÁSICA (incêndio,

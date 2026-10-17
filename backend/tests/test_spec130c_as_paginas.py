@@ -821,7 +821,9 @@ def test_k2_5_a_susep_com_o_rotulo_e_no_cartao_da_venda():
 
 
 @pytest.mark.parametrize("cadastro", ["SUSEP 202031234", "SUSEP nº: 202031234", "susep n° 202031234",
-                                      "SUSEP no. 202031234", "SUSEP#202031234", "202031234"])
+                                      "SUSEP no. 202031234", "SUSEP#202031234", "202031234",
+                                      # confirmação 2 (17/10): sobravam como "nº 202031234" → "SUSEP nº nº …" no topo
+                                      "SUSEP: nº 202031234", "nº 202031234"])
 def test_k2_7_o_numero_do_compromisso_e_o_que_o_topo_mostra(cadastro):
     doc = PV.render_cotacao(venda(susep=cadastro))
     topo = re.search(r'<p class="cred">.*?SUSEP nº ([^<]+)</b>', doc, re.S).group(1)
