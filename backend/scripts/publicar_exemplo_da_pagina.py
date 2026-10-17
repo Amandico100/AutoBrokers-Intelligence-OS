@@ -125,6 +125,14 @@ LEGENDAS_ILUSTRATIVAS = ("Exemplo · a equipe", "Exemplo · o escritório", "Exe
 TETO_DA_ILUSTRACAO = 90 * 1024
 #: 💭 o prêmio fictício do exemplo (só no modelo do exemplo; `--sem-premio` o tira)
 PREMIO_DE_EXEMPLO = {"nome": "Prêmio de exemplo", "ano": 2025}
+#: 💭 a distância mínima da etiqueta "EXEMPLO" até a borda, em fração do MAIOR lado da ilustração (conserto KB: o canto
+#: arredondado do cartão da página cortava a etiqueta colada a 28 px do canto — laudo de design 130-C)
+MARGEM_DA_ETIQUETA = 0.08
+
+
+def margem_da_etiqueta(largura: int, altura: int) -> int:
+    """A margem (px) da etiqueta "EXEMPLO" até a borda: ≥ MARGEM_DA_ETIQUETA do maior lado (arredondada para cima)."""
+    return int(math.ceil(MARGEM_DA_ETIQUETA * max(largura, altura)))
 
 
 #: o "Meu WhatsApp de trabalho" que `--whatsapp-do-dono` aceita: E.164 do Brasil (+55, DDD, 8 ou 9 dígitos)
@@ -203,7 +211,9 @@ def andamento_do_ramo(company_id: str, ramo: int, pedido_id: str, agora: datetim
     pedidas: Optional[Dict[str, Any]] = None
     if ramo == RAMO_VIDA:
         itens = list(_json(FIX_DOS_RAMOS / "vida_resultado.json")["calculos"]) + [ITEM_DA_PORTO_DO_CANARIO_DE_VIDA]
-        capital = capital_pedido_do_corpo(_json(FIX_DOS_RAMOS / "vida_calcularV2_corpo.json"))
+        # conserto KB: o fixture embrulha o corpo (`{"formato", …, "corpo": {...}}`) — passar o arquivo inteiro dava
+        # capital None (📊 17/10: `capital_pedido_do_corpo(arquivo)` → None; `(arquivo["corpo"])` → 100000)
+        capital = capital_pedido_do_corpo(_json(FIX_DOS_RAMOS / "vida_calcularV2_corpo.json")["corpo"])
         rodada = ler_rodada({"calculos": itens, "ramo": ramo}, capital_pedido=capital)
     elif ramo in GRAVACAO_DO_RAMO:
         g = _json(FIX_DOS_RAMOS / f"{GRAVACAO_DO_RAMO[ramo]}.json")
@@ -328,8 +338,11 @@ def ilustracoes_da_marca(cores: Optional[Mapping[str, Any]] = None) -> List[Dict
         desenho(ImageDraw.Draw(camada))
         img = Image.alpha_composite(img, camada)
         d = ImageDraw.Draw(img)
-        d.rounded_rectangle([28, 28, 214, 82], radius=27, fill=(*branco, 235))
-        d.text((121, 55), "EXEMPLO", fill=escura, font=fonte, anchor="mm")
+        # conserto KB (laudo de design 130-C): a etiqueta longe do canto — o cartão da página arredonda a foto e o
+        # canto cortava o "EXEMPLO"; a margem é MARGEM_DA_ETIQUETA do MAIOR lado, nos dois eixos
+        x0 = y0 = margem_da_etiqueta(W, H)
+        d.rounded_rectangle([x0, y0, x0 + 186, y0 + 54], radius=27, fill=(*branco, 235))
+        d.text((x0 + 93, y0 + 27), "EXEMPLO", fill=escura, font=fonte, anchor="mm")
         rgb = img.convert("RGB")
         dados = b""
         for qualidade in (80, 70, 60, 50, 40):
@@ -510,7 +523,9 @@ async def montar_modelo_de_exemplo(db: Any, company_id: str, pagina: str, *, com
                    if renovacao else None)
         ops = CMP.opcoes(quadro, situacao="renovacao" if renovacao else "novo_sem_apolice", apolice_atual=apolice,
                          config=cfg_c, corretora=company_id)
-        opcoes_re, _brutas = P.opcoes_da_pagina(ops, ofertas, cfg_c)
+        # conserto KB: o `ramo` leva o capital segurado da VIDA a cada opção (o `capital_pedido` que o leitor gravou
+        # do corpo REAL `vida_calcularV2_corpo.json` — a Porto do canário não ecoa o capital)
+        opcoes_re, _brutas = P.opcoes_da_pagina(ops, ofertas, cfg_c, ramo=ramo)
         resumo = {k: quadro.resumo[k] for k in ("seguradoras_cotadas", "com_preco_comparavel",
                                                  "com_produto_diferente", "nao_responderam")}
         resumo.update(P.resumo_do_volume(ofertas, {}, cfg_c, estados, eventos))

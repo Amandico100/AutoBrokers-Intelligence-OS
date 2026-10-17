@@ -30,6 +30,7 @@ import base64
 import binascii
 import inspect
 import logging
+import math
 import re
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
@@ -41,6 +42,7 @@ from app.services.multicalculo import manual_de_negociacao as MANUAL
 from app.services.multicalculo.pedido import RAMO_CONDOMINIO, RAMO_EMPRESARIAL, RAMO_RESIDENCIAL
 from app.services.multicalculo.porta import KIND_CANAL, OPCOES as OPCOES_DO_PEDIDO, MulticalculoProvider, NaoEncontrado
 from app.services.multicalculo.repositorio import RepositorioMulticalculo
+from portal_worker.multicalculo.leitor_agger import CAPITAL_PEDIDO, numero as _numero_do_leitor
 
 logger = logging.getLogger(__name__)
 
@@ -586,7 +588,10 @@ async def montar_anfitria(db: Any, company_id: str, cfg: Mapping[str, Any], *,
     # o solicitante nem o canal) e o selo do programa pela config DELA. Leitura que falha → lista vazia (o bloco some).
     anf["fotos"] = await fotos_da_anfitria(db, company_id)
     anf["premios"] = await premios_da_anfitria(db, company_id)
-    anf["selo"] = selo_da_corretora(cfg)
+    # D-130C-11 (conserto KB): fora do canal o selo exige a SUSEP PREENCHIDA na marca publicada (`anf["susep"]`) —
+    # o selo afirma "registro ativo na SUSEP"; sem o número na página, a frase seria afirmação sem dado (CDC art. 37).
+    # O canal (QCM) refaz o selo pela regra dele em `montar_proposta` (D-130A1-04), sem esta exigência.
+    anf["selo"] = selo_da_corretora(cfg, susep=anf.get("susep"))
     if anf["selo"]:
         anf["selo_criterios"] = criterios_do_selo(cfg)
     return {k: v for k, v in anf.items() if v is not None}
@@ -657,10 +662,14 @@ async def premios_da_anfitria(db: Any, company_id: str) -> List[Dict[str, Any]]:
     return saida
 
 
-def selo_da_corretora(cfg: Optional[Mapping[str, Any]]) -> Optional[str]:
+def selo_da_corretora(cfg: Optional[Mapping[str, Any]], *, susep: Optional[str] = None) -> Optional[str]:
     """D-130C-05: o selo do PROGRAMA na página da corretora (venda e renovação). O NOME é o do padrão do produto — a
     corretora não renomeia o que o programa afirma ao consumidor (D-130A1-04) — e o "ligado" é o da config DELA
-    (`canal.selo.ligado`, ligado por padrão em `PADRAO_DO_PRODUTO`; ela pode desligar). Sem config → sem selo."""
+    (`canal.selo.ligado`, ligado por padrão em `PADRAO_DO_PRODUTO`; ela pode desligar). Sem config → sem selo.
+    🔴 D-130C-11 (conserto KB, red team BLOCKER 1): e SÓ com a SUSEP preenchida (`susep`, o `anfitria.susep` da marca
+    publicada). Sem ela → sem selo: fechado por padrão (quem não passa o número não ganha o selo)."""
+    if not str(susep or "").strip():
+        return None
     pad = (CFG.PADRAO_DO_PRODUTO.get("canal") or {}).get("selo") or {}
     proprio = ((cfg or {}).get("canal") or {}).get("selo") or {}
     nome = str(pad.get("nome") or "").strip()
@@ -1036,12 +1045,43 @@ def _corretoras_info(db: Any, *, canal: str, corretoras: Sequence[str]) -> Dict[
 MOTIVO_DAS_OUTRAS_OPCOES = "Mesma configuração de coberturas das outras opções comparadas"
 
 
+def _capital_numero(v: Any) -> Optional[float]:
+    """Um capital só se for NÚMERO > 0 finito (o leitor grava número — 📊 `isAppMorte 100000` / `capital_pedido
+    100000`); texto só pelo `numero` do leitor (o formato BR). Nada além: nunca um capital inventado."""
+    if isinstance(v, bool) or v is None:
+        return None
+    n = float(v) if isinstance(v, (int, float)) else (_numero_do_leitor(v) if isinstance(v, str) else None)
+    if n is None or not math.isfinite(n) or n <= 0:
+        return None
+    return round(n, 2)
+
+
+def capital_da_vida(coberturas: Any) -> Optional[Dict[str, Any]]:
+    """SPEC-130-C (conserto KB, blocker do design: a página de vida não dizia O QUE se compra) — o capital segurado de
+    UMA oferta de vida, com a ORIGEM: {"valor", "origem": "seguradora" | "pedido"} ou None.
+
+    O elo (D-129D-17, conserto K4 da 129-D): o leitor do robô (`leitor_agger._oferta_de_vida`) grava em
+    `multicalculo_ofertas.coberturas` o `isAppMorte` que a SEGURADORA ecoou; quando ela não ecoa (📊 canário 16/10, a
+    Porto), grava `capital_pedido` = o `configuracoes.isAppMorte` que o CORPO do pedido levou. O eco vence (o leitor
+    nunca grava os dois). Sem número > 0 → None: a opção sai sem capital, nunca com um inventado."""
+    cob = coberturas if isinstance(coberturas, Mapping) else {}
+    eco = _capital_numero(cob.get("isAppMorte"))
+    if eco is not None:
+        return {"valor": eco, "origem": "seguradora"}
+    pedido = _capital_numero(cob.get(CAPITAL_PEDIDO))
+    if pedido is not None:
+        return {"valor": pedido, "origem": "pedido"}
+    return None
+
+
 def opcoes_da_pagina(ops: Sequence[Mapping[str, Any]], ofertas_a: Sequence[Mapping[str, Any]],
-                     cfg_sol: Mapping[str, Any], *, canal: bool = False
+                     cfg_sol: Mapping[str, Any], *, canal: bool = False, ramo: Optional[int] = None
                      ) -> Tuple[List[Dict[str, Any]], List[Mapping[str, Any]]]:
     """As opções do MODELO a partir de `comparacao.opcoes` e das ofertas DA ANFITRIÃ: sem o `ref` interno; nível, juros
     com nome, "por que é mais barata", arredondamento único. Devolve (opções, ofertas brutas de cada uma). PURO — a
-    mesma conta da página real e do exemplo (SPEC-130-C: `scripts/publicar_exemplo_da_pagina` a chama)."""
+    mesma conta da página real e do exemplo (SPEC-130-C: `scripts/publicar_exemplo_da_pagina` a chama).
+    SPEC-130-C (conserto KB): na VIDA (`ramo` 91) cada opção leva `capital_segurado` ({valor, origem}) quando a oferta
+    tem o número (`capital_da_vida`); fora da vida nunca (no auto, `isAppMorte` é a APP por passageiro, não capital)."""
     por_id = {str(o.get("id")): o for o in ofertas_a}
     brutas = [por_id.get(str(o["ref"]["oferta_id"]), {}) for o in ops]
     opcoes: List[Dict[str, Any]] = []
@@ -1065,6 +1105,10 @@ def opcoes_da_pagina(ops: Sequence[Mapping[str, Any]], ofertas_a: Sequence[Mappi
                 item["parcela_menor"] = menor
             if maior_sj:
                 item["parcela_sem_juros_maior"] = maior_sj
+        if ramo is not None and int(ramo) == CMP.RAMO_VIDA:
+            capital = capital_da_vida(bruta.get("coberturas"))
+            if capital:
+                item["capital_segurado"] = capital
         opcoes.append(item)
     _niveis(opcoes, [b.get("coberturas") or {} for b in brutas])
     # a opção que vem de um cálculo MAIS BARATO (a econômica, ou a mínima no canal — D-130A1-05) diz o que corta
@@ -1152,7 +1196,7 @@ async def montar_proposta(company_id: str, pedido_id: str, situacao: str, apolic
     if not ops or not ranking:
         raise PropostaImpossivel("a corretora anfitriã não tem oferta com cobertura completa neste pedido")
     cfg_anf = cfg_sol if anfitria_id == company_id else CFG.carregar(anfitria_id, db=db, servico=servico)
-    opcoes, brutas = opcoes_da_pagina(ops, ofertas_a, cfg_sol, canal=origem == "canal")
+    opcoes, brutas = opcoes_da_pagina(ops, ofertas_a, cfg_sol, canal=origem == "canal", ramo=ramo)
 
     resumo = {k: quadro.resumo[k] for k in ("seguradoras_cotadas", "com_preco_comparavel", "com_produto_diferente",
                                              "nao_responderam")}

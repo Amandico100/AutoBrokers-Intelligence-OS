@@ -15,6 +15,7 @@ se perde isolamento entre corretoras.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -166,6 +167,10 @@ async def editar(payload: EdicaoIn, x_internal_key: Optional[str] = Header(None)
 
     svc = BrandCaptureService(get_supabase_client())
     try:
+        if valores.get("logo_asset_id"):
+            # SPEC-130-C conserto KB (red team P4): uma FOTO da galeria nunca vira o logo (apagá-la depois dava 500)
+            fotos_svc.recusar_foto_como_logo(get_supabase_client().client, str(payload.company_id),
+                                             valores["logo_asset_id"])
         perfil = svc.editar(payload.company_id, valores, payload.user_id)
     except EntradaRecusada as exc:
         # SPEC-133-A · FM — a frase vai em `error` (o contrato da tela, E14).
@@ -249,13 +254,15 @@ async def adicionar_foto(company_id: str = Form(...), user_id: Optional[str] = F
         return JSONResponse({"ok": False, "error": "A foto passa de 10 MB. Envie uma versão menor."}, status_code=400)
     db = get_supabase_client().client
     try:
-        nova = fotos_svc.adicionar_foto(db, cid, user_id, dados, legenda)
+        # SPEC-130-C conserto KB (juiz P5): o Pillow (decodificar/reduzir até 50 Mpx) e o cliente Supabase são
+        # SÍNCRONOS — dentro do `async def` travavam o laço de eventos do servidor de TODAS as corretoras. Numa thread.
+        nova = await asyncio.to_thread(fotos_svc.adicionar_foto, db, cid, user_id, dados, legenda)
     except EntradaRecusada as exc:
         return _recusa(exc)
     except Exception as exc:  # noqa: BLE001
         logger.exception("[brand] foto nao gravada")
         raise HTTPException(500, f"falha ao gravar a foto: {type(exc).__name__}") from exc
-    return {"ok": True, "foto": nova, "fotos": fotos_svc.listar_fotos(db, cid)}
+    return {"ok": True, "foto": nova, "fotos": await asyncio.to_thread(fotos_svc.listar_fotos, db, cid)}
 
 
 class FotoEdicaoIn(BaseModel):

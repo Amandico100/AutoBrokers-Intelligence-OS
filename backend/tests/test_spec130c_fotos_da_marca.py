@@ -16,6 +16,7 @@ Mutações (CLAUDE.md §9.3 — o guarda tem de CONSEGUIR ficar vermelho; rodada
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import os
 import sys
@@ -293,8 +294,11 @@ def test_bomba_de_pixels_e_recusada_antes_de_decodificar(db):
     # PNG 1-bit de 60 Mpx: poucos KB no disco, ~60 MB a ~180 MB se decodificado em RGB
     bomba = _png(tamanho=(10_000, 6_000), modo="1")
     assert len(bomba) < 200 * 1024
-    with pytest.raises(EntradaRecusada, match="grande demais"):
+    # conserto KB (juiz P6): o limite que estourou é de PIXELS, não de MB — a frase diz isso (nunca "até 10 MB")
+    with pytest.raises(EntradaRecusada) as erro:
         fotos.adicionar_foto(db, A, USUARIO, bomba, None)
+    assert str(erro.value) == "Foto grande demais (mais de 50 megapixels). Envie uma foto menor."
+    assert "MB" not in str(erro.value)
     assert db.linhas("brand_assets") == []
 
 
@@ -401,9 +405,104 @@ def test_duas_fotos_ao_mesmo_tempo_nao_furam_o_teto(db, monkeypatch):
         return r
 
     monkeypatch.setattr(fotos, "preparar_foto", corrida)
+    # conserto KB (juiz P4): esta viu 7 antes de gravar — a frase é a da CORRIDA, não "Até 8 fotos"
+    with pytest.raises(EntradaRecusada) as erro:
+        fotos.adicionar_foto(db, A, USUARIO, _png(), None)
+    assert str(erro.value) == "Outra foto acabou de ser enviada; tente de novo."
+    assert len(db.linhas("brand_assets", company_id=A, is_current=True)) == 8
+    # e a próxima tentativa, com as 8 já gravadas, recebe a frase do TETO (CONTROLE: as duas frases conseguem diferir)
+    monkeypatch.setattr(fotos, "preparar_foto", original)
     with pytest.raises(EntradaRecusada, match="Até 8 fotos"):
         fotos.adicionar_foto(db, A, USUARIO, _png(), None)
-    assert len(db.linhas("brand_assets", company_id=A, is_current=True)) == 8
+
+
+def test_kb4_ordem_repetida_renumera_sem_buracos(db):
+    """Red team P3: `atualizar_foto` com uma posição já ocupada deixava duas fotos na mesma posição. Agora a foto vai
+    para a posição pedida e as outras andam: 0..n-1, sem repetição nem buraco."""
+    ids = [fotos.adicionar_foto(db, A, USUARIO, _png(cor=(i * 40, 50, 50)), f"f{i}")["id"] for i in range(4)]
+    r = fotos.atualizar_foto(db, A, ids[3], sort_order=1)
+    assert r["ordem"] == 1
+    assert [(f["legenda"], f["ordem"]) for f in fotos.listar_fotos(db, A)] == [("f0", 0), ("f3", 1), ("f1", 2),
+                                                                               ("f2", 3)]
+    fotos.atualizar_foto(db, A, ids[0], sort_order=7)       # além do fim → a última, sem buraco
+    assert [(f["legenda"], f["ordem"]) for f in fotos.listar_fotos(db, A)] == [("f3", 0), ("f1", 1), ("f2", 2),
+                                                                               ("f0", 3)]
+    ordens = [l["sort_order"] for l in db.linhas("brand_assets", company_id=A)]
+    assert sorted(ordens) == [0, 1, 2, 3]
+    for tabela, tipo, filtros in db.chamadas:            # toda escrita com o filtro da corretora
+        if tabela == "brand_assets" and tipo == "update":
+            assert ("eq", "company_id", A) in filtros, filtros
+
+
+def test_kb4_a_foto_que_e_o_logo_nao_e_apagada_e_foto_nao_vira_logo(db, monkeypatch):
+    """Red team P4: o `logo_asset_id` podia apontar para uma FOTO; apagar a foto dava 500 (chave estrangeira). Agora:
+    (1) foto NUNCA vira logo (o PATCH /profile recusa com frase); (2) a foto que JÁ é o logo (legado) não é apagada — a
+    frase diz o que fazer (trocar o logo antes). Escolha: RECUSAR, não limpar a referência — limpar tiraria o logo de
+    todas as páginas sem a corretora pedir."""
+    cli, h = _cliente_da_api(db, monkeypatch)
+    id_foto = fotos.adicionar_foto(db, A, USUARIO, _png(), "Equipe")["id"]
+    db.tabelas.setdefault("brand_assets", []).append({"id": "logo-a", "company_id": A, "kind": "logo_primary",
+                                                     "is_current": True, "storage_ref": "data:image/png;base64,AA"})
+    db.tabelas["brand_profiles"] = [{"id": "p-a", "company_id": A, "logo_asset_id": id_foto}]
+
+    editados = []
+
+    class Servico:
+        def __init__(self, *_a):
+            pass
+
+        def editar(self, company_id, valores, user_id):
+            editados.append((company_id, dict(valores)))
+            return {"company_id": company_id, **valores}
+
+    from app.api import brand as api
+
+    monkeypatch.setattr(api, "BrandCaptureService", Servico)
+    r = cli.patch("/api/brand/profile", headers=h, json={"company_id": A, "values": {"logo_asset_id": id_foto}})
+    assert r.status_code == 400 and r.json()["error"] == fotos.FRASE_FOTO_NAO_E_LOGO and editados == []
+    # CONTROLE: o logo de verdade passa (a recusa é da FOTO, não do campo)
+    r = cli.patch("/api/brand/profile", headers=h, json={"company_id": A, "values": {"logo_asset_id": "logo-a"}})
+    assert r.status_code == 200 and editados == [(A, {"logo_asset_id": "logo-a"})]
+
+    # a foto que JÁ é o logo (legado): DELETE → 400 com a frase, a foto continua lá
+    r = cli.delete(f"/api/brand/photos/{id_foto}?company_id={A}", headers=h)
+    assert r.status_code == 400 and r.json()["error"] == fotos.FRASE_FOTO_E_O_LOGO
+    assert db.linhas("brand_assets", id=id_foto)
+    # trocado o logo, a mesma foto sai
+    db.tabelas["brand_profiles"][0]["logo_asset_id"] = "logo-a"
+    assert cli.delete(f"/api/brand/photos/{id_foto}?company_id={A}", headers=h).status_code == 200
+    assert db.linhas("brand_assets", id=id_foto) == []
+
+
+def test_kb3_o_pillow_roda_fora_do_laco_de_eventos(db, monkeypatch):
+    """Juiz P5: a foto era processada DENTRO do `async def` — uma foto de 48 Mpx travava o servidor de todas as
+    corretoras. Agora `adicionar_foto` roda numa thread (`asyncio.to_thread`): a rota responde igual."""
+    import threading
+
+    cli, h = _cliente_da_api(db, monkeypatch)
+    from app.api import brand as api
+
+    no_servico, no_laco = [], []
+    original, corretora = fotos.adicionar_foto, api._corretora
+
+    def espiao(*a, **k):                       # onde o Pillow roda
+        no_servico.append(threading.get_ident())
+        return original(*a, **k)
+
+    def corretora_espia(cid):                  # o corpo do `async def` — o laço de eventos
+        no_laco.append(threading.get_ident())
+        return corretora(cid)
+
+    monkeypatch.setattr(api.fotos_svc, "adicionar_foto", espiao)
+    monkeypatch.setattr(api, "_corretora", corretora_espia)
+    r = cli.post("/api/brand/photos", headers=h, data={"company_id": A, "legenda": "Equipe"},
+                 files={"foto": ("f.png", _png(), "image/png")})
+    assert r.status_code == 200 and r.json()["foto"]["legenda"] == "Equipe" and len(r.json()["fotos"]) == 1
+    assert no_servico and no_laco and no_servico[0] != no_laco[0], "o Pillow rodou no laço de eventos"
+    # a recusa continua a mesma frase e o mesmo 400 (pelo caminho da thread)
+    r = cli.post("/api/brand/photos", headers=h, data={"company_id": A},
+                 files={"foto": ("x.svg", b"<svg/>", "image/svg+xml")})
+    assert r.status_code == 400 and "não é uma foto" in r.json()["error"]
 
 
 def test_legenda_e_limpa_e_tem_teto_de_80(db):
@@ -620,6 +719,17 @@ def test_a_migration_troca_o_indice_na_ordem_certa_e_tem_apply_verify_rollback()
     assert "jsonb_typeof(awards) = 'array'" in corpo
     # o ROLLBACK tem a guarda das 2+ fotos atuais
     assert "having count(*) > 1" in sql.split("ROLLBACK", 1)[1]
+    # conserto KB (juiz P2): o CABEÇALHO diz o que foi APLICADO (📊 20261017004656: índice novo 1, antigo 1) e aponta a
+    # _04 para o DROP — nunca mais "VERIFY espera indice_antigo = 0" nesta _03 …
+    cabecalho = sql.split("set lock_timeout", 1)[0]
+    assert "20261017004656" in cabecalho and "20261016_04_spec130c_fotos_contract.sql" in cabecalho
+    assert "as indice_antigo,    -- 1 (0 só depois da _04)" in cabecalho
+    assert "as indice_antigo,    -- 0" not in cabecalho and "só então o antigo" not in cabecalho
+    # … e NENHUMA linha executável mudou (é a versão aplicada): 📊 17/10 o mesmo hash no HEAD 15bb812 e depois do conserto
+    executavel = "\n".join(l.rstrip() for l in sql.split("set lock_timeout", 1)[1].splitlines()
+                           if l.strip() and not l.lstrip().startswith("--"))
+    assert hashlib.sha256(executavel.encode()).hexdigest() == \
+        "c7753368861eeae44de5ed5b3a6244e577b6a81ce06cf33e169f735112f1ea59", "o SQL da versão APLICADA mudou"
 
     contrato = open(MIGRATION_CONTRACT, encoding="utf-8").read()
     for marca in ("APPLY:", "VERIFY:", "ROLLBACK", "EXPAND-FIRST:", "DESTRUTIVA:"):

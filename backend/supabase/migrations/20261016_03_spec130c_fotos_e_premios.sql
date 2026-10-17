@@ -17,20 +17,28 @@
 --   1. brand_assets.sort_order smallint NULL (só foto tem ordem) + brand_assets.caption text NULL (≤ 80 caracteres).
 --   2. CHECKs: caption ≤ 80 · sort_order ≥ 0 · sort_order só em kind='photo'.
 --   3. índice ÚNICO novo brand_assets_one_current_per_kind_exceto_foto (company_id, kind) WHERE is_current AND kind <> 'photo'
---      é CRIADO PRIMEIRO; só então o antigo brand_assets_one_current_per_kind é removido. Logo, símbolo, favicon etc. continuam
---      com UM atual por papel; foto passa a aceitar várias (o teto de 8 mora em app/services/brand/fotos.py).
+--      é CRIADO (expand). O índice ANTIGO brand_assets_one_current_per_kind CONTINUA — o DROP dele mora na
+--      20261016_04_spec130c_fotos_contract.sql (passo do Founder). Enquanto a _04 não roda, a 2ª foto atual da mesma
+--      corretora bate no índice antigo (23505) e a tela mostra a frase do suporte (fotos.py FRASE_FALTA_A_MIGRATION).
+--      Logo, símbolo, favicon etc. continuam com UM atual por papel; depois da _04, foto aceita várias (teto 8 em fotos.py).
 --   4. brand_profiles.awards jsonb NOT NULL DEFAULT '[]' + CHECK array + CHECK ≤ 10 itens.
---   5. COMMENT ON COLUMN brand_assets.storage_ref / sort_order / caption e brand_profiles.awards (o que a coluna GUARDA de fato).
+--   5. COMMENT ON COLUMN brand_assets.sort_order / caption e brand_profiles.awards (o que a coluna GUARDA de fato).
+--      O COMMENT de brand_assets.storage_ref foi para a _04.
+--   📊 APLICADO: versão 20261017004656, nome no banco `20261016_03a_spec130c_fotos_e_premios_expand` (SELECT de 17/10 do
+--      juiz: indice_novo 1 · indice_antigo 1 · cols_assets 2 · checks_assets 3 · col_awards 1 · checks_awards 2 ·
+--      policies 0). Este cabeçalho foi corrigido no conserto KB (juiz P2) para dizer o que FOI aplicado; nenhuma linha
+--      executável deste arquivo mudou.
 --   RLS: NADA muda. As duas tabelas seguem com RLS ligada e ZERO policy (fail-closed; só service_role passa); o filtro
 --   company_id mora no código (fotos.py / brand.py). Nenhum GRANT é tocado.
 --
--- VERIFY (read-only; esperado ANTES = 0 · 1 · 0 · 0 · 0 · 0 · 0 · erro de coluna; DEPOIS = 1 · 0 · 2 · 3 · 1 · 2 · 0 · 0):
+-- VERIFY (read-only; esperado ANTES = 0 · 1 · 0 · 0 · 0 · 0 · 0 · erro de coluna; DEPOIS desta _03 = 1 · 1 · 2 · 3 · 1 · 2 ·
+--   0 · 0 — o índice antigo AINDA existe (1) até a _04; depois da _04, indice_antigo = 0, conferido pelo VERIFY da _04):
 --   select
 --    (select count(*) from pg_indexes where tablename='brand_assets'
 --       and indexname='brand_assets_one_current_per_kind_exceto_foto'
 --       and indexdef ilike '%UNIQUE%' and indexdef ilike '%<> ''photo''%')                          as indice_novo,      -- 1
 --    (select count(*) from pg_indexes where tablename='brand_assets'
---       and indexname='brand_assets_one_current_per_kind')                                          as indice_antigo,    -- 0
+--       and indexname='brand_assets_one_current_per_kind')                                          as indice_antigo,    -- 1 (0 só depois da _04)
 --    (select count(*) from information_schema.columns where table_schema='public' and table_name='brand_assets'
 --       and column_name in ('sort_order','caption'))                                                as cols_assets,      -- 2
 --    (select count(*) from pg_constraint where conrelid='public.brand_assets'::regclass and contype='c'
@@ -41,9 +49,8 @@
 --       and conname in ('brand_profiles_awards_array_ck','brand_profiles_awards_teto_ck'))          as checks_awards,    -- 2
 --    (select count(*) from pg_policies where tablename in ('brand_assets','brand_profiles'))        as policies,         -- 0
 --    (select count(*) from brand_profiles where jsonb_typeof(awards) <> 'array')                    as awards_fora;      -- 0
---   O VERIFY COMPORTAMENTAL (o DO no fim deste arquivo) prova o OBJETO: duas fotos atuais na mesma corretora ENTRAM,
---   dois logo_primary atuais na mesma corretora são RECUSADOS (23505), legenda de 81 caracteres é RECUSADA (23514),
---   awards '{}' é RECUSADO (23514) — e nada fica (tudo dentro de um bloco que levanta no fim e é capturado).
+--   O VERIFY COMPORTAMENTAL (duas fotos atuais na mesma corretora ENTRAM, dois logo_primary atuais são RECUSADOS) precisa
+--   do índice antigo FORA — por isso mora na 20261016_04 (não há DO de verificação neste arquivo).
 --
 -- ROLLBACK (escrito ANTES do APPLY; rodar numa transação):
 --   -- guarda: o índice antigo não sobe se alguma corretora tiver 2+ fotos atuais. Rebaixe as extras ANTES:
@@ -72,9 +79,8 @@
 --   comment on column public.brand_assets.storage_ref is null;
 --   -- Preferível ao rollback, se o problema for só a tela: deixar as colunas (expand) e não usar.
 --
--- EXPAND-FIRST: sim (colunas e CHECKs novos; o índice novo nasce ANTES de o antigo sair; nada de dado é reescrito)
--- DESTRUTIVA:   não (o índice removido é substituído, na mesma transação, por um que garante o mesmo para todo papel que não
---               é foto; 📊 0 linhas kind='photo' hoje)
+-- EXPAND-FIRST: sim (colunas, CHECKs e o índice novo; nada é removido aqui e nenhum dado é reescrito)
+-- DESTRUTIVA:   não (nada sai nesta _03; o DROP do índice antigo — o passo destrutivo — é a 20261016_04, do Founder)
 -- =============================================================
 
 set lock_timeout = '5s';

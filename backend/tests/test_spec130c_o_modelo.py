@@ -242,10 +242,14 @@ def test_a_sem_foto_o_exemplo_desenha_4_ilustracoes_marcadas_e_a_corretora_real_
 
 def test_a_o_selo_a_corretora_desliga_e_nao_renomeia(monkeypatch):
     cfg = CFG.mesclar(None, "cotacao")
-    assert P.selo_da_corretora(cfg) == "Corretora Nível 5"
-    assert P.selo_da_corretora(CFG.mesclar({"canal": {"selo": {"ligado": False}}}, "cotacao")) is None
-    assert P.selo_da_corretora(CFG.mesclar({"canal": {"selo": {"nome": "Corretora Nota 10"}}}, "cotacao")) == \
-        "Corretora Nível 5", "a corretora renomeou o selo do programa (D-130A1-04)"
+    s = "SUSEP 202031234"                                     # conserto KB (D-130C-11): o selo exige a SUSEP
+    assert P.selo_da_corretora(cfg, susep=s) == "Corretora Nível 5"
+    assert P.selo_da_corretora(CFG.mesclar({"canal": {"selo": {"ligado": False}}}, "cotacao"), susep=s) is None
+    assert P.selo_da_corretora(CFG.mesclar({"canal": {"selo": {"nome": "Corretora Nota 10"}}}, "cotacao"),
+                               susep=s) == "Corretora Nível 5", "a corretora renomeou o selo do programa (D-130A1-04)"
+    for sem in (None, "", "   "):                             # sem SUSEP → sem selo, com a config ligada
+        assert P.selo_da_corretora(cfg, susep=sem) is None, repr(sem)
+    assert P.selo_da_corretora(cfg) is None, "fechado por padrão: quem não passa a SUSEP não ganha o selo"
     assert P.criterios_do_selo(cfg) is None, "itens do selo inventados (a config não os tem)"
     assert P.criterios_do_selo({"canal": {"selo_criterios": [["SUSEP ativa", "conferida"]]}}) == [["SUSEP ativa",
                                                                                                     "conferida"]]
@@ -482,3 +486,99 @@ def test_e_a_leitura_das_fotos_falha_e_a_pagina_sai_sem_fotos(monkeypatch):
     monkeypatch.delattr(pacote, "fotos", raising=False)
     anf = rodar(P.montar_anfitria(m.db, m.beta, CFG.mesclar(None, "cotacao")))
     assert anf["fotos"] == [] and anf["premios"] == []
+
+
+# =====================================================================================================================
+# CONSERTO KB — (1) o selo Nível 5 fora do canal só com a SUSEP · (2) o capital da vida no modelo · (7) a etiqueta
+# =====================================================================================================================
+def _perfil(m, cid):
+    return next(b for b in m.banco.linhas("brand_profiles") if b["company_id"] == cid)
+
+
+def test_kb1_duas_corretoras_o_selo_nivel_5_so_na_que_tem_susep(monkeypatch):
+    """Red team BLOCKER 1 (D-130C-11): a corretora SEM SUSEP saía "Nível 5 · Registro ativo na SUSEP". Duas corretoras
+    com a marca PUBLICADA e a config padrão (selo ligado): a alfa com SUSEP ganha o selo; a beta, sem, não."""
+    m = M.montar_mundo(monkeypatch, solicitante="canal")
+    instalar_borda(monkeypatch)
+    beta = _perfil(m, m.beta)
+    beta.update(is_published=True, palette=_perfil(m, m.alfa)["palette"])     # publicada como a alfa, SEM SUSEP
+    cfg = CFG.mesclar(None, "cotacao")
+    com = rodar(P.montar_anfitria(m.db, m.alfa, cfg))
+    sem = rodar(P.montar_anfitria(m.db, m.beta, cfg))
+    assert com["susep"] == "SUSEP 202031234" and com["selo"] == "Corretora Nível 5"
+    assert sem["marca_cadastrada"] is True and "susep" not in sem
+    assert "selo" not in sem and "selo_criterios" not in sem, "Nível 5 sem SUSEP preenchida (CDC art. 37)"
+    beta["susep_code"] = "   "                                                 # só espaços = vazia
+    assert "selo" not in rodar(P.montar_anfitria(m.db, m.beta, cfg))
+
+
+def test_kb1_a_venda_real_sem_susep_sai_sem_selo_e_o_canal_segue_a_regra_dele(monkeypatch):
+    """O caminho do produto: `publicar_cotacao` da corretora sem SUSEP → sem selo (com SUSEP o (a) acima prova o selo).
+    CONTROLE: o QCM (o canal) segue a regra de hoje — a vencedora sem SUSEP continua com o selo do CANAL."""
+    m = V.mundo(monkeypatch)
+    instalar_borda(monkeypatch)
+    _perfil(m, m.beta)["susep_code"] = None
+    vistos = capturar_o_hub(monkeypatch)
+    rodar(P.publicar_cotacao(m.beta, m.pedido_id, pessoa_user_id=V.CORRETOR, db=m.db, base_url=BASE, agora=AGORA))
+    assert "selo" not in vistos[-1]["anfitria"] and "susep" not in vistos[-1]["anfitria"]
+    c = M.montar_mundo(monkeypatch, solicitante="canal")
+    instalar_borda(monkeypatch)
+    _perfil(c, c.alfa)["susep_code"] = ""
+    qcm = rodar(P.montar_proposta(c.canal, c.pedido_id, "novo_sem_apolice", db=c.db, agora=AGORA))
+    assert qcm["origem"] == "canal" and qcm["anfitria"]["selo"] == CFG.PADRAO_DO_PRODUTO["canal"]["selo"]["nome"]
+
+
+def test_kb2_o_capital_da_vida_e_a_origem_pelo_leitor_real():
+    """O elo (D-129D-17): o LEITOR grava `capital_pedido` quando a seguradora não ecoa o capital (📊 a Porto do canário
+    16/10) e `isAppMorte` quando ecoa. `capital_da_vida` lê os dois, com a origem — e nunca inventa."""
+    import test_spec129d_portal_vida as PV
+
+    porto = PV._oferta_lida(PV._item_da_porto_do_canario(), capital_pedido=100000.0)        # sem eco → o pedido
+    assert P.capital_da_vida(porto) == {"valor": 100000.0, "origem": "pedido"}
+    eco = PV._oferta_lida(PV._item_da_porto_do_canario(isAppMorte=150000), capital_pedido=100000.0)
+    assert P.capital_da_vida(eco) == {"valor": 150000.0, "origem": "seguradora"}
+    assert P.capital_da_vida(PV._oferta_lida(PV._item_da_porto_do_canario())) is None      # nada → nada
+    for ruim in ({}, None, {"capital_pedido": 0}, {"isAppMorte": True}, {"capital_pedido": "Selecione"},
+                 {"isAppMorte": -1}, {"capital_pedido": float("nan")}):
+        assert P.capital_da_vida(ruim) is None, ruim
+
+
+def test_kb2_as_opcoes_de_vida_levam_o_capital_e_o_auto_nunca():
+    ops = [{"id": "recomendada", "ref": {"oferta_id": "o1", "opcao": "padrao"}, "motivos": [], "o_que_muda": [],
+            "coberturas": [], "parcelas": None, "premio_anual": 227.16, "seguradora": "Porto Seguro"}]
+    vida = [{"id": "o1", "coberturas": {"capital_pedido": 100000}}]
+    cfg = CFG.mesclar(None, "cotacao")
+    [o], _b = P.opcoes_da_pagina(ops, vida, cfg, ramo=PED.RAMO_VIDA)
+    assert o["capital_segurado"] == {"valor": 100000.0, "origem": "pedido"}
+    # no AUTO `isAppMorte` é a APP por passageiro (📊 test_spec131a: 5000) — nunca vira "capital segurado"
+    auto = [{"id": "o1", "coberturas": {"isAppMorte": 5000}}]
+    for ramo in (CMP.RAMO_AUTO, None):
+        [a], _b = P.opcoes_da_pagina(ops, auto, cfg, ramo=ramo)
+        assert "capital_segurado" not in a
+    [sem], _b = P.opcoes_da_pagina(ops, [{"id": "o1", "coberturas": {}}], cfg, ramo=PED.RAMO_VIDA)
+    assert "capital_segurado" not in sem, "capital inventado numa oferta sem número"
+
+
+@pytest.mark.parametrize("pagina", ["venda", "renovacao"])
+def test_kb2_o_exemplo_de_vida_leva_o_capital_do_pedido_na_porto_do_canario(monkeypatch, pagina):
+    """O exemplo de vida (o leitor REAL sobre o resultado gravado + a Porto do canário, o capital do CORPO real
+    `vida_calcularV2_corpo.json`): a Porto R$ 227,16 leva o capital PEDIDO, marcado como tal."""
+    m = M.montar_mundo(monkeypatch, solicitante="canal")
+    instalar_borda(monkeypatch)
+    modelo, _c, _p = rodar(EX.montar_modelo_de_exemplo(EX.SoLeitura(m.db), m.alfa, pagina, ramo=PED.RAMO_VIDA,
+                                                       agora=AGORA))
+    porto = next(o for o in modelo["opcoes"] if o["premio_anual"] == 227.16)
+    assert porto["capital_segurado"] == {"valor": 100000.0, "origem": "pedido"}, porto.get("capital_segurado")
+
+
+def test_kb7_a_etiqueta_exemplo_longe_do_canto():
+    """Laudo de design 130-C: o canto arredondado do cartão cortava o "EXEMPLO" (a 28 px do canto). Agora a etiqueta
+    fica a ≥ 8 % do maior lado, nos dois eixos — o pixel do canto antigo é FUNDO, o da nova posição é a etiqueta."""
+    from PIL import Image
+
+    assert EX.margem_da_etiqueta(960, 640) >= 0.08 * 960
+    for f in EX.ilustracoes_da_marca(None):
+        img = Image.open(io.BytesIO(base64.b64decode(f["src"].split(",", 1)[1]))).convert("RGB")
+        mg = EX.margem_da_etiqueta(*img.size)
+        assert min(img.getpixel((mg + 12, mg + 27))) >= 215, "a etiqueta não está na margem nova"
+        assert min(img.getpixel((40, 40))) < 215, "a etiqueta continua colada ao canto"

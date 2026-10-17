@@ -1887,7 +1887,7 @@ function SecaoPremios({ perfil, recarregar }: { perfil: Perfil | null; recarrega
       const j = await r.json().catch(() => ({}));
       if (j?.ok) {
         setAviso(limpos.length
-          ? 'Prêmios salvos. As suas próximas páginas mostram o selo Corretora premiada.'
+          ? 'Prêmios salvos. O selo Corretora premiada aparece junto do selo Nível 5 — que só sai com o Código SUSEP preenchido. Sem o Nível 5, o prêmio aparece no cartão da corretora.'
           : 'Prêmios salvos. Sem prêmio cadastrado, as páginas não mostram o selo.');
         await recarregar();
       } else setErro(j?.error || 'Não foi possível salvar os prêmios.');
@@ -1904,8 +1904,9 @@ function SecaoPremios({ perfil, recarregar }: { perfil: Perfil | null; recarrega
         <span className="text-xs font-medium tabular-nums text-muted-foreground">{premios.length} de {PREMIOS_TETO}</span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Com pelo menos um prêmio, as suas páginas mostram o selo Corretora premiada. Cadastre só o que a corretora
-        recebeu de fato — o cliente vê exatamente o que estiver aqui.
+        Com pelo menos um prêmio, as suas páginas mostram o selo Corretora premiada junto do selo Nível 5. O Nível 5 só
+        aparece com o Código SUSEP preenchido aqui na Identidade; sem ele, o prêmio vai ao cartão da corretora, sem
+        selo. Cadastre só o que a corretora recebeu de fato — o cliente vê exatamente o que estiver aqui.
       </p>
 
       {premios.length === 0 ? (

@@ -66,8 +66,19 @@ _MARCAS_HEIF = (b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx", b"mif1", b
 FRASE_NAO_E_FOTO = ("Esse arquivo não é uma foto que dê para usar. Envie uma foto em JPG, PNG, WebP ou HEIC "
                     "(a do iPhone).")
 FRASE_ANIMADA = "Essa imagem é animada. Envie uma foto parada, em JPG, PNG, WebP ou HEIC."
-FRASE_GRANDE_DEMAIS = "Essa foto é grande demais para abrir. Envie uma versão menor (até 10 MB)."
+#: conserto KB (juiz P6): a bomba de pixels estoura o teto de PIXELS, não o de bytes — a frase diz o limite certo
+#: (antes dizia "até 10 MB" a quem mandou um PNG de 60 Mpx com poucos KB)
+FRASE_GRANDE_DEMAIS = (f"Foto grande demais (mais de {PIXELS_MAXIMOS // 1_000_000} megapixels). "
+                       "Envie uma foto menor.")
 FRASE_TETO = f"Até {FOTOS_TETO} fotos. Remova uma para adicionar outra."
+#: conserto KB (juiz P4): duas fotos ao mesmo tempo com 7 gravadas — a que perde a corrida viu MENOS de 8 antes de
+#: gravar; "Até 8 fotos" seria falso para ela (o teto não estava cheio quando ela começou)
+FRASE_CORRIDA = "Outra foto acabou de ser enviada; tente de novo."
+#: conserto KB (red team P4): a foto da galeria nunca é o logo (o logo tem rota própria e as regras dele) …
+FRASE_FOTO_NAO_E_LOGO = "Uma foto da galeria não pode ser o logo. Envie o logo na área do logo, na Identidade."
+#: … e a foto que JÁ é o logo (legado) não é apagada: apagar daria erro de chave estrangeira (500) ou tiraria o logo
+#: de todas as páginas sem a corretora pedir
+FRASE_FOTO_E_O_LOGO = "Essa foto está sendo usada como o logo da corretora. Troque o logo antes de remover a foto."
 FRASE_NAO_ENCONTRADA = "Essa foto não foi encontrada. Recarregue a página e tente de novo."
 #: SPEC-130-C · F4 — enquanto a migration 20261016_04 (o DROP do índice antigo, passo do Founder) não roda, o índice
 #: `brand_assets_one_current_per_kind (company_id, kind) WHERE is_current` ainda existe e recusa a 2ª foto ATUAL com
@@ -396,11 +407,12 @@ def adicionar_foto(db: Any, company_id: str, user_id: Optional[str], dados: byte
     novo_id = gravada[0].get("id")
 
     # Duas fotos enviadas AO MESMO TEMPO podem ter visto 7 e gravado a 9ª. Reconta depois de gravar: passou do teto,
-    # a que acabou de entrar sai (só ela, só desta corretora).
+    # a que acabou de entrar sai (só ela, só desta corretora). Conservador: se as duas recontam 9, as duas saem (fica
+    # 7) — nunca 9. A frase é a da CORRIDA: esta viu menos de 8 antes de gravar (senão teria parado lá em cima).
     if len(_fotos_atuais(db, company_id)) > FOTOS_TETO:
         (db.table("brand_assets").delete()
          .eq("id", novo_id).eq("company_id", company_id).eq("kind", "photo").execute())
-        raise EntradaRecusada(FRASE_TETO)
+        raise EntradaRecusada(FRASE_CORRIDA)
     return _publica(gravada[0])
 
 
@@ -419,22 +431,56 @@ def _uma_foto(db: Any, company_id: str, foto_id: Any) -> dict:
 _NADA = object()
 
 
+def _renumerar(db: Any, company_id: str, ids_em_ordem: list[str], ordem_atual: dict) -> None:
+    """Grava `sort_order` = 0..n-1 na ordem dada, só onde mudou — cada escrita com o filtro `company_id` (§7)."""
+    for posicao, fid in enumerate(ids_em_ordem):
+        if ordem_atual.get(fid) != posicao:
+            (db.table("brand_assets").update({"sort_order": posicao})
+             .eq("id", fid).eq("company_id", company_id).eq("kind", "photo").execute())
+
+
 def atualizar_foto(db: Any, company_id: str, foto_id: Any, legenda: Any = _NADA, sort_order: Any = _NADA) -> dict:
-    """Troca a legenda e/ou a ordem de UMA foto desta corretora. Id de outra corretora → "não encontrada"."""
+    """Troca a legenda e/ou a ordem de UMA foto desta corretora. Id de outra corretora → "não encontrada".
+
+    Conserto KB (red team P3): a posição pedida MOVE a foto — as outras andam e a sequência fica 0..n-1, sem posição
+    repetida nem buraco (antes, a posição já ocupada deixava duas fotos com o mesmo `sort_order`). Posição além do fim
+    → a última."""
     atual = _uma_foto(db, company_id, foto_id)
-    patch: dict[str, Any] = {}
-    if legenda is not _NADA:
-        patch["caption"] = limpar_legenda(legenda)
+    ordem_final = atual.get("sort_order")
     if sort_order is not _NADA and sort_order is not None:
         if isinstance(sort_order, bool) or not isinstance(sort_order, int) or not 0 <= sort_order < FOTOS_TETO:
             raise EntradaRecusada("A posição da foto precisa ser de 1 a 8.")
-        patch["sort_order"] = sort_order
-    if not patch:
-        return {"id": atual["id"], "legenda": atual.get("caption") or "", "ordem": atual.get("sort_order")}
-    (db.table("brand_assets").update(patch)
-     .eq("id", atual["id"]).eq("company_id", company_id).eq("kind", "photo").execute())
-    return {"id": atual["id"], "legenda": patch.get("caption", atual.get("caption")) or "",
-            "ordem": patch.get("sort_order", atual.get("sort_order"))}
+    legenda_limpa = limpar_legenda(legenda) if legenda is not _NADA else _NADA   # recusa ANTES de escrever
+    if legenda_limpa is not _NADA:
+        (db.table("brand_assets").update({"caption": legenda_limpa})
+         .eq("id", atual["id"]).eq("company_id", company_id).eq("kind", "photo").execute())
+    if sort_order is not _NADA and sort_order is not None:
+        fotos_ = _fotos_atuais(db, company_id)
+        ordem_atual = {str(l["id"]): l.get("sort_order") for l in fotos_}
+        outras = [str(l["id"]) for l in fotos_ if str(l["id"]) != str(atual["id"])]
+        ordem_final = min(sort_order, len(outras))
+        _renumerar(db, company_id, outras[:ordem_final] + [str(atual["id"])] + outras[ordem_final:], ordem_atual)
+    legenda_final = atual.get("caption") if legenda_limpa is _NADA else legenda_limpa
+    return {"id": atual["id"], "legenda": legenda_final or "", "ordem": ordem_final}
+
+
+def foto_e_o_logo(db: Any, company_id: str, foto_id: str) -> bool:
+    """A foto é o `logo_asset_id` do perfil DESTA corretora? (legado: antes do conserto KB uma foto podia virar logo)"""
+    perfis = _linhas(db.table("brand_profiles").select("logo_asset_id")
+                     .eq("company_id", company_id).limit(1).execute())
+    return bool(perfis) and str(perfis[0].get("logo_asset_id") or "") == str(foto_id)
+
+
+def recusar_foto_como_logo(db: Any, company_id: str, asset_id: Any) -> None:
+    """Conserto KB (red team P4): o `logo_asset_id` que a Identidade grava nunca aponta para uma FOTO da galeria.
+    Levanta EntradaRecusada(FRASE_FOTO_NAO_E_LOGO). Id que não é desta corretora segue para a regra que já existe
+    (`BrandCaptureService.editar`: "Esse logo não pertence à sua corretora")."""
+    if not asset_id:
+        return                                   # limpar o logo (None) não é foto
+    linhas = _linhas(db.table("brand_assets").select("id, kind")
+                     .eq("id", str(asset_id)).eq("company_id", company_id).limit(1).execute())
+    if linhas and linhas[0].get("kind") == "photo":
+        raise EntradaRecusada(FRASE_FOTO_NAO_E_LOGO)
 
 
 def remover_foto(db: Any, company_id: str, foto_id: Any) -> bool:
@@ -446,13 +492,14 @@ def remover_foto(db: Any, company_id: str, foto_id: Any) -> bool:
     publicada guarda o próprio HTML e não depende desta linha.
     """
     atual = _uma_foto(db, company_id, foto_id)
+    # conserto KB (red team P4): a foto que é o logo (legado) NÃO sai — recusar, e não limpar a referência: limpar
+    # tiraria o logo de todas as páginas sem a corretora pedir; a frase diz o que fazer (trocar o logo antes)
+    if foto_e_o_logo(db, company_id, atual["id"]):
+        raise EntradaRecusada(FRASE_FOTO_E_O_LOGO)
     (db.table("brand_assets").delete()
      .eq("id", atual["id"]).eq("company_id", company_id).eq("kind", "photo").execute())
     restantes = _fotos_atuais(db, company_id)
-    for posicao, linha in enumerate(restantes):
-        if linha.get("sort_order") != posicao:
-            (db.table("brand_assets").update({"sort_order": posicao})
-             .eq("id", linha["id"]).eq("company_id", company_id).eq("kind", "photo").execute())
+    _renumerar(db, company_id, [str(l["id"]) for l in restantes], {str(l["id"]): l.get("sort_order") for l in restantes})
     return True
 
 
